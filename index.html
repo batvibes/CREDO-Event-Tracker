@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CREDO Event Operations Tracker</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <dialog class="modal" id="login-modal">
+    <form class="modal-content" id="login-form">
+      <div class="modal-header">
+        <h3>Sign In</h3>
+      </div>
+      <div class="modal-body">
+        <p class="settings-help">Sign in with your Supabase account to access the tracker.</p>
+        <label>
+          Email
+          <input type="email" name="email" required autocomplete="username">
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" required autocomplete="current-password">
+        </label>
+        <span class="field-error" id="login-error" hidden></span>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Sign In</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="app" id="app-root" hidden>
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="assets/credo-logo.jpg" alt="CREDO MCI West" class="brand-logo">
+        <div class="brand-text">
+          <span class="brand-name">CREDO</span>
+          <span class="brand-region">MCI West</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-view="events">
+          <span class="nav-icon">▦</span>
+          Events
+        </a>
+        <a href="#" class="nav-item" data-view="calendar">
+          <span class="nav-icon">□</span>
+          Calendar
+        </a>
+        <a href="#" class="nav-item" data-view="reports">
+          <span class="nav-icon">▥</span>
+          Reports
+        </a>
+        <a href="#" class="nav-item" data-view="team">
+          <span class="nav-icon">☷</span>
+          Team
+        </a>
+        <a href="#" class="nav-item" data-view="settings">
+          <span class="nav-icon">⚙</span>
+          Settings
+        </a>
+      </nav>
+
+      <div class="sidebar-auth">
+        <span id="user-email" class="user-email"></span>
+        <button type="button" class="btn btn-secondary btn-small" id="logout-btn">Log out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div id="view-events" class="view">
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>CREDO MCI WEST</h1>
+            <h2>Event Operations Tracker</h2>
+            <p class="tagline">Strengthening Relationships. Building Resilience. Supporting the Mission.</p>
+          </div>
+          <div class="header-actions">
+            <time id="today-date" class="today-date"></time>
+            <button type="button" class="btn btn-primary" id="new-event-btn">+ New Event</button>
+          </div>
+        </header>
+
+        <section class="kpi-grid" id="kpi-grid" aria-label="Key performance indicators"></section>
+
+        <section class="events-section">
+          <div class="section-header">
+            <div class="section-header-start">
+              <h3>Upcoming Events</h3>
+              <div class="date-filter">
+                <button type="button" class="filter-btn filter-btn-active" id="filter-all-btn">All</button>
+                <select id="filter-month" class="filter-select" aria-label="Filter by month"></select>
+                <select id="filter-year" class="filter-select" aria-label="Filter by year"></select>
+              </div>
+              <span class="event-count" id="event-count"></span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="events-table">
+              <thead>
+                <tr>
+                  <th class="col-delete" aria-label="Actions"></th>
+                  <th>Date</th>
+                  <th>Event Type</th>
+                  <th>Command</th>
+                  <th class="col-participants">Expected Participants</th>
+                  <th>Location</th>
+                  <th>Reservation</th>
+                  <th>Catering</th>
+                  <th>Packout</th>
+                  <th>Roster</th>
+                </tr>
+              </thead>
+              <tbody id="events-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div id="view-calendar" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Calendar</h1>
+            <h2>Event Schedule</h2>
+          </div>
+        </header>
+        <section class="content-section" id="calendar-content"></section>
+      </div>
+
+
+      <div id="view-reports" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Reports</h1>
+            <h2>Event Reports</h2>
+          </div>
+        </header>
+        <section class="content-section reports-panel">
+          <div class="reports-filter-bar">
+            <label class="reports-filter-field">
+              <span class="reports-filter-label">Report Type</span>
+              <select id="report-type" class="filter-select">
+                <option value="all">All Events</option>
+                <option value="cy">Calendar Year</option>
+                <option value="fy">Fiscal Year</option>
+                <option value="month-year">Month &amp; Year</option>
+                <option value="date-range">Date Range</option>
+                <option value="command">Command</option>
+                <option value="event-type">Event Type</option>
+              </select>
+            </label>
+            <label class="reports-filter-field" id="report-year-field">
+              <span class="reports-filter-label">Year</span>
+              <select id="report-year" class="filter-select" disabled>
+                <option value="">Select year</option>
+              </select>
+            </label>
+            <label class="reports-filter-field" id="report-month-field">
+              <span class="reports-filter-label">Month</span>
+              <select id="report-month" class="filter-select" disabled>
+                <option value="">Select month</option>
+              </select>
+            </label>
+            <label class="reports-filter-field" id="report-start-field">
+              <span class="reports-filter-label">Start Date</span>
+              <input type="date" id="report-start-date" class="reports-input" disabled>
+            </label>
+            <label class="reports-filter-field" id="report-end-field">
+              <span class="reports-filter-label">End Date</span>
+              <input type="date" id="report-end-date" class="reports-input" disabled>
+            </label>
+            <label class="reports-filter-field" id="report-command-field">
+              <span class="reports-filter-label">Command</span>
+              <select id="report-command" class="filter-select" disabled>
+                <option value="">Select command</option>
+              </select>
+            </label>
+            <label class="reports-filter-field" id="report-event-type-field">
+              <span class="reports-filter-label">Event Type</span>
+              <select id="report-event-type" class="filter-select" disabled>
+                <option value="">Select event type</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-primary" id="report-generate-btn">Generate Report</button>
+            <button type="button" class="btn btn-secondary" id="report-clear-btn">Clear Filters</button>
+            <button type="button" class="btn btn-secondary" id="report-export-btn">Export CSV</button>
+          </div>
+          <div class="reports-results">
+            <div class="reports-results-header">
+              <span id="report-count">0 events</span>
+            </div>
+            <div class="table-wrap">
+              <table class="events-table reports-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Event Type</th>
+                    <th>Command</th>
+                    <th class="col-participants">Expected Participants</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody id="report-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div id="view-team" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Team</h1>
+            <h2>CREDO MCI West Staff</h2>
+          </div>
+        </header>
+        <section class="content-section" id="team-content"></section>
+      </div>
+
+      <div id="view-settings" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Settings</h1>
+            <h2>Event Types</h2>
+          </div>
+        </header>
+        <section class="content-section" id="settings-content"></section>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="modal" id="new-event-modal">
+    <form method="dialog" class="modal-content" id="new-event-form">
+      <div class="modal-header">
+        <h3>New Event</h3>
+        <button type="button" class="modal-close" id="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label>
+          Date
+          <input type="date" name="date">
+        </label>
+        <label>
+          Event Type
+          <select name="eventType"></select>
+          <span class="field-error" id="event-type-error" hidden>Please select an event type.</span>
+        </label>
+        <label>
+          Command
+          <input type="text" name="command" placeholder="e.g. MCI West">
+        </label>
+        <label>
+          Expected Participants
+          <input type="number" name="participants" min="0">
+        </label>
+        <label>
+          Location
+          <input type="text" name="location" placeholder="e.g. Camp Pendleton">
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="modal-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Event</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
