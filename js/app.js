@@ -1,16 +1,27 @@
 import {
+  createTeamMember,
   deleteEventById,
   deleteEventType,
+  deleteTeamMember,
+  fetchAarGlobalTemplates,
+  fetchCommandHighlightsNotes,
   fetchEventTypes,
   fetchEvents,
   fetchTeam,
+  fetchTeamMembers,
   insertEvent,
   insertEventType,
   renameEventTypeInEvents,
+  updateAarGlobalTemplates,
+  updateCommandHighlightsNotes,
   updateEvent,
+  updateEventAarFields,
+  clearEventAar,
+  finalizeEventAar,
   updateEventType,
-  updateTeam,
+  updateTeamMember,
 } from './db.js';
+// PDF export temporarily disabled — jspdf/html2canvas must not load at app bootstrap.
 import {
   canDeleteEvents,
   canEditEvents,
@@ -30,14 +41,6 @@ const STATUS_CLASS = {
 
 const TRACKER_VIEWS = ['events'];
 
-const TEAM_FIELDS = [
-  { key: 'director', label: 'Director' },
-  { key: 'deputyDirector', label: 'Deputy Director' },
-  { key: 'gsPosition', label: 'GS Position' },
-  { key: 'lpo', label: 'LPO' },
-  { key: 'credoStaff', label: 'CREDO Staff' },
-];
-
 const DEFAULT_TEAM = {
   director: '',
   deputyDirector: '',
@@ -49,8 +52,15 @@ const DEFAULT_TEAM = {
 let events = [];
 let eventTypes = [];
 let eventTypeRecords = [];
+let aarGlobalTemplates = {
+  credoRequirements: '',
+  commandRequirements: '',
+};
 let team = { ...DEFAULT_TEAM };
+let teamMembers = [];
+let commandHighlightsNotes = '';
 let currentView = 'events';
+let reportsTab = 'event-reports';
 let dateFilter = { month: 'all', year: 'all' };
 
 const MONTH_NAMES = [
@@ -59,7 +69,65 @@ const MONTH_NAMES = [
 ];
 
 let reportResults = [];
+let aarSearchResults = [];
+let aarSearchRan = false;
+let aarScreen = 'search';
+let aarDocumentEventId = null;
+let aarFinalEditEnabled = false;
+
+const DEFAULT_AAR_FILTER = {
+  filterType: 'cy',
+  year: '',
+  month: '',
+  startDate: '',
+  endDate: '',
+  command: '',
+  eventType: '',
+};
+
+let aarFilterState = { ...DEFAULT_AAR_FILTER };
 let dataLoadGeneration = 0;
+
+const SORT_ASC = 'asc';
+const SORT_DESC = 'desc';
+
+const eventsTableSort = { column: null, direction: SORT_ASC };
+const reportsTableSort = { column: null, direction: SORT_ASC };
+const aarTableSort = { column: null, direction: SORT_ASC };
+
+const EVENTS_TABLE_SORT_COLUMNS = [
+  { key: 'date', index: 1 },
+  { key: 'eventType', index: 2 },
+  { key: 'command', index: 3 },
+  { key: 'participants', index: 4 },
+  { key: 'location', index: 5 },
+  { key: 'reservation', index: 6 },
+  { key: 'catering', index: 7 },
+  { key: 'packout', index: 8 },
+  { key: 'roster', index: 9 },
+];
+
+const REPORTS_TABLE_SORT_COLUMNS = [
+  { key: 'date', index: 0 },
+  { key: 'eventType', index: 1 },
+  { key: 'command', index: 2 },
+  { key: 'participants', index: 3 },
+  { key: 'location', index: 4 },
+];
+
+const AAR_TABLE_SORT_COLUMNS = [
+  { key: 'date', index: 0 },
+  { key: 'eventType', index: 1 },
+  { key: 'command', index: 2 },
+  { key: 'location', index: 3 },
+  { key: 'status', index: 4 },
+];
+
+const AAR_STATUS_SORT_ORDER = {
+  'Not Started': 0,
+  Draft: 1,
+  Final: 2,
+};
 
 function isTbd(value) {
   return value === TBD || value === '' || value == null;
@@ -95,16 +163,42 @@ function formatDisplayDate(isoDate) {
   return `${month}/${day}/${year}`;
 }
 
+function formatEventDateDisplay(event) {
+  const dateType = event.dateType === 'range' ? 'range' : 'single';
+  const start = event.startDate ?? event.date;
+  if (dateType === 'range') {
+    const end = event.endDate ?? start;
+    if (isTbd(start) && isTbd(end)) return TBD;
+    if (isTbd(start)) return formatDisplayDate(end);
+    if (isTbd(end)) return formatDisplayDate(start);
+    return `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`;
+  }
+  return displayValue(start, 'date');
+}
+
+function getEventStartDate(event) {
+  return event.startDate ?? event.date;
+}
+
 function participantCount(value) {
   if (isTbd(value)) return 0;
   return typeof value === 'number' ? value : parseInt(value, 10) || 0;
 }
 
 function normalizeEvent(event) {
-  event.date = toFieldValue(event.date);
+  event.dateType = event.dateType === 'range' ? 'range' : 'single';
+  event.startDate = toFieldValue(event.startDate ?? event.date);
+  event.endDate = event.dateType === 'range'
+    ? toFieldValue(event.endDate ?? event.startDate)
+    : event.startDate;
+  event.date = event.startDate;
   event.participants = toParticipantValue(event.participants);
   event.location = toFieldValue(event.location);
   event.command = toFieldValue(event.command);
+  event.facilitators = String(event.facilitators ?? '').trim();
+  event.credoStaff = String(event.credoStaff ?? '').trim();
+  event.time = String(event.time ?? '').trim();
+  event.poc = String(event.poc ?? '').trim();
   if (event.roster !== 'Complete' && event.roster !== 'Need Roster') {
     event.roster =
       event.rosterAcquired === 'Complete' ? 'Complete' : 'Need Roster';
@@ -139,20 +233,12 @@ async function persistNewEvent(event) {
   }
 }
 
-async function persistTeam() {
-  try {
-    team = await updateTeam(team);
-  } catch (err) {
-    console.error(err);
-    alert('Failed to save team.');
-  }
-}
-
 function applyPermissions() {
   const newEventBtn = document.getElementById('new-event-btn');
   if (newEventBtn) {
     newEventBtn.hidden = !canEditEvents();
   }
+  updateAarDocumentToolbar();
 }
 
 function cycleStatus(current) {
@@ -191,8 +277,9 @@ function getFilteredEvents() {
   if (isFilterAll()) return events;
 
   return events.filter((event) => {
-    if (isTbd(event.date)) return false;
-    const date = new Date(event.date + 'T12:00:00');
+    const isoDate = getEventStartDate(event);
+    if (isTbd(isoDate)) return false;
+    const date = new Date(isoDate + 'T12:00:00');
     return (
       date.getMonth() === Number(dateFilter.month) &&
       date.getFullYear() === Number(dateFilter.year)
@@ -203,8 +290,9 @@ function getFilteredEvents() {
 function getEventYears() {
   const years = new Set();
   events.forEach((event) => {
-    if (!isTbd(event.date)) {
-      years.add(new Date(event.date + 'T12:00:00').getFullYear());
+    const isoDate = getEventStartDate(event);
+    if (!isTbd(isoDate)) {
+      years.add(new Date(isoDate + 'T12:00:00').getFullYear());
     }
   });
   return [...years].sort((a, b) => a - b);
@@ -274,6 +362,7 @@ function setupDateFilter() {
   });
 
   syncDateFilterUI();
+  setupEventsTableSorting();
 }
 
 function renderDashboard() {
@@ -284,10 +373,187 @@ function renderDashboard() {
 
 function sortEvents(list) {
   return [...list].sort((a, b) => {
-    if (isTbd(a.date) && !isTbd(b.date)) return 1;
-    if (!isTbd(a.date) && isTbd(b.date)) return -1;
-    return String(a.date).localeCompare(String(b.date));
+    const aDate = getEventStartDate(a);
+    const bDate = getEventStartDate(b);
+    if (isTbd(aDate) && !isTbd(bDate)) return 1;
+    if (!isTbd(aDate) && isTbd(bDate)) return -1;
+    return String(aDate).localeCompare(String(bDate));
   });
+}
+
+function compareTextValues(aVal, bVal) {
+  return String(aVal ?? '').localeCompare(String(bVal ?? ''), undefined, { sensitivity: 'base' });
+}
+
+function compareWithTbdLast(aVal, bVal, compareValues = compareTextValues) {
+  if (isTbd(aVal) && !isTbd(bVal)) return 1;
+  if (!isTbd(aVal) && isTbd(bVal)) return -1;
+  return compareValues(aVal, bVal);
+}
+
+function compareEventDates(a, b) {
+  return compareWithTbdLast(getEventStartDate(a), getEventStartDate(b));
+}
+
+function compareEventParticipants(a, b) {
+  return compareWithTbdLast(a.participants, b.participants, (left, right) => {
+    const leftNumber = parseInt(String(left), 10);
+    const rightNumber = parseInt(String(right), 10);
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+      return leftNumber - rightNumber;
+    }
+    return compareTextValues(left, right);
+  });
+}
+
+function compareWorkflowStatus(aVal, bVal) {
+  const leftIndex = STATUSES.indexOf(aVal);
+  const rightIndex = STATUSES.indexOf(bVal);
+  if (leftIndex !== -1 && rightIndex !== -1) return leftIndex - rightIndex;
+  return compareTextValues(aVal, bVal);
+}
+
+function compareAarStatusValues(a, b) {
+  const left = AAR_STATUS_SORT_ORDER[getAarStatus(a)] ?? 99;
+  const right = AAR_STATUS_SORT_ORDER[getAarStatus(b)] ?? 99;
+  return left - right;
+}
+
+const EVENTS_SORT_COMPARATORS = {
+  date: compareEventDates,
+  eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
+  command: (a, b) => compareWithTbdLast(a.command, b.command),
+  participants: compareEventParticipants,
+  location: (a, b) => compareWithTbdLast(a.location, b.location),
+  reservation: (a, b) => compareWorkflowStatus(a.reservation, b.reservation),
+  catering: (a, b) => compareWorkflowStatus(a.catering, b.catering),
+  packout: (a, b) => compareWorkflowStatus(a.packout, b.packout),
+  roster: (a, b) => compareTextValues(a.roster, b.roster),
+};
+
+const REPORTS_SORT_COMPARATORS = {
+  date: compareEventDates,
+  eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
+  command: (a, b) => compareWithTbdLast(a.command, b.command),
+  participants: compareEventParticipants,
+  location: (a, b) => compareWithTbdLast(a.location, b.location),
+};
+
+const AAR_SORT_COMPARATORS = {
+  date: compareEventDates,
+  eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
+  command: (a, b) => compareWithTbdLast(a.command, b.command),
+  location: (a, b) => compareWithTbdLast(a.location, b.location),
+  status: compareAarStatusValues,
+};
+
+function sortTableData(list, sortState, comparators, defaultColumn = 'date') {
+  const column = sortState.column || defaultColumn;
+  const direction = sortState.column ? sortState.direction : SORT_ASC;
+  const compare = comparators[column];
+  if (!compare) return [...list];
+
+  const sorted = [...list].sort(compare);
+  return direction === SORT_DESC ? sorted.reverse() : sorted;
+}
+
+function refreshSortHeaderIndicators(tableSelector, columns, sortState) {
+  const table = document.querySelector(tableSelector);
+  if (!table) return;
+
+  columns.forEach(({ key, index }) => {
+    const th = table.querySelectorAll('thead th')[index];
+    if (!th) return;
+
+    const indicator = th.querySelector('.sortable-header-indicator');
+    if (!indicator) return;
+
+    if (sortState.column === key) {
+      indicator.textContent = sortState.direction === SORT_ASC ? '▲' : '▼';
+      th.setAttribute('aria-sort', sortState.direction === SORT_ASC ? 'ascending' : 'descending');
+    } else {
+      indicator.textContent = '';
+      th.removeAttribute('aria-sort');
+    }
+  });
+}
+
+function bindSortableTableHeaders(tableSelector, columns, sortState, onSortChange) {
+  const table = document.querySelector(tableSelector);
+  if (!table || table.dataset.sortHeadersBound === 'true') return;
+
+  columns.forEach(({ key, index }) => {
+    const th = table.querySelectorAll('thead th')[index];
+    if (!th || th.dataset.sortKey) return;
+
+    const label = th.textContent.trim();
+    if (!label) return;
+
+    th.dataset.sortKey = key;
+    th.classList.add('sortable-th');
+    th.textContent = '';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'sortable-header-btn';
+    btn.innerHTML =
+      `<span class="sortable-header-label">${label}</span>`
+      + '<span class="sortable-header-indicator" aria-hidden="true"></span>';
+    btn.addEventListener('click', () => {
+      if (sortState.column === key) {
+        sortState.direction = sortState.direction === SORT_ASC ? SORT_DESC : SORT_ASC;
+      } else {
+        sortState.column = key;
+        sortState.direction = SORT_ASC;
+      }
+      refreshSortHeaderIndicators(tableSelector, columns, sortState);
+      onSortChange();
+    });
+    th.appendChild(btn);
+  });
+
+  table.dataset.sortHeadersBound = 'true';
+  refreshSortHeaderIndicators(tableSelector, columns, sortState);
+}
+
+function resetTableSortState() {
+  eventsTableSort.column = null;
+  eventsTableSort.direction = SORT_ASC;
+  reportsTableSort.column = null;
+  reportsTableSort.direction = SORT_ASC;
+  aarTableSort.column = null;
+  aarTableSort.direction = SORT_ASC;
+
+  refreshSortHeaderIndicators('#view-events .events-table', EVENTS_TABLE_SORT_COLUMNS, eventsTableSort);
+  refreshSortHeaderIndicators('#reports-event-panel .reports-table', REPORTS_TABLE_SORT_COLUMNS, reportsTableSort);
+  refreshSortHeaderIndicators('#view-reports .aar-table', AAR_TABLE_SORT_COLUMNS, aarTableSort);
+}
+
+function setupEventsTableSorting() {
+  bindSortableTableHeaders(
+    '#view-events .events-table',
+    EVENTS_TABLE_SORT_COLUMNS,
+    eventsTableSort,
+    () => renderTable()
+  );
+}
+
+function setupReportsTableSorting() {
+  bindSortableTableHeaders(
+    '#reports-event-panel .reports-table',
+    REPORTS_TABLE_SORT_COLUMNS,
+    reportsTableSort,
+    () => renderReportTable()
+  );
+}
+
+function setupAarTableSorting() {
+  bindSortableTableHeaders(
+    '#view-reports .aar-table',
+    AAR_TABLE_SORT_COLUMNS,
+    aarTableSort,
+    () => renderAarResultsTable()
+  );
 }
 
 function renderCalendar() {
@@ -302,13 +568,14 @@ function renderCalendar() {
   const months = new Map();
 
   sorted.forEach((event) => {
-    const date = new Date(event.date + 'T12:00:00');
-    const monthKey = isTbd(event.date)
+    const isoDate = getEventStartDate(event);
+    const date = new Date(isoDate + 'T12:00:00');
+    const monthKey = isTbd(isoDate)
       ? 'Date TBD'
       : date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     if (!months.has(monthKey)) months.set(monthKey, new Map());
     const days = months.get(monthKey);
-    const dateKey = isTbd(event.date) ? TBD : event.date;
+    const dateKey = isTbd(isoDate) ? TBD : isoDate;
     if (!days.has(dateKey)) days.set(dateKey, []);
     days.get(dateKey).push(event);
   });
@@ -329,7 +596,7 @@ function renderCalendar() {
 
           return `
             <div class="calendar-day">
-              <h4 class="calendar-day-label">${formatDate(dateKey)}</h4>
+              <h4 class="calendar-day-label">${formatEventDateDisplay(dayEvents[0])}</h4>
               <ul class="calendar-event-list">${eventsList}</ul>
             </div>`;
         })
@@ -360,8 +627,9 @@ function getReportYears() {
 }
 
 function getEventIsoDate(event) {
-  if (isTbd(event.date)) return null;
-  return event.date;
+  const isoDate = getEventStartDate(event);
+  if (isTbd(isoDate)) return null;
+  return isoDate;
 }
 
 function isDateInRange(isoDate, start, end) {
@@ -520,7 +788,9 @@ function renderReportTable() {
     return;
   }
 
-  tbody.innerHTML = reportResults
+  const sorted = sortTableData(reportResults, reportsTableSort, REPORTS_SORT_COMPARATORS);
+
+  tbody.innerHTML = sorted
     .map(
       (event) => `
       <tr>
@@ -535,7 +805,7 @@ function renderReportTable() {
 }
 
 function generateReport() {
-  reportResults = sortEvents(filterReportEvents());
+  reportResults = filterReportEvents();
   renderReportTable();
 }
 
@@ -593,7 +863,947 @@ function setupReports() {
   document.getElementById('report-clear-btn').addEventListener('click', clearReportFilters);
   document.getElementById('report-export-btn').addEventListener('click', exportReportCsv);
 
+  setupReportsTableSorting();
   renderReportTable();
+}
+
+function setupReportsSubnav() {
+  document.querySelectorAll('.reports-subtab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      switchReportsTab(btn.dataset.reportsTab);
+    });
+  });
+}
+
+function switchReportsTab(tab) {
+  if (reportsTab === 'aar') {
+    captureAarFilterState();
+  }
+
+  reportsTab = tab;
+
+  document.querySelectorAll('.reports-subtab').forEach((btn) => {
+    btn.classList.toggle('reports-subtab-active', btn.dataset.reportsTab === tab);
+  });
+
+  document.getElementById('reports-event-panel').hidden = tab !== 'event-reports';
+  document.getElementById('reports-aar-panel').hidden = tab !== 'aar';
+
+  const subtitle = document.getElementById('reports-subtitle');
+  if (subtitle) {
+    subtitle.textContent = tab === 'event-reports' ? 'Event Reports' : 'After Action Reports';
+  }
+
+  if (tab === 'event-reports') {
+    renderReports();
+  } else if (tab === 'aar') {
+    renderAarSearch();
+  }
+}
+
+function updateAarScreen() {
+  const searchView = document.getElementById('aar-search-view');
+  const documentView = document.getElementById('aar-document-view');
+  const builderView = document.getElementById('aar-builder-view');
+  const previewView = document.getElementById('aar-preview-view');
+  if (!searchView || !documentView) return;
+
+  searchView.hidden = aarScreen !== 'search';
+  documentView.hidden = aarScreen === 'search';
+  if (builderView) builderView.hidden = aarScreen !== 'document';
+  if (previewView) previewView.hidden = aarScreen !== 'preview';
+}
+
+function openAarPreview() {
+  const event = events.find((entry) => entry.id === aarDocumentEventId);
+  if (!event) return;
+
+  buildAarPreviewDocument(event);
+  updateAarPreviewToolbar();
+  aarScreen = 'preview';
+  updateAarScreen();
+}
+
+function closeAarPreview() {
+  aarScreen = 'document';
+  updateAarScreen();
+}
+
+function buildAarPreviewDocument(event) {
+  const canvas = document.getElementById('aar-preview-canvas');
+  const source = document.getElementById('aar-report-article');
+  if (!canvas || !source) return;
+
+  canvas.innerHTML = '';
+  const article = source.cloneNode(true);
+  article.id = 'aar-report-preview';
+  article.querySelectorAll('.aar-editable-field').forEach((el) => el.remove());
+  canvas.appendChild(article);
+  populateAarDocument(event, { root: article, editable: false });
+}
+
+function getAarReportRoot(root) {
+  if (root instanceof Element) return root;
+  if (typeof root === 'string') return document.querySelector(root);
+  return document.getElementById('aar-report-article');
+}
+
+function openAarDocument(event) {
+  if (!event) return;
+  captureAarFilterState();
+  aarDocumentEventId = event.id;
+  aarFinalEditEnabled = false;
+  populateAarDocument(event);
+  aarScreen = 'document';
+  updateAarScreen();
+  updateAarDocumentToolbar();
+  updateAarPreviewToolbar();
+}
+
+function closeAarDocument() {
+  if (aarDocumentEventId && aarSearchRan) {
+    renderAarResultsTable();
+  }
+  aarDocumentEventId = null;
+  aarFinalEditEnabled = false;
+  aarScreen = 'search';
+  updateAarScreen();
+}
+
+function getEventTypeTemplate(eventTypeName) {
+  const record = eventTypeRecords.find((entry) => entry.name === eventTypeName);
+  return {
+    objectives: record?.objectives ?? '',
+    description: record?.description ?? '',
+  };
+}
+
+function aarPlainField(value) {
+  if (isTbd(value)) return TBD;
+  const trimmed = String(value ?? '').trim();
+  return trimmed === '' ? TBD : trimmed;
+}
+
+function setAarTextElement(element, text, emptyPlaceholder) {
+  if (!element) return;
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed || trimmed === TBD) {
+    element.textContent = emptyPlaceholder;
+    element.classList.add('aar-report-placeholder');
+    return;
+  }
+  element.textContent = trimmed;
+  element.classList.remove('aar-report-placeholder');
+}
+
+function findAarRmtCell(label, root) {
+  const table = getAarReportRoot(root)?.querySelector('.aar-rmt-table');
+  if (!table) return null;
+
+  for (const th of table.querySelectorAll('th[scope="row"]')) {
+    if (th.textContent.trim() === label) {
+      return th.nextElementSibling;
+    }
+  }
+  return null;
+}
+
+function setAarRmtField(label, value, emptyPlaceholder, root) {
+  const cell = findAarRmtCell(label, root);
+  if (!cell || cell.classList.contains('aar-rmt-empty')) return;
+  setAarTextElement(cell, value, emptyPlaceholder);
+}
+
+function findAarReportSection(title, root) {
+  return [...(getAarReportRoot(root)?.querySelectorAll('.aar-report-section') ?? [])].find(
+    (section) => section.querySelector('.aar-report-section-title')?.textContent.trim() === title
+  );
+}
+
+function setAarReportBlock(sectionTitle, blockLabel, text, emptyPlaceholder, root) {
+  const section = findAarReportSection(sectionTitle, root);
+  if (!section) return;
+
+  for (const block of section.querySelectorAll('.aar-report-block')) {
+    const heading = block.querySelector('.aar-report-block-label');
+    if (heading?.textContent.trim() === blockLabel) {
+      setAarTextElement(block.querySelector('.aar-report-box'), text, emptyPlaceholder);
+      return;
+    }
+  }
+}
+
+function getEventTypeSeriesCode(eventTypeName) {
+  const record = eventTypeRecords.find((entry) => entry.name === eventTypeName);
+  return (record?.seriesCode ?? '').trim();
+}
+
+function getEventCalendarYear(event) {
+  const start = event.startDate ?? event.date;
+  if (isTbd(start)) return null;
+  const year = parseInt(String(start).slice(0, 4), 10);
+  return Number.isFinite(year) ? year : null;
+}
+
+function isAarFinalized(event) {
+  return event?.aarFinalized === true;
+}
+
+function canEditAarDocumentFields(event) {
+  if (!canEditEvents()) return false;
+  if (!isAarFinalized(event)) return true;
+  return aarFinalEditEnabled;
+}
+
+function getAarSequenceNumber(event) {
+  if (!isAarFinalized(event)) return '';
+  return String(event.aarSequenceNumber ?? '').trim();
+}
+
+function setAarSequenceDisplay(event, root) {
+  const sequence = getAarSequenceNumber(event);
+
+  setAarRmtField(
+    'AAR Sequence Number',
+    sequence,
+    'AAR sequence number will appear here.',
+    root
+  );
+
+  const footerSeq = getAarReportRoot(root)?.querySelector('.aar-report-footer-seq');
+  const valueSpan = footerSeq?.querySelector('span:last-child');
+  if (valueSpan) {
+    setAarTextElement(valueSpan, sequence, 'Sequence number will appear here.');
+  }
+}
+
+function populateAarDocument(event, options = {}) {
+  const root = getAarReportRoot(options.root);
+  if (!root) return;
+
+  const template = getEventTypeTemplate(event.eventType);
+
+  setAarRmtField('Event Type', event.eventType, 'Event type will appear here.', root);
+  setAarRmtField('Date(s)', formatEventDateDisplay(event), 'Event date(s) will appear here.', root);
+  setAarRmtField('Command', displayValue(event.command, 'command'), 'Command will appear here.', root);
+  setAarRmtField('Location', displayValue(event.location, 'location'), 'Location will appear here.', root);
+  setAarRmtField(
+    'Participants',
+    displayValue(event.participants, 'participants'),
+    'Participants will appear here.',
+    root
+  );
+  setAarRmtField('Facilitator(s)', aarPlainField(event.facilitators), 'Facilitator(s) will appear here.', root);
+  setAarRmtField('Staffing', aarPlainField(event.credoStaff), 'Staffing will appear here.', root);
+  setAarRmtField('Time', aarPlainField(event.time), 'Time will appear here.', root);
+  setAarRmtField(
+    'Point(s) of Contact',
+    aarPlainField(event.poc),
+    'Point(s) of contact will appear here.',
+    root
+  );
+
+  setAarReportBlock(
+    'EVENT DESCRIPTION',
+    'Objectives',
+    template.objectives,
+    'Objectives will appear here.',
+    root
+  );
+  setAarReportBlock(
+    'EVENT DESCRIPTION',
+    'Description',
+    template.description,
+    'Description will appear here.',
+    root
+  );
+
+  setAarReportBlock(
+    'REQUIREMENTS',
+    'CREDO Requirements',
+    aarGlobalTemplates.credoRequirements,
+    'CREDO requirements will appear here.',
+    root
+  );
+  setAarReportBlock(
+    'REQUIREMENTS',
+    'Command Requirements',
+    aarGlobalTemplates.commandRequirements,
+    'Command requirements will appear here.',
+    root
+  );
+
+  setAarSequenceDisplay(event, root);
+
+  const allowEdit = options.editable !== false && canEditAarDocumentFields(event);
+  if (allowEdit) {
+    renderAarEditableFields(event, root);
+  } else {
+    renderAarReadOnlyFields(event, root);
+  }
+}
+
+function applyAarEventPatch(eventId, patch) {
+  if (!eventId || !patch) return;
+
+  for (const list of [events, aarSearchResults]) {
+    const match = list.find((entry) => entry.id === eventId);
+    if (match) Object.assign(match, patch);
+  }
+}
+
+function syncAarDraftFieldsToEvent(eventId, saved) {
+  if (!eventId || !saved) return;
+
+  applyAarEventPatch(eventId, {
+    aarCost: saved.aarCost,
+    aarAttire: saved.aarAttire,
+    aarTravelTime: saved.aarTravelTime,
+    aarLessonsLearned: saved.aarLessonsLearned,
+  });
+}
+
+function syncAarFinalizeToEvent(eventId, saved) {
+  if (!eventId || !saved || saved.id !== eventId) return;
+
+  applyAarEventPatch(eventId, {
+    aarCost: saved.aarCost,
+    aarAttire: saved.aarAttire,
+    aarTravelTime: saved.aarTravelTime,
+    aarLessonsLearned: saved.aarLessonsLearned,
+    aarFinalized: saved.aarFinalized === true,
+    aarFinalizedAt: saved.aarFinalizedAt ?? null,
+    aarSequenceNumber: saved.aarSequenceNumber == null ? '' : String(saved.aarSequenceNumber),
+  });
+}
+
+async function saveAarEditableField(event, fieldKey, inputEl) {
+  if (!canEditAarDocumentFields(event)) return;
+
+  const newValue = inputEl.value.trim();
+  const oldValue = String(event[fieldKey] ?? '').trim();
+  if (newValue === oldValue) return;
+
+  try {
+    const saved = await updateEventAarFields(event.id, { [fieldKey]: newValue });
+    syncAarDraftFieldsToEvent(event.id, saved);
+  } catch (err) {
+    console.error(err);
+    inputEl.value = oldValue;
+    alert('Failed to save AAR field.');
+  }
+}
+
+function renderAarEditableCell(cell, event, fieldKey, emptyPlaceholder) {
+  if (!cell) return;
+  cell.textContent = '';
+  cell.classList.remove('aar-report-placeholder');
+
+  if (!canEditAarDocumentFields(event)) {
+    setAarTextElement(cell, event[fieldKey], emptyPlaceholder);
+    return;
+  }
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'aar-editable-field';
+  input.value = String(event[fieldKey] ?? '').trim();
+  input.placeholder = emptyPlaceholder;
+  input.addEventListener('blur', () => saveAarEditableField(event, fieldKey, input));
+  cell.appendChild(input);
+}
+
+function renderAarEditableBox(box, event, fieldKey, emptyPlaceholder) {
+  if (!box) return;
+  box.textContent = '';
+  box.classList.remove('aar-report-placeholder');
+
+  if (!canEditAarDocumentFields(event)) {
+    setAarTextElement(box, event[fieldKey], emptyPlaceholder);
+    return;
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'aar-editable-field aar-editable-textarea';
+  textarea.value = String(event[fieldKey] ?? '').trim();
+  textarea.placeholder = emptyPlaceholder;
+  textarea.addEventListener('blur', () => saveAarEditableField(event, fieldKey, textarea));
+  box.appendChild(textarea);
+}
+
+function renderAarEditableFields(event, root) {
+  const reportRoot = getAarReportRoot(root);
+  const costRow = reportRoot?.querySelector('.aar-cost-table tbody tr:nth-child(2)');
+  if (costRow) {
+    const cells = costRow.querySelectorAll('td');
+    renderAarEditableCell(cells[0], event, 'aarCost', 'Cost will appear here.');
+    renderAarEditableCell(cells[1], event, 'aarAttire', 'Attire will appear here.');
+    renderAarEditableCell(cells[2], event, 'aarTravelTime', 'Travel time will appear here.');
+  }
+
+  const lessonsBox = reportRoot?.querySelector('.aar-report-box-lessons');
+  renderAarEditableBox(lessonsBox, event, 'aarLessonsLearned', 'Lessons learned will appear here.');
+}
+
+function renderAarReadOnlyFields(event, root) {
+  const reportRoot = getAarReportRoot(root);
+  const costRow = reportRoot?.querySelector('.aar-cost-table tbody tr:nth-child(2)');
+  if (costRow) {
+    const cells = costRow.querySelectorAll('td');
+    setAarTextElement(cells[0], event.aarCost, 'Cost will appear here.');
+    setAarTextElement(cells[1], event.aarAttire, 'Attire will appear here.');
+    setAarTextElement(cells[2], event.aarTravelTime, 'Travel time will appear here.');
+  }
+
+  const lessonsBox = reportRoot?.querySelector('.aar-report-box-lessons');
+  setAarTextElement(lessonsBox, event.aarLessonsLearned, 'Lessons learned will appear here.');
+}
+
+function hasAarFieldData(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function getAarStatus(event) {
+  if (isAarFinalized(event)) return 'Final';
+  if (
+    hasAarFieldData(event.aarCost)
+    || hasAarFieldData(event.aarAttire)
+    || hasAarFieldData(event.aarTravelTime)
+    || hasAarFieldData(event.aarLessonsLearned)
+  ) {
+    return 'Draft';
+  }
+  return 'Not Started';
+}
+
+function hasAarProgress(event) {
+  return getAarStatus(event) !== 'Not Started';
+}
+
+function syncAarClearToEvent(eventId, saved) {
+  if (!eventId || !saved || saved.id !== eventId) return;
+
+  applyAarEventPatch(eventId, {
+    aarCost: saved.aarCost,
+    aarAttire: saved.aarAttire,
+    aarTravelTime: saved.aarTravelTime,
+    aarLessonsLearned: saved.aarLessonsLearned,
+    aarFinalized: saved.aarFinalized === true,
+    aarFinalizedAt: saved.aarFinalizedAt ?? null,
+    aarSequenceNumber: saved.aarSequenceNumber == null ? '' : String(saved.aarSequenceNumber),
+  });
+}
+
+async function clearAarFromSearch(event) {
+  if (!canEditEvents() || !event || !hasAarProgress(event)) return;
+
+  const confirmed = confirm(
+    'Clear this AAR? This will remove the AAR draft/final status, sequence number, finalized date, Cost, Attire, Travel Time, and Lessons Learned. The event itself will not be deleted.'
+  );
+  if (!confirmed) return;
+
+  try {
+    const saved = await clearEventAar(event.id);
+    syncAarClearToEvent(event.id, saved);
+    syncAarStateAfterDataLoad();
+
+    if (aarDocumentEventId === event.id) {
+      aarFinalEditEnabled = false;
+      const refreshed = events.find((entry) => entry.id === event.id);
+      if (refreshed) {
+        if (aarScreen === 'preview') {
+          buildAarPreviewDocument(refreshed);
+        } else if (aarScreen === 'document') {
+          populateAarDocument(refreshed);
+        }
+        updateAarDocumentToolbar();
+        updateAarPreviewToolbar();
+      }
+    }
+
+    renderAarResultsTable();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to clear AAR.');
+  }
+}
+
+function openAarDocumentForFinalEdit(event) {
+  if (!canEditEvents() || !event || !isAarFinalized(event)) return;
+
+  const confirmed = confirm(
+    'Edit this finalized AAR? The sequence number will remain unchanged.'
+  );
+  if (!confirmed) return;
+
+  captureAarFilterState();
+  aarDocumentEventId = event.id;
+  aarFinalEditEnabled = true;
+  populateAarDocument(event);
+  aarScreen = 'document';
+  updateAarScreen();
+  updateAarDocumentToolbar();
+  updateAarPreviewToolbar();
+}
+
+function setupAarDocumentToolbar() {
+  const actions = document.querySelector('#aar-builder-view .aar-doc-toolbar-actions');
+  if (!actions) return;
+
+  if (!document.getElementById('aar-reset-draft-btn')) {
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'aar-doc-reset-btn';
+    resetBtn.id = 'aar-reset-draft-btn';
+    resetBtn.textContent = 'Reset Draft';
+    resetBtn.addEventListener('click', resetAarDraft);
+    actions.appendChild(resetBtn);
+  }
+
+  updateAarDocumentToolbar();
+}
+
+function updateAarDocumentToolbar() {
+  const resetBtn = document.getElementById('aar-reset-draft-btn');
+  if (resetBtn) {
+    const event = events.find((entry) => entry.id === aarDocumentEventId);
+    resetBtn.hidden = !canEditEvents() || !event || isAarFinalized(event);
+  }
+}
+
+function setupAarPreviewToolbar() {
+  const toolbar = document.querySelector('#aar-preview-view .aar-doc-toolbar-preview');
+  if (!toolbar) return;
+
+  let actions = toolbar.querySelector('.aar-doc-toolbar-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.className = 'aar-doc-toolbar-actions';
+    toolbar.appendChild(actions);
+  }
+
+  if (!document.getElementById('aar-mark-final-btn')) {
+    const finalBtn = document.createElement('button');
+    finalBtn.type = 'button';
+    finalBtn.className = 'aar-doc-final-btn';
+    finalBtn.id = 'aar-mark-final-btn';
+    finalBtn.textContent = 'Mark Final';
+    finalBtn.addEventListener('click', markAarFinal);
+    actions.appendChild(finalBtn);
+  }
+
+  updateAarPreviewToolbar();
+}
+
+function updateAarPreviewToolbar() {
+  const event = events.find((entry) => entry.id === aarDocumentEventId);
+  const finalBtn = document.getElementById('aar-mark-final-btn');
+  if (finalBtn) {
+    finalBtn.hidden = !canEditEvents() || !event || isAarFinalized(event);
+  }
+}
+
+async function markAarFinal() {
+  if (!canEditEvents() || !aarDocumentEventId) return;
+
+  const event = events.find((entry) => entry.id === aarDocumentEventId);
+  if (!event || isAarFinalized(event)) return;
+
+  if (!getEventTypeSeriesCode(event.eventType)) {
+    alert(
+      'Cannot finalize this AAR: the event type has no series code. Assign a series code in Settings → Event Types before finalizing.'
+    );
+    return;
+  }
+
+  if (!getEventCalendarYear(event)) {
+    alert(
+      'Cannot finalize this AAR: the event must have a valid start date to assign a calendar year sequence number.'
+    );
+    return;
+  }
+
+  const confirmed = confirm(
+    'Mark this AAR as final? A binder sequence number will be permanently assigned and the report will become read-only.'
+  );
+  if (!confirmed) return;
+
+  try {
+    const saved = await finalizeEventAar(event.id);
+    syncAarFinalizeToEvent(event.id, saved);
+    syncAarStateAfterDataLoad();
+    const refreshed = events.find((entry) => entry.id === aarDocumentEventId);
+    if (refreshed) {
+      populateAarDocument(refreshed);
+      if (aarScreen === 'preview') {
+        buildAarPreviewDocument(refreshed);
+      }
+      updateAarDocumentToolbar();
+      updateAarPreviewToolbar();
+      if (aarSearchRan) {
+        renderAarResultsTable();
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    if (err.message === 'NO_SERIES_CODE') {
+      alert(
+        'Cannot finalize this AAR: the event type has no series code. Assign a series code in Settings → Event Types before finalizing.'
+      );
+      return;
+    }
+    if (err.message === 'NO_VALID_START_DATE') {
+      alert(
+        'Cannot finalize this AAR: the event must have a valid start date to assign a calendar year sequence number.'
+      );
+      return;
+    }
+    if (err.message === 'ALREADY_FINALIZED') {
+      alert('This AAR has already been finalized.');
+      return;
+    }
+    alert('Failed to finalize AAR.');
+  }
+}
+
+async function resetAarDraft() {
+  if (!canEditEvents() || !aarDocumentEventId) return;
+
+  const event = events.find((entry) => entry.id === aarDocumentEventId);
+  if (!event || isAarFinalized(event)) return;
+
+  const confirmed = confirm(
+    'Reset this draft? This will clear Cost, Attire, Travel Time, and Lessons Learned.'
+  );
+  if (!confirmed) return;
+
+  try {
+    const saved = await updateEventAarFields(event.id, {
+      aarCost: '',
+      aarAttire: '',
+      aarTravelTime: '',
+      aarLessonsLearned: '',
+    });
+    syncAarDraftFieldsToEvent(event.id, saved);
+    const refreshed = events.find((entry) => entry.id === aarDocumentEventId);
+    if (refreshed) {
+      populateAarDocument(refreshed);
+      if (aarScreen === 'preview') {
+        buildAarPreviewDocument(refreshed);
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Failed to reset draft.');
+  }
+}
+
+function setAarFieldEnabled(fieldId, inputId, enabled) {
+  const field = document.getElementById(fieldId);
+  const input = document.getElementById(inputId);
+  input.disabled = !enabled;
+  field.classList.toggle('is-disabled', !enabled);
+}
+
+function captureAarFilterState() {
+  const filterTypeEl = document.getElementById('aar-filter-type');
+  if (!filterTypeEl) return;
+
+  aarFilterState = {
+    filterType: filterTypeEl.value,
+    year: document.getElementById('aar-year').value,
+    month: document.getElementById('aar-month').value,
+    startDate: document.getElementById('aar-start-date').value,
+    endDate: document.getElementById('aar-end-date').value,
+    command: document.getElementById('aar-command').value,
+    eventType: document.getElementById('aar-event-type').value,
+  };
+}
+
+function applyAarFilterState() {
+  const filterTypeEl = document.getElementById('aar-filter-type');
+  if (!filterTypeEl) return;
+
+  filterTypeEl.value = aarFilterState.filterType;
+  document.getElementById('aar-year').value = aarFilterState.year;
+  document.getElementById('aar-month').value = aarFilterState.month;
+  document.getElementById('aar-start-date').value = aarFilterState.startDate;
+  document.getElementById('aar-end-date').value = aarFilterState.endDate;
+  document.getElementById('aar-command').value = aarFilterState.command;
+  document.getElementById('aar-event-type').value = aarFilterState.eventType;
+}
+
+function syncAarStateAfterDataLoad() {
+  if (!aarSearchRan) return;
+  aarSearchResults = filterAarEvents(aarFilterState);
+}
+
+function restoreAarDocumentIfOpen() {
+  if (!aarDocumentEventId) return;
+
+  const event = events.find((entry) => entry.id === aarDocumentEventId);
+  if (!event) {
+    aarScreen = 'search';
+    aarDocumentEventId = null;
+    aarFinalEditEnabled = false;
+    return;
+  }
+
+  if (aarScreen === 'preview') {
+    buildAarPreviewDocument(event);
+  } else if (aarScreen === 'document') {
+    populateAarDocument(event);
+  }
+  updateAarDocumentToolbar();
+  updateAarPreviewToolbar();
+}
+
+function populateAarFilterOptions() {
+  const years = getReportYears();
+  const yearOptions = years.map((year) => `<option value="${year}">${year}</option>`).join('');
+  const monthOptions = MONTH_NAMES.map(
+    (name, index) => `<option value="${index}">${name}</option>`
+  ).join('');
+
+  document.getElementById('aar-year').innerHTML =
+    '<option value="">Select year</option>' + yearOptions;
+  document.getElementById('aar-month').innerHTML =
+    '<option value="">Select month</option>' + monthOptions;
+
+  document.getElementById('aar-command').innerHTML = [
+    '<option value="">Select command</option>',
+    ...getReportCommands().map((command) => `<option value="${command}">${command}</option>`),
+  ].join('');
+
+  document.getElementById('aar-event-type').innerHTML = [
+    '<option value="">Select event type</option>',
+    ...eventTypes.map((type) => `<option value="${type}">${type}</option>`),
+  ].join('');
+
+  applyAarFilterState();
+}
+
+function updateAarFilterState() {
+  const filterTypeEl = document.getElementById('aar-filter-type');
+  if (!filterTypeEl) return;
+
+  aarFilterState.filterType = filterTypeEl.value;
+  const filterType = filterTypeEl.value;
+
+  setAarFieldEnabled('aar-year-field', 'aar-year', ['cy', 'fy', 'month-year'].includes(filterType));
+  setAarFieldEnabled('aar-month-field', 'aar-month', filterType === 'month-year');
+  setAarFieldEnabled('aar-start-field', 'aar-start-date', filterType === 'date-range');
+  setAarFieldEnabled('aar-end-field', 'aar-end-date', filterType === 'date-range');
+  setAarFieldEnabled('aar-command-field', 'aar-command', filterType === 'command');
+  setAarFieldEnabled('aar-event-type-field', 'aar-event-type', filterType === 'event-type');
+}
+
+function filterAarEvents(state = aarFilterState) {
+  const filterType = state.filterType;
+
+  return events.filter((event) => {
+    const isoDate = getEventIsoDate(event);
+
+    if (filterType === 'cy') {
+      const year = state.year;
+      if (!year) return false;
+      const { start, end } = getCalendarYearRange(Number(year));
+      return isoDate && isDateInRange(isoDate, start, end);
+    }
+
+    if (filterType === 'fy') {
+      const fyYear = state.year;
+      if (!fyYear) return false;
+      const { start, end } = getFiscalYearRange(Number(fyYear));
+      return isoDate && isDateInRange(isoDate, start, end);
+    }
+
+    if (filterType === 'month-year') {
+      const month = state.month;
+      const year = state.year;
+      if (month === '' || !year) return false;
+      const { start, end } = getMonthYearRange(Number(month), Number(year));
+      return isoDate && isDateInRange(isoDate, start, end);
+    }
+
+    if (filterType === 'date-range') {
+      const startDate = state.startDate;
+      const endDate = state.endDate;
+      if (!startDate || !endDate) return false;
+      return isoDate && isDateInRange(isoDate, startDate, endDate);
+    }
+
+    if (filterType === 'command') {
+      const command = state.command;
+      if (!command) return false;
+      const eventCommand = isTbd(event.command) ? TBD : event.command;
+      return eventCommand === command;
+    }
+
+    if (filterType === 'event-type') {
+      const eventType = state.eventType;
+      if (!eventType) return false;
+      return event.eventType === eventType;
+    }
+
+    return true;
+  });
+}
+
+function renderAarResultsTable() {
+  const tbody = document.getElementById('aar-results-body');
+  const countEl = document.getElementById('aar-result-count');
+  if (!tbody || !countEl) return;
+
+  if (!aarSearchRan) {
+    countEl.textContent = '0 events';
+    tbody.innerHTML =
+      '<tr><td colspan="6"><div class="aar-empty-state">Use filters above and click Search Events.</div></td></tr>';
+    return;
+  }
+
+  countEl.textContent = `${aarSearchResults.length} event${aarSearchResults.length === 1 ? '' : 's'}`;
+
+  if (aarSearchResults.length === 0) {
+    tbody.innerHTML =
+      '<tr><td colspan="6"><div class="aar-empty-state">No events match the selected filters.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+
+  const sorted = sortTableData(aarSearchResults, aarTableSort, AAR_SORT_COMPARATORS);
+
+  sorted.forEach((event) => {
+    const status = getAarStatus(event);
+    const row = document.createElement('tr');
+
+    const dateCell = document.createElement('td');
+    dateCell.textContent = formatEventDateDisplay(event);
+    row.appendChild(dateCell);
+
+    const typeCell = document.createElement('td');
+    typeCell.textContent = event.eventType;
+    row.appendChild(typeCell);
+
+    const commandCell = document.createElement('td');
+    commandCell.textContent = displayValue(event.command, 'command');
+    row.appendChild(commandCell);
+
+    const locationCell = document.createElement('td');
+    locationCell.textContent = displayValue(event.location, 'location');
+    row.appendChild(locationCell);
+
+    const statusCell = document.createElement('td');
+    statusCell.className = 'aar-status';
+    statusCell.textContent = status;
+    row.appendChild(statusCell);
+
+    const actionCell = document.createElement('td');
+    actionCell.className = 'aar-action-cell';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'aar-action-btn';
+    openBtn.textContent = 'Open AAR';
+    openBtn.addEventListener('click', () => {
+      openAarDocument(event);
+    });
+    actionCell.appendChild(openBtn);
+
+    if (isAarFinalized(event) && canEditEvents()) {
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'aar-action-btn aar-edit-final-btn';
+      editBtn.textContent = 'Edit Final';
+      editBtn.addEventListener('click', () => {
+        openAarDocumentForFinalEdit(event);
+      });
+      actionCell.appendChild(editBtn);
+    }
+
+    if (hasAarProgress(event) && canEditEvents()) {
+      const clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'aar-action-btn aar-clear-btn';
+      clearBtn.textContent = 'Clear AAR';
+      clearBtn.addEventListener('click', () => {
+        clearAarFromSearch(event);
+      });
+      actionCell.appendChild(clearBtn);
+    }
+
+    row.appendChild(actionCell);
+
+    tbody.appendChild(row);
+  });
+}
+
+function searchAarEvents() {
+  captureAarFilterState();
+  aarSearchRan = true;
+  aarSearchResults = filterAarEvents();
+  renderAarResultsTable();
+}
+
+function clearAarFilters() {
+  aarFilterState = { ...DEFAULT_AAR_FILTER };
+  applyAarFilterState();
+  updateAarFilterState();
+  aarSearchRan = false;
+  aarSearchResults = [];
+  renderAarResultsTable();
+}
+
+function setupAarFilterPersistence() {
+  const filterIds = [
+    'aar-filter-type',
+    'aar-year',
+    'aar-month',
+    'aar-start-date',
+    'aar-end-date',
+    'aar-command',
+    'aar-event-type',
+  ];
+
+  filterIds.forEach((id) => {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.aarPersistBound === 'true') return;
+    input.dataset.aarPersistBound = 'true';
+    input.addEventListener('change', captureAarFilterState);
+  });
+}
+
+function setupAarSearch() {
+  populateAarFilterOptions();
+  updateAarFilterState();
+  setupAarFilterPersistence();
+
+  document.getElementById('aar-filter-type').addEventListener('change', () => {
+    captureAarFilterState();
+    updateAarFilterState();
+  });
+  document.getElementById('aar-search-btn').addEventListener('click', searchAarEvents);
+  document.getElementById('aar-clear-btn').addEventListener('click', clearAarFilters);
+  document.getElementById('aar-back-btn').addEventListener('click', closeAarDocument);
+  document.getElementById('aar-preview-btn').addEventListener('click', openAarPreview);
+  document.getElementById('aar-preview-back-builder-btn').addEventListener('click', closeAarPreview);
+  document.getElementById('aar-preview-back-events-btn').addEventListener('click', closeAarDocument);
+  setupAarDocumentToolbar();
+  setupAarPreviewToolbar();
+  setupAarTableSorting();
+
+  updateAarScreen();
+  restoreAarDocumentIfOpen();
+  renderAarResultsTable();
+}
+
+function renderAarSearch() {
+  populateAarFilterOptions();
+  updateAarFilterState();
+  updateAarScreen();
+  restoreAarDocumentIfOpen();
+  renderAarResultsTable();
 }
 
 function renderReports() {
@@ -602,51 +1812,398 @@ function renderReports() {
   renderReportTable();
 }
 
-function renderTeam() {
+function createTeamMemberInput(value, placeholder, editable, onBlur, className = 'team-report-field') {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = className;
+  input.value = value || '';
+  input.placeholder = placeholder;
+  input.readOnly = !editable;
+  if (editable) {
+    input.addEventListener('blur', onBlur);
+  }
+  return input;
+}
+
+function appendTeamMemberDeleteButton(row, anchorCell, memberId, editable) {
+  if (!editable) return;
+
+  row.classList.add('team-row-editable');
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'team-row-delete-btn';
+  btn.setAttribute('aria-label', 'Delete team member');
+  btn.innerHTML = `
+    <svg class="team-row-delete-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path fill="currentColor" d="M5.5 2A1.5 1.5 0 0 1 7 0.5h2A1.5 1.5 0 0 1 10.5 2H13a1 1 0 1 1 0 2h-0.5l-0.6 8.2A1.5 1.5 0 0 1 10.4 14H5.6a1.5 1.5 0 0 1-1.5-1.8L3.5 4H3a1 1 0 1 1 0-2h2.5zM7 2h2l0.2 1H6.8L7 2zm0.5 4a0.5 0.5 0 0 0-1 0v6a0.5 0.5 0 0 0 1 0V6zm3 0a0.5 0.5 0 0 0-1 0v6a0.5 0.5 0 0 0 1 0V6z"/>
+    </svg>`;
+  btn.addEventListener('click', async () => {
+    if (!confirm('Delete this team member?')) return;
+    try {
+      await deleteTeamMember(memberId);
+      teamMembers = teamMembers.filter((member) => member.id !== memberId);
+      renderTeamMembersTable(document.getElementById('team-members-body'), editable);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete team member.');
+    }
+  });
+  anchorCell.appendChild(btn);
+}
+
+function renderTeamMembersTable(tbody, editable) {
+  tbody.innerHTML = '';
+
+  if (teamMembers.length === 0) {
+    const row = document.createElement('tr');
+    row.className = 'team-empty-row';
+    const cell = document.createElement('td');
+    cell.colSpan = 3;
+    cell.textContent = 'No team members yet.';
+    row.appendChild(cell);
+    tbody.appendChild(row);
+    return;
+  }
+
+  teamMembers.forEach((member, index) => {
+    const row = document.createElement('tr');
+    if (index % 2 === 1) row.className = 'team-row-alt';
+
+    const billetCell = document.createElement('td');
+    billetCell.className = 'team-cell-billet';
+    const nameWrap = document.createElement('div');
+    nameWrap.className = 'team-member-name-wrap';
+    nameWrap.appendChild(
+      createTeamMemberInput(member.name, 'Name', editable, async (e) => {
+        const value = e.target.value.trim();
+        if (value === member.name) return;
+        try {
+          member.name = value;
+          await updateTeamMember(member.id, { name: value });
+        } catch (err) {
+          console.error(err);
+          alert('Failed to save team member.');
+          renderTeam();
+        }
+      }, 'team-member-name')
+    );
+    const billetWrap = document.createElement('div');
+    billetWrap.className = 'team-member-billet-wrap';
+    billetWrap.appendChild(
+      createTeamMemberInput(member.billetOrRole, 'Billet / Role', editable, async (e) => {
+        const value = e.target.value.trim();
+        if (value === member.billetOrRole) return;
+        try {
+          member.billetOrRole = value;
+          await updateTeamMember(member.id, { billetOrRole: value });
+        } catch (err) {
+          console.error(err);
+          alert('Failed to save team member.');
+          renderTeam();
+        }
+      }, 'team-member-billet')
+    );
+    billetCell.appendChild(nameWrap);
+    billetCell.appendChild(billetWrap);
+    row.appendChild(billetCell);
+
+    const statusCell = document.createElement('td');
+    statusCell.className = 'team-cell-status';
+    statusCell.appendChild(
+      createTeamMemberInput(member.statusNextAction, 'Status / Next Action', editable, async (e) => {
+        const value = e.target.value.trim();
+        if (value === member.statusNextAction) return;
+        try {
+          member.statusNextAction = value;
+          await updateTeamMember(member.id, { statusNextAction: value });
+        } catch (err) {
+          console.error(err);
+          alert('Failed to save team member.');
+          renderTeam();
+        }
+      }, 'team-report-field team-field-status')
+    );
+    row.appendChild(statusCell);
+
+    const prdCell = document.createElement('td');
+    prdCell.className = 'team-cell-prd';
+    const prdFieldWrap = document.createElement('div');
+    prdFieldWrap.className = 'team-cell-prd-field';
+    prdFieldWrap.appendChild(
+      createTeamMemberInput(member.prdEaos, 'PRD / EAOS', editable, async (e) => {
+        const value = e.target.value.trim();
+        if (value === member.prdEaos) return;
+        try {
+          member.prdEaos = value;
+          await updateTeamMember(member.id, { prdEaos: value });
+        } catch (err) {
+          console.error(err);
+          alert('Failed to save team member.');
+          renderTeam();
+        }
+      }, 'team-report-field team-field-prd')
+    );
+    prdCell.appendChild(prdFieldWrap);
+    appendTeamMemberDeleteButton(row, prdCell, member.id, editable);
+    row.appendChild(prdCell);
+
+    tbody.appendChild(row);
+  });
+}
+
+function renderTeamPageContent(container, editable) {
+  container.innerHTML = `
+    <div class="team-report">
+      <section class="team-report-section">
+        <div class="team-report-section-header">
+          <h2 class="team-report-title">MANPOWER / MANNING</h2>
+          ${editable ? '<button type="button" class="team-report-action-btn" id="add-team-member-btn">+ Add Team Member</button>' : ''}
+        </div>
+        <div class="team-report-divider" aria-hidden="true"></div>
+        <div class="team-report-table-wrap">
+          <table class="team-manpower-table">
+            <thead>
+              <tr>
+                <th class="team-col-billet">Billet / Personnel</th>
+                <th class="team-col-status">Status / Next Action</th>
+                <th class="team-col-prd">PRD / EAOS</th>
+              </tr>
+            </thead>
+            <tbody id="team-members-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="team-report-section team-report-notes-section">
+        <h2 class="team-report-title">Command Highlights Notes</h2>
+        <div class="team-report-divider" aria-hidden="true"></div>
+        <textarea id="command-highlights-notes" class="team-report-notes" rows="10" ${editable ? '' : 'readonly'}></textarea>
+      </section>
+    </div>`;
+
+  renderTeamMembersTable(container.querySelector('#team-members-body'), editable);
+
+  const notesEl = container.querySelector('#command-highlights-notes');
+  notesEl.value = commandHighlightsNotes;
+  if (editable) {
+    notesEl.addEventListener('blur', async () => {
+      const value = notesEl.value;
+      if (value === commandHighlightsNotes) return;
+      try {
+        commandHighlightsNotes = await updateCommandHighlightsNotes(value);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to save command highlights notes.');
+        renderTeam();
+      }
+    });
+
+    container.querySelector('#add-team-member-btn').addEventListener('click', async () => {
+      try {
+        const created = await createTeamMember({
+          name: '',
+          billetOrRole: '',
+          statusNextAction: '',
+          prdEaos: '',
+          displayOrder: teamMembers.length,
+        });
+        teamMembers.push(created);
+        renderTeamMembersTable(container.querySelector('#team-members-body'), editable);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to add team member.');
+      }
+    });
+  }
+}
+
+async function renderTeam() {
   const container = document.getElementById('team-content');
-  const form = document.createElement('form');
-  form.className = 'team-form';
-  form.id = 'team-form';
   const editable = canEditTeam();
 
-  TEAM_FIELDS.forEach(({ key, label }) => {
-    const field = document.createElement('label');
-    field.className = 'team-field';
+  container.innerHTML = '<p class="team-report-status">Loading team data…</p>';
 
-    const labelEl = document.createElement('span');
-    labelEl.className = 'team-label';
-    labelEl.textContent = label;
+  try {
+    const [members, notes] = await Promise.all([
+      fetchTeamMembers(),
+      fetchCommandHighlightsNotes(),
+    ]);
+    teamMembers = members;
+    commandHighlightsNotes = notes;
+  } catch (err) {
+    console.error(err);
+    container.innerHTML = '<p class="team-report-status team-report-status-error">Failed to load team data.</p>';
+    return;
+  }
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'team-input';
-    input.name = key;
-    input.value = team[key] || '';
-    input.readOnly = !editable;
+  renderTeamPageContent(container, editable);
+}
 
-    if (editable) {
-      input.addEventListener('blur', async () => {
-        team[key] = input.value.trim();
-        await persistTeam();
-      });
+function ensureEventTypeTemplateStyles() {
+  if (document.getElementById('event-type-template-styles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'event-type-template-styles';
+  style.textContent = `
+    .event-type-row-expanded {
+      display: block;
+      padding: 14px 0;
+      border-bottom: 1px solid #dde3ea;
     }
 
-    field.appendChild(labelEl);
-    field.appendChild(input);
-    form.appendChild(field);
-  });
+    .event-type-row-expanded:last-child {
+      border-bottom: none;
+    }
 
-  container.innerHTML = '';
-  container.appendChild(form);
+    .event-type-name-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .event-type-name-row .event-type-input {
+      flex: 1;
+    }
+
+    .event-type-template-field {
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .event-type-template-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #00205b;
+    }
+
+    .event-type-textarea {
+      width: 100%;
+      min-height: 88px;
+      padding: 10px 12px;
+      border: 1px solid #dde3ea;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.875rem;
+      line-height: 1.45;
+      color: #1f2937;
+      background: #fff;
+      resize: vertical;
+    }
+
+    .event-type-textarea:focus {
+      outline: none;
+      border-color: #00205b;
+      box-shadow: 0 0 0 3px rgba(0, 32, 91, 0.12);
+    }
+
+    .event-type-textarea:read-only {
+      background: #f9fafb;
+      color: #4b5563;
+    }
+
+    .event-type-series-code-input {
+      width: 72px;
+      padding: 8px 10px;
+      border: 1px solid #dde3ea;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.06em;
+      color: #4b5563;
+      background: #f9fafb;
+    }
+
+    .settings-section + .settings-section {
+      margin-top: 32px;
+      padding-top: 32px;
+      border-top: 1px solid #dde3ea;
+    }
+
+    .settings-section-title {
+      margin: 0 0 8px;
+      font-size: 0.875rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #00205b;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function renderAarGlobalTemplatesSection(container, editable) {
+  const section = document.createElement('div');
+  section.className = 'settings-section';
+
+  const title = document.createElement('h3');
+  title.className = 'settings-section-title';
+  title.textContent = 'AAR Global Templates';
+
+  const help = document.createElement('p');
+  help.className = 'settings-help';
+  help.textContent =
+    'Global requirements text used on every After Action Report. Changes save when you leave each field.';
+
+  const credoField = createEventTypeTemplateField(
+    'CREDO Requirements',
+    aarGlobalTemplates.credoRequirements || '',
+    editable,
+    async () => {
+      const nextValue = credoField.textarea.value;
+      if (nextValue === aarGlobalTemplates.credoRequirements) return;
+
+      try {
+        const saved = await updateAarGlobalTemplates({ credoRequirements: nextValue });
+        aarGlobalTemplates.credoRequirements = saved.credoRequirements;
+      } catch (err) {
+        console.error(err);
+        credoField.textarea.value = aarGlobalTemplates.credoRequirements;
+        alert('Failed to save CREDO Requirements.');
+      }
+    }
+  );
+
+  const commandField = createEventTypeTemplateField(
+    'Command Requirements',
+    aarGlobalTemplates.commandRequirements || '',
+    editable,
+    async () => {
+      const nextValue = commandField.textarea.value;
+      if (nextValue === aarGlobalTemplates.commandRequirements) return;
+
+      try {
+        const saved = await updateAarGlobalTemplates({ commandRequirements: nextValue });
+        aarGlobalTemplates.commandRequirements = saved.commandRequirements;
+      } catch (err) {
+        console.error(err);
+        commandField.textarea.value = aarGlobalTemplates.commandRequirements;
+        alert('Failed to save Command Requirements.');
+      }
+    }
+  );
+
+  section.appendChild(title);
+  section.appendChild(help);
+  section.appendChild(credoField.field);
+  section.appendChild(commandField.field);
+  container.appendChild(section);
 }
 
 function renderSettings() {
+  ensureEventTypeTemplateStyles();
   const container = document.getElementById('settings-content');
   const editable = canManageEventTypes();
 
   container.innerHTML = `
     <div class="settings-panel">
-      <p class="settings-help">Edit event type names below. Changes apply to new events and dropdowns.</p>
+      <p class="settings-help">Edit event type names and AAR template text below. Name changes apply to new events and dropdowns.</p>
       <ul class="event-type-list" id="event-type-list"></ul>
       ${editable ? '<button type="button" class="btn btn-secondary" id="add-event-type-btn">+ Add Event Type</button>' : ''}
     </div>`;
@@ -655,6 +2212,8 @@ function renderSettings() {
   eventTypeRecords.forEach((record, index) => {
     list.appendChild(createEventTypeRow(index, editable));
   });
+
+  renderAarGlobalTemplatesSection(container, editable);
 
   if (editable) {
     container.querySelector('#add-event-type-btn').addEventListener('click', async () => {
@@ -672,10 +2231,57 @@ function renderSettings() {
   }
 }
 
+function createEventTypeTemplateField(labelText, value, editable, onSave) {
+  const field = document.createElement('label');
+  field.className = 'event-type-template-field';
+
+  const label = document.createElement('span');
+  label.className = 'event-type-template-label';
+  label.textContent = labelText;
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'event-type-textarea';
+  textarea.value = value;
+  textarea.readOnly = !editable;
+  textarea.rows = 4;
+
+  if (editable) {
+    textarea.addEventListener('blur', onSave);
+  }
+
+  field.appendChild(label);
+  field.appendChild(textarea);
+  return { field, textarea };
+}
+
+function createEventTypeSeriesCodeField(seriesCode) {
+  const field = document.createElement('div');
+  field.className = 'event-type-template-field';
+
+  const label = document.createElement('span');
+  label.className = 'event-type-template-label';
+  label.textContent = 'Series Code';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'event-type-series-code-input';
+  input.value = seriesCode || '';
+  input.placeholder = '—';
+  input.readOnly = true;
+  input.tabIndex = -1;
+
+  field.appendChild(label);
+  field.appendChild(input);
+  return field;
+}
+
 function createEventTypeRow(index, editable) {
   const record = eventTypeRecords[index];
   const li = document.createElement('li');
-  li.className = 'event-type-row';
+  li.className = 'event-type-row event-type-row-expanded';
+
+  const nameRow = document.createElement('div');
+  nameRow.className = 'event-type-name-row';
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -690,7 +2296,7 @@ function createEventTypeRow(index, editable) {
   removeBtn.textContent = '×';
   removeBtn.disabled = !editable || eventTypeRecords.length <= 1;
 
-  const saveType = async () => {
+  const saveName = async () => {
     const trimmed = input.value.trim();
     if (!trimmed) {
       input.value = record.name;
@@ -700,9 +2306,9 @@ function createEventTypeRow(index, editable) {
     if (trimmed === previous) return;
 
     try {
-      await updateEventType(record.id, trimmed);
+      const saved = await updateEventType(record.id, { name: trimmed });
       await renameEventTypeInEvents(previous, trimmed);
-      record.name = trimmed;
+      record.name = saved.name;
       events.forEach((event) => {
         if (event.eventType === previous) event.eventType = trimmed;
       });
@@ -714,8 +2320,46 @@ function createEventTypeRow(index, editable) {
     }
   };
 
+  const objectivesField = createEventTypeTemplateField(
+    'Objectives',
+    record.objectives || '',
+    editable,
+    async () => {
+      const nextValue = objectivesField.textarea.value;
+      if (nextValue === record.objectives) return;
+
+      try {
+        const saved = await updateEventType(record.id, { objectives: nextValue });
+        record.objectives = saved.objectives;
+      } catch (err) {
+        console.error(err);
+        objectivesField.textarea.value = record.objectives;
+        alert('Failed to save objectives.');
+      }
+    }
+  );
+
+  const descriptionField = createEventTypeTemplateField(
+    'Description',
+    record.description || '',
+    editable,
+    async () => {
+      const nextValue = descriptionField.textarea.value;
+      if (nextValue === record.description) return;
+
+      try {
+        const saved = await updateEventType(record.id, { description: nextValue });
+        record.description = saved.description;
+      } catch (err) {
+        console.error(err);
+        descriptionField.textarea.value = record.description;
+        alert('Failed to save description.');
+      }
+    }
+  );
+
   if (editable) {
-    input.addEventListener('blur', saveType);
+    input.addEventListener('blur', saveName);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -737,12 +2381,20 @@ function createEventTypeRow(index, editable) {
     });
   }
 
-  li.appendChild(input);
-  li.appendChild(removeBtn);
+  nameRow.appendChild(input);
+  nameRow.appendChild(removeBtn);
+  li.appendChild(nameRow);
+  li.appendChild(createEventTypeSeriesCodeField(record.seriesCode));
+  li.appendChild(objectivesField.field);
+  li.appendChild(descriptionField.field);
   return li;
 }
 
 function switchView(viewName) {
+  if (currentView === 'reports' && reportsTab === 'aar') {
+    captureAarFilterState();
+  }
+
   currentView = viewName;
 
   document.querySelectorAll('.nav-item').forEach((item) => {
@@ -768,7 +2420,7 @@ function switchView(viewName) {
   } else if (viewName === 'calendar') {
     renderCalendar();
   } else if (viewName === 'reports') {
-    renderReports();
+    switchReportsTab(reportsTab);
   } else if (viewName === 'team') {
     renderTeam();
   } else if (viewName === 'settings') {
@@ -812,6 +2464,7 @@ function attachEditableCell(cell, event, field) {
   cell.classList.add('editable-cell');
 
   function getDisplayValue() {
+    if (field === 'date') return formatEventDateDisplay(event);
     if (field === 'eventType') return event.eventType;
     return displayValue(event[field], field);
   }
@@ -827,14 +2480,26 @@ function attachEditableCell(cell, event, field) {
     const record = events.find((e) => e.id === eventId);
     if (!record) return;
 
-    const original = record[field];
+    if (field === 'date' && record.dateType === 'range') {
+      openEditEventModal(eventId);
+      return;
+    }
+
+    const original = field === 'date'
+      ? {
+          date: record.date,
+          startDate: record.startDate,
+          endDate: record.endDate,
+        }
+      : record[field];
     let input;
 
     if (field === 'date') {
       input = document.createElement('input');
       input.type = 'date';
       input.className = 'cell-editor';
-      input.value = isTbd(record.date) ? '' : record.date;
+      const start = getEventStartDate(record);
+      input.value = isTbd(start) ? '' : start;
     } else if (field === 'eventType') {
       input = document.createElement('select');
       input.className = 'cell-editor';
@@ -891,7 +2556,14 @@ function attachEditableCell(cell, event, field) {
         newValue = toFieldValue(input.value.trim());
       }
 
-      if (newValue !== record[field]) {
+      if (field === 'date') {
+        if (newValue !== record.startDate) {
+          record.startDate = newValue;
+          record.endDate = newValue;
+          record.date = newValue;
+          await persistEvent(record);
+        }
+      } else if (newValue !== record[field]) {
         record[field] = newValue;
         await persistEvent(record);
       }
@@ -909,7 +2581,13 @@ function attachEditableCell(cell, event, field) {
       } else if (e.key === 'Escape') {
         e.preventDefault();
         committed = true;
-        record[field] = original;
+        if (field === 'date') {
+          record.date = original.date;
+          record.startDate = original.startDate;
+          record.endDate = original.endDate;
+        } else {
+          record[field] = original;
+        }
         renderTable();
       }
     });
@@ -932,6 +2610,16 @@ async function deleteEvent(eventId) {
     console.error(err);
     alert('Failed to delete event.');
   }
+}
+
+function createEditButton(eventId) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'event-edit-btn';
+  btn.setAttribute('aria-label', 'Edit event');
+  btn.textContent = 'Edit';
+  btn.addEventListener('click', () => openEditEventModal(eventId));
+  return btn;
 }
 
 function createDeleteButton(eventId) {
@@ -997,7 +2685,7 @@ function renderTable() {
     return;
   }
 
-  const sorted = sortEvents(filtered);
+  const sorted = sortTableData(filtered, eventsTableSort, EVENTS_SORT_COMPARATORS);
   tbody.innerHTML = '';
 
   sorted.forEach((event) => {
@@ -1005,6 +2693,9 @@ function renderTable() {
 
     const deleteCell = document.createElement('td');
     deleteCell.className = 'col-delete';
+    if (canEditEvents()) {
+      deleteCell.appendChild(createEditButton(event.id));
+    }
     if (canDeleteEvents()) {
       deleteCell.appendChild(createDeleteButton(event.id));
     }
@@ -1057,7 +2748,11 @@ function render() {
   } else if (currentView === 'calendar') {
     renderCalendar();
   } else if (currentView === 'reports') {
-    renderReports();
+    if (reportsTab === 'event-reports') {
+      renderReports();
+    } else if (reportsTab === 'aar') {
+      renderAarSearch();
+    }
   } else if (currentView === 'team') {
     renderTeam();
   } else if (currentView === 'settings') {
@@ -1082,6 +2777,119 @@ function populateEventTypeSelect(select, selectedValue) {
   }
 }
 
+function updateEventDateFieldsVisibility(form) {
+  const dateType = form.querySelector('[name="dateType"]:checked')?.value || 'single';
+  document.getElementById('event-single-date-fields').hidden = dateType !== 'single';
+  document.getElementById('event-range-date-fields').hidden = dateType !== 'range';
+}
+
+function resetEventForm(form) {
+  form.reset();
+  form.querySelector('[name="dateType"][value="single"]').checked = true;
+  document.getElementById('editing-event-id').value = '';
+  document.getElementById('event-single-date').value = '';
+  document.getElementById('event-range-start-date').value = '';
+  document.getElementById('event-range-end-date').value = '';
+  updateEventDateFieldsVisibility(form);
+}
+
+function populateEventFormFromRecord(form, event) {
+  const dateType = event.dateType === 'range' ? 'range' : 'single';
+  form.querySelector(`[name="dateType"][value="${dateType}"]`).checked = true;
+  updateEventDateFieldsVisibility(form);
+
+  if (dateType === 'single') {
+    const start = getEventStartDate(event);
+    document.getElementById('event-single-date').value = isTbd(start) ? '' : start;
+    document.getElementById('event-range-start-date').value = '';
+    document.getElementById('event-range-end-date').value = '';
+  } else {
+    document.getElementById('event-single-date').value = '';
+    document.getElementById('event-range-start-date').value =
+      isTbd(event.startDate) ? '' : event.startDate;
+    document.getElementById('event-range-end-date').value =
+      isTbd(event.endDate) ? '' : event.endDate;
+  }
+
+  form.querySelector('[name="eventType"]').value = event.eventType;
+  form.querySelector('[name="command"]').value =
+    isTbd(event.command) ? '' : event.command;
+  form.querySelector('[name="participants"]').value =
+    isTbd(event.participants) ? '' : String(event.participants);
+  form.querySelector('[name="location"]').value =
+    isTbd(event.location) ? '' : event.location;
+  form.querySelector('[name="facilitators"]').value = event.facilitators || '';
+  form.querySelector('[name="credoStaff"]').value = event.credoStaff || '';
+  form.querySelector('[name="time"]').value = event.time || '';
+  form.querySelector('[name="poc"]').value = event.poc || '';
+}
+
+function readEventFieldsFromForm(form) {
+  const data = new FormData(form);
+  const dateType = data.get('dateType') === 'range' ? 'range' : 'single';
+  let startDate;
+  let endDate;
+
+  if (dateType === 'single') {
+    startDate = toFieldValue(data.get('singleDate'));
+    endDate = startDate;
+  } else {
+    startDate = toFieldValue(data.get('rangeStartDate'));
+    endDate = toFieldValue(data.get('rangeEndDate'));
+    if (!isTbd(startDate) && !isTbd(endDate) && endDate < startDate) {
+      return { error: 'End date must be on or after the start date.' };
+    }
+  }
+
+  return {
+    dateType,
+    startDate,
+    endDate,
+    date: startDate,
+    eventType: data.get('eventType'),
+    command: toFieldValue(String(data.get('command') || '').trim()),
+    participants: toParticipantValue(data.get('participants')),
+    location: toFieldValue(String(data.get('location') || '').trim()),
+    facilitators: String(data.get('facilitators') || '').trim(),
+    credoStaff: String(data.get('credoStaff') || '').trim(),
+    time: String(data.get('time') || '').trim(),
+    poc: String(data.get('poc') || '').trim(),
+  };
+}
+
+function openNewEventModal() {
+  const modal = document.getElementById('new-event-modal');
+  const form = document.getElementById('new-event-form');
+  const typeSelect = form.querySelector('[name="eventType"]');
+
+  document.getElementById('event-modal-title').textContent = 'New Event';
+  document.getElementById('event-modal-submit').textContent = 'Add Event';
+  populateModalEventTypeSelect(typeSelect);
+  resetEventForm(form);
+  document.getElementById('event-type-error').hidden = true;
+  modal.showModal();
+}
+
+function openEditEventModal(eventId) {
+  if (!canEditEvents()) return;
+
+  const event = events.find((entry) => entry.id === eventId);
+  if (!event) return;
+
+  const modal = document.getElementById('new-event-modal');
+  const form = document.getElementById('new-event-form');
+  const typeSelect = form.querySelector('[name="eventType"]');
+
+  document.getElementById('event-modal-title').textContent = 'Edit Event';
+  document.getElementById('event-modal-submit').textContent = 'Save Event';
+  populateModalEventTypeSelect(typeSelect);
+  resetEventForm(form);
+  document.getElementById('editing-event-id').value = eventId;
+  populateEventFormFromRecord(form, event);
+  document.getElementById('event-type-error').hidden = true;
+  modal.showModal();
+}
+
 function setupModal() {
   const modal = document.getElementById('new-event-modal');
   const form = document.getElementById('new-event-form');
@@ -1093,6 +2901,10 @@ function setupModal() {
 
   populateModalEventTypeSelect(typeSelect);
 
+  form.querySelectorAll('[name="dateType"]').forEach((input) => {
+    input.addEventListener('change', () => updateEventDateFieldsVisibility(form));
+  });
+
   function hideEventTypeError() {
     eventTypeError.hidden = true;
   }
@@ -1101,40 +2913,45 @@ function setupModal() {
     eventTypeError.hidden = false;
   }
 
-  function openModal() {
-    form.reset();
-    populateModalEventTypeSelect(typeSelect);
-    hideEventTypeError();
-    modal.showModal();
-  }
-
   function closeModal() {
     modal.close();
   }
 
-  openBtn.addEventListener('click', openModal);
+  openBtn.addEventListener('click', openNewEventModal);
   closeBtn.addEventListener('click', closeModal);
   cancelBtn.addEventListener('click', closeModal);
   typeSelect.addEventListener('change', hideEventTypeError);
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = new FormData(form);
-    const eventType = data.get('eventType');
+    const editingEventId = document.getElementById('editing-event-id').value;
+    const fields = readEventFieldsFromForm(form);
 
-    if (!eventType) {
+    if (fields.error) {
+      alert(fields.error);
+      return;
+    }
+
+    if (!fields.eventType) {
       showEventTypeError();
       return;
     }
 
     hideEventTypeError();
 
+    if (editingEventId) {
+      const event = events.find((entry) => entry.id === editingEventId);
+      if (!event) return;
+
+      Object.assign(event, fields);
+      await persistEvent(event);
+      render();
+      closeModal();
+      return;
+    }
+
     const newEvent = {
-      date: toFieldValue(data.get('date')),
-      eventType,
-      command: toFieldValue(String(data.get('command') || '').trim()),
-      participants: toParticipantValue(data.get('participants')),
-      location: toFieldValue(String(data.get('location') || '').trim()),
+      ...fields,
       reservation: 'Not Started',
       catering: 'Not Started',
       packout: 'Not Started',
@@ -1153,10 +2970,11 @@ function setupModal() {
 async function loadAllData() {
   const generation = ++dataLoadGeneration;
 
-  const [types, teamData, loadedEvents] = await Promise.all([
+  const [types, teamData, loadedEvents, globalTemplates] = await Promise.all([
     fetchEventTypes(),
     fetchTeam(),
     fetchEvents(),
+    fetchAarGlobalTemplates(),
   ]);
 
   if (generation !== dataLoadGeneration) return;
@@ -1165,6 +2983,9 @@ async function loadAllData() {
   syncEventTypeNames();
   team = teamData;
   events = loadedEvents.map(normalizeEvent);
+  aarGlobalTemplates = globalTemplates;
+  resetTableSortState();
+  syncAarStateAfterDataLoad();
 }
 
 export async function refreshApp() {
@@ -1179,6 +3000,8 @@ export async function initApp() {
   setupNavigation();
   setupDateFilter();
   setupReports();
+  setupReportsSubnav();
+  setupAarSearch();
   setupModal();
   applyPermissions();
   switchView('events');

@@ -1,9 +1,29 @@
 import { supabase } from './supabase.js';
 
+function booleanFromDb(value) {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0 || value == null) return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === 't' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === 'f' || normalized === '0' || normalized === '') {
+      return false;
+    }
+  }
+  return Boolean(value);
+}
+
 export function eventFromRow(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    throw new Error('INVALID_EVENT_ROW');
+  }
+
   return {
     id: row.id,
     date: row.date,
+    dateType: row.date_type === 'range' ? 'range' : 'single',
+    startDate: row.start_date || row.date || '',
+    endDate: row.end_date || row.start_date || row.date || '',
     eventType: row.event_type,
     command: row.command,
     participants: row.participants,
@@ -12,12 +32,43 @@ export function eventFromRow(row) {
     catering: row.catering,
     packout: row.packout,
     roster: row.roster,
+    facilitators: row.facilitators || '',
+    credoStaff: row.credo_staff || '',
+    time: row.time || '',
+    poc: row.poc || '',
+    aarCost: row.aar_cost || '',
+    aarAttire: row.aar_attire || '',
+    aarTravelTime: row.aar_travel_time || '',
+    aarLessonsLearned: row.aar_lessons_learned || '',
+    aarFinalized: booleanFromDb(row.aar_finalized),
+    aarFinalizedAt: row.aar_finalized_at ?? null,
+    aarSequenceNumber: row.aar_sequence_number == null ? '' : String(row.aar_sequence_number),
+  };
+}
+
+function resolveEventDates(event) {
+  const dateType = event.dateType === 'range' ? 'range' : 'single';
+  const startDate = event.startDate ?? event.date ?? 'TBD';
+  const endDate = dateType === 'range'
+    ? (event.endDate ?? startDate)
+    : startDate;
+
+  return {
+    dateType,
+    startDate,
+    endDate,
+    date: startDate,
   };
 }
 
 export function eventToRow(event) {
+  const dates = resolveEventDates(event);
+
   return {
-    date: event.date,
+    date: dates.date,
+    date_type: dates.dateType,
+    start_date: dates.startDate,
+    end_date: dates.endDate,
     event_type: event.eventType,
     command: event.command,
     participants: String(event.participants),
@@ -26,6 +77,10 @@ export function eventToRow(event) {
     catering: event.catering,
     packout: event.packout,
     roster: event.roster,
+    facilitators: event.facilitators ?? '',
+    credo_staff: event.credoStaff ?? '',
+    time: event.time ?? '',
+    poc: event.poc ?? '',
   };
 }
 
@@ -110,6 +165,160 @@ export async function updateEvent(event) {
   return eventFromRow(data);
 }
 
+export async function updateEventAarFields(id, fields) {
+  const userId = await getUserId();
+
+  const row = {};
+  if (fields.aarCost !== undefined) row.aar_cost = fields.aarCost;
+  if (fields.aarAttire !== undefined) row.aar_attire = fields.aarAttire;
+  if (fields.aarTravelTime !== undefined) row.aar_travel_time = fields.aarTravelTime;
+  if (fields.aarLessonsLearned !== undefined) row.aar_lessons_learned = fields.aarLessonsLearned;
+
+  const { data, error } = await supabase
+    .from('events')
+    .update({
+      ...row,
+      updated_by: userId,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return eventFromRow(data);
+}
+
+export async function clearEventAar(id) {
+  if (!id) {
+    throw new Error('INVALID_EVENT_ID');
+  }
+
+  const userId = await getUserId();
+
+  const { data, error } = await supabase
+    .from('events')
+    .update({
+      aar_cost: '',
+      aar_attire: '',
+      aar_travel_time: '',
+      aar_lessons_learned: '',
+      aar_finalized: false,
+      aar_finalized_at: null,
+      aar_sequence_number: null,
+      updated_by: userId,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return eventFromRow(data);
+}
+
+function formatAarSequenceNumber(seriesCode, sequenceIndex, calendarYear) {
+  const tt = seriesCode.padStart(2, '0').slice(-2);
+  const ss = String(sequenceIndex).padStart(2, '0');
+  const yy = String(calendarYear).slice(-2);
+  return `${tt}${ss}${yy}`;
+}
+
+async function countFinalizedAarsForSeriesYear(seriesCode, calendarYear) {
+  const { data: types, error: typesError } = await supabase
+    .from('event_types')
+    .select('name, series_code');
+
+  if (typesError) throw typesError;
+
+  const typeNames = (types ?? [])
+    .filter((entry) => (entry.series_code ?? '').trim() === seriesCode)
+    .map((entry) => entry.name);
+
+  if (typeNames.length === 0) return 0;
+
+  const { data: finalized, error } = await supabase
+    .from('events')
+    .select('start_date, date')
+    .eq('aar_finalized', true)
+    .in('event_type', typeNames);
+
+  if (error) throw error;
+
+  return (finalized ?? []).filter((row) => {
+    const startDate = row.start_date || row.date;
+    if (!startDate || startDate === 'TBD') return false;
+    const year = parseInt(String(startDate).slice(0, 4), 10);
+    return Number.isFinite(year) && year === calendarYear;
+  }).length;
+}
+
+export async function finalizeEventAar(eventId) {
+  if (!eventId) {
+    throw new Error('INVALID_EVENT_ID');
+  }
+
+  const userId = await getUserId();
+
+  const { data: eventRow, error: fetchError } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', eventId)
+    .single();
+
+  if (fetchError) throw fetchError;
+  if (booleanFromDb(eventRow.aar_finalized) || eventRow.aar_sequence_number) {
+    throw new Error('ALREADY_FINALIZED');
+  }
+
+  const { data: typeRow, error: typeError } = await supabase
+    .from('event_types')
+    .select('series_code')
+    .eq('name', eventRow.event_type)
+    .maybeSingle();
+
+  if (typeError) throw typeError;
+
+  const seriesCode = (typeRow?.series_code ?? '').trim();
+  if (!seriesCode) {
+    throw new Error('NO_SERIES_CODE');
+  }
+
+  const startDate = eventRow.start_date || eventRow.date;
+  if (!startDate || startDate === 'TBD') {
+    throw new Error('NO_VALID_START_DATE');
+  }
+
+  const calendarYear = parseInt(String(startDate).slice(0, 4), 10);
+  if (!Number.isFinite(calendarYear)) {
+    throw new Error('NO_VALID_START_DATE');
+  }
+
+  const finalizedCount = await countFinalizedAarsForSeriesYear(seriesCode, calendarYear);
+  const sequenceNumber = formatAarSequenceNumber(seriesCode, finalizedCount + 1, calendarYear);
+
+  const { data: updated, error: updateError } = await supabase
+    .from('events')
+    .update({
+      aar_finalized: true,
+      aar_finalized_at: new Date().toISOString(),
+      aar_sequence_number: sequenceNumber,
+      updated_by: userId,
+    })
+    .eq('id', eventId)
+    .eq('aar_finalized', false)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+  if (!updated || updated.id !== eventId) {
+    throw new Error('ALREADY_FINALIZED');
+  }
+  if (!updated.aar_sequence_number) {
+    throw new Error('MISSING_SEQUENCE_NUMBER');
+  }
+
+  return eventFromRow(updated);
+}
+
 export async function deleteEventById(id) {
   const { error } = await supabase.from('events').delete().eq('id', id);
   if (error) throw error;
@@ -127,39 +336,112 @@ export async function renameEventTypeInEvents(previousName, newName) {
 export async function fetchEventTypes() {
   const { data, error } = await supabase
     .from('event_types')
-    .select('id, name, sort_order')
+    .select('id, name, sort_order, objectives, description, series_code')
     .order('sort_order', { ascending: true });
 
   if (error) throw error;
-  return data;
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sort_order,
+    objectives: row.objectives ?? '',
+    description: row.description ?? '',
+    seriesCode: row.series_code ?? '',
+  }));
 }
 
 export async function insertEventType(name, sortOrder) {
   const { data, error } = await supabase
     .from('event_types')
-    .insert({ name, sort_order: sortOrder })
-    .select()
+    .insert({
+      name,
+      sort_order: sortOrder,
+      objectives: '',
+      description: '',
+      series_code: '',
+    })
+    .select('id, name, sort_order, objectives, description, series_code')
     .single();
 
   if (error) throw error;
-  return data;
+  return {
+    id: data.id,
+    name: data.name,
+    sortOrder: data.sort_order,
+    objectives: data.objectives ?? '',
+    description: data.description ?? '',
+    seriesCode: data.series_code ?? '',
+  };
 }
 
-export async function updateEventType(id, name) {
+export async function updateEventType(id, updates) {
+  const row = typeof updates === 'string' ? { name: updates } : updates;
+  const payload = {};
+  if (row.name !== undefined) payload.name = row.name;
+  if (row.objectives !== undefined) payload.objectives = row.objectives;
+  if (row.description !== undefined) payload.description = row.description;
+  if (row.seriesCode !== undefined) payload.series_code = row.seriesCode;
+
   const { data, error } = await supabase
     .from('event_types')
-    .update({ name })
+    .update(payload)
     .eq('id', id)
-    .select()
+    .select('id, name, sort_order, objectives, description, series_code')
     .single();
 
   if (error) throw error;
-  return data;
+  return {
+    id: data.id,
+    name: data.name,
+    sortOrder: data.sort_order,
+    objectives: data.objectives ?? '',
+    description: data.description ?? '',
+    seriesCode: data.series_code ?? '',
+  };
 }
 
 export async function deleteEventType(id) {
   const { error } = await supabase.from('event_types').delete().eq('id', id);
   if (error) throw error;
+}
+
+export async function fetchAarGlobalTemplates() {
+  const { data, error } = await supabase
+    .from('aar_global_templates')
+    .select('id, credo_requirements, command_requirements')
+    .eq('id', 1)
+    .single();
+
+  if (error) throw error;
+  return {
+    id: data.id,
+    credoRequirements: data.credo_requirements ?? '',
+    commandRequirements: data.command_requirements ?? '',
+  };
+}
+
+export async function updateAarGlobalTemplates(updates) {
+  const payload = {};
+  if (updates.credoRequirements !== undefined) {
+    payload.credo_requirements = updates.credoRequirements;
+  }
+  if (updates.commandRequirements !== undefined) {
+    payload.command_requirements = updates.commandRequirements;
+  }
+
+  const { data, error } = await supabase
+    .from('aar_global_templates')
+    .update(payload)
+    .eq('id', 1)
+    .select('id, credo_requirements, command_requirements')
+    .single();
+
+  if (error) throw error;
+  return {
+    id: data.id,
+    credoRequirements: data.credo_requirements ?? '',
+    commandRequirements: data.command_requirements ?? '',
+  };
 }
 
 export async function fetchTeam() {
@@ -178,6 +460,98 @@ export async function updateTeam(team) {
 
   if (error) throw error;
   return teamFromRow(data);
+}
+
+function teamMemberFromRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    billetOrRole: row.billet_or_role,
+    statusNextAction: row.status_next_action || '',
+    prdEaos: row.prd_eaos || '',
+    displayOrder: row.display_order,
+  };
+}
+
+function teamMemberToRow(member) {
+  return {
+    name: member.name,
+    billet_or_role: member.billetOrRole,
+    status_next_action: member.statusNextAction,
+    prd_eaos: member.prdEaos,
+    display_order: member.displayOrder,
+  };
+}
+
+function teamMemberUpdatesToRow(updates) {
+  const row = {};
+  if (updates.name !== undefined) row.name = updates.name;
+  if (updates.billetOrRole !== undefined) row.billet_or_role = updates.billetOrRole;
+  if (updates.statusNextAction !== undefined) row.status_next_action = updates.statusNextAction;
+  if (updates.prdEaos !== undefined) row.prd_eaos = updates.prdEaos;
+  if (updates.displayOrder !== undefined) row.display_order = updates.displayOrder;
+  return row;
+}
+
+export async function fetchTeamMembers() {
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('*')
+    .order('display_order', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(teamMemberFromRow);
+}
+
+export async function createTeamMember(member) {
+  const { data, error } = await supabase
+    .from('team_members')
+    .insert(teamMemberToRow(member))
+    .select()
+    .single();
+
+  if (error) throw error;
+  return teamMemberFromRow(data);
+}
+
+export async function updateTeamMember(id, updates) {
+  const { data, error } = await supabase
+    .from('team_members')
+    .update(teamMemberUpdatesToRow(updates))
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return teamMemberFromRow(data);
+}
+
+export async function deleteTeamMember(id) {
+  const { error } = await supabase.from('team_members').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchCommandHighlightsNotes() {
+  const { data, error } = await supabase
+    .from('command_highlights_notes')
+    .select('notes')
+    .eq('id', 1)
+    .single();
+
+  if (error) throw error;
+  return data.notes ?? '';
+}
+
+export async function updateCommandHighlightsNotes(notes) {
+  const { data, error } = await supabase
+    .from('command_highlights_notes')
+    .update({ notes })
+    .eq('id', 1)
+    .select('notes')
+    .single();
+
+  if (error) throw error;
+  return data.notes ?? '';
 }
 
 export async function signIn(email, password) {

@@ -5,6 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CREDO Event Operations Tracker</title>
   <link rel="stylesheet" href="css/styles.css">
+  <style>
+    #view-reports .reports-subnav {
+      display: flex;
+      gap: 0;
+      margin: 0 0 20px;
+      border-bottom: 1px solid #dde3ea;
+    }
+
+    #view-reports .reports-subtab {
+      padding: 10px 18px;
+      border: none;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: #4b5563;
+      font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    #view-reports .reports-subtab-active {
+      color: #00205b;
+      border-bottom-color: #00205b;
+    }
+
+    .events-table .event-edit-btn {
+      margin-right: 6px;
+      padding: 2px 8px;
+      border: 1px solid #c5cdd8;
+      border-radius: 4px;
+      background: #fff;
+      color: #00205b;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .events-table .event-edit-btn:hover {
+      background: #eef2f7;
+    }
+  </style>
 </head>
 <body>
   <dialog class="modal" id="login-modal">
@@ -134,10 +177,14 @@
         <header class="page-header">
           <div class="header-titles">
             <h1>Reports</h1>
-            <h2>Event Reports</h2>
+            <h2 id="reports-subtitle">Event Reports</h2>
           </div>
         </header>
-        <section class="content-section reports-panel">
+        <nav class="reports-subnav" aria-label="Report sections">
+          <button type="button" class="reports-subtab reports-subtab-active" data-reports-tab="event-reports">Event Reports</button>
+          <button type="button" class="reports-subtab" data-reports-tab="aar">After Action Reports</button>
+        </nav>
+        <section id="reports-event-panel" class="content-section reports-panel">
           <div class="reports-filter-bar">
             <label class="reports-filter-field">
               <span class="reports-filter-label">Report Type</span>
@@ -207,6 +254,205 @@
             </div>
           </div>
         </section>
+        <section id="reports-aar-panel" class="content-section aar-panel" hidden>
+          <div id="aar-search-view" class="aar-search-view">
+          <div class="aar-report-section">
+            <h2 class="aar-section-title">FIND EVENTS</h2>
+            <div class="aar-section-divider" aria-hidden="true"></div>
+            <div class="aar-filter-bar">
+              <label class="aar-filter-field">
+                <span class="aar-filter-label">Filter Type</span>
+                <select id="aar-filter-type" class="filter-select">
+                  <option value="cy">Calendar Year</option>
+                  <option value="fy">Fiscal Year</option>
+                  <option value="month-year">Month &amp; Year</option>
+                  <option value="date-range">Date Range</option>
+                  <option value="command">Command</option>
+                  <option value="event-type">Event Type</option>
+                </select>
+              </label>
+              <label class="aar-filter-field" id="aar-year-field">
+                <span class="aar-filter-label">Year</span>
+                <select id="aar-year" class="filter-select">
+                  <option value="">Select year</option>
+                </select>
+              </label>
+              <label class="aar-filter-field" id="aar-month-field">
+                <span class="aar-filter-label">Month</span>
+                <select id="aar-month" class="filter-select" disabled>
+                  <option value="">Select month</option>
+                </select>
+              </label>
+              <label class="aar-filter-field" id="aar-start-field">
+                <span class="aar-filter-label">Start Date</span>
+                <input type="date" id="aar-start-date" class="reports-input" disabled>
+              </label>
+              <label class="aar-filter-field" id="aar-end-field">
+                <span class="aar-filter-label">End Date</span>
+                <input type="date" id="aar-end-date" class="reports-input" disabled>
+              </label>
+              <label class="aar-filter-field" id="aar-command-field">
+                <span class="aar-filter-label">Command</span>
+                <select id="aar-command" class="filter-select" disabled>
+                  <option value="">Select command</option>
+                </select>
+              </label>
+              <label class="aar-filter-field" id="aar-event-type-field">
+                <span class="aar-filter-label">Event Type</span>
+                <select id="aar-event-type" class="filter-select" disabled>
+                  <option value="">Select event type</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn-primary" id="aar-search-btn">Search Events</button>
+              <button type="button" class="btn btn-secondary" id="aar-clear-btn">Clear Filters</button>
+            </div>
+            <div class="aar-results">
+              <div class="aar-results-header">
+                <span id="aar-result-count">0 events</span>
+              </div>
+              <div class="table-wrap">
+                <table class="events-table aar-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Event Type</th>
+                      <th>Command</th>
+                      <th>Location</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="aar-results-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          </div>
+          <div id="aar-document-view" class="aar-document-view" hidden>
+            <div id="aar-builder-view">
+              <div class="aar-doc-toolbar aar-doc-toolbar-builder">
+                <button type="button" class="aar-doc-back-btn" id="aar-back-btn">← Back to Events</button>
+                <div class="aar-doc-toolbar-actions">
+                  <button type="button" class="aar-doc-back-btn" id="aar-preview-btn">Preview AAR</button>
+                </div>
+              </div>
+              <div class="aar-doc-canvas">
+              <article class="aar-report aar-document" id="aar-report-article">
+                <header class="aar-report-header">
+                  <div class="aar-report-brand">
+                    <img src="assets/credo-logo.jpg" alt="" class="aar-report-logo">
+                    <div class="aar-report-brand-text">
+                      <span class="aar-report-brand-name">CREDO</span>
+                      <span class="aar-report-brand-region">MCI WEST</span>
+                    </div>
+                  </div>
+                  <h1 class="aar-report-title">AFTER ACTION REPORT</h1>
+                </header>
+
+                <section class="aar-report-section">
+                  <h2 class="aar-report-section-title">RMT INFORMATION</h2>
+                  <table class="aar-rmt-table">
+                    <tbody>
+                      <tr>
+                        <th scope="row">AAR Sequence Number</th>
+                        <td class="aar-report-placeholder">AAR sequence number will appear here.</td>
+                        <th scope="row">Event Type</th>
+                        <td class="aar-report-placeholder">Event type will appear here.</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Date(s)</th>
+                        <td class="aar-report-placeholder">Event date(s) will appear here.</td>
+                        <th scope="row">Command</th>
+                        <td class="aar-report-placeholder">Command will appear here.</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Location</th>
+                        <td class="aar-report-placeholder">Location will appear here.</td>
+                        <th scope="row">Participants</th>
+                        <td class="aar-report-placeholder">Participants will appear here.</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Facilitator(s)</th>
+                        <td class="aar-report-placeholder">Facilitator(s) will appear here.</td>
+                        <th scope="row">Staffing</th>
+                        <td class="aar-report-placeholder">Staffing will appear here.</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Time</th>
+                        <td class="aar-report-placeholder">Time will appear here.</td>
+                        <th scope="row" class="aar-rmt-empty"></th>
+                        <td class="aar-rmt-empty"></td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Point(s) of Contact</th>
+                        <td colspan="3" class="aar-report-placeholder">Point(s) of contact will appear here.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
+
+                <section class="aar-report-section">
+                  <h2 class="aar-report-section-title">EVENT DESCRIPTION</h2>
+                  <div class="aar-report-block">
+                    <h3 class="aar-report-block-label">Objectives</h3>
+                    <div class="aar-report-box aar-report-box-objectives aar-report-placeholder">Objectives will appear here.</div>
+                  </div>
+                  <div class="aar-report-block">
+                    <h3 class="aar-report-block-label">Description</h3>
+                    <div class="aar-report-box aar-report-box-description aar-report-placeholder">Description will appear here.</div>
+                  </div>
+                  <table class="aar-cost-table">
+                    <tbody>
+                      <tr>
+                        <th scope="col">Cost</th>
+                        <th scope="col">Attire</th>
+                        <th scope="col">Travel Time</th>
+                      </tr>
+                      <tr>
+                        <td class="aar-report-placeholder">Cost will appear here.</td>
+                        <td class="aar-report-placeholder">Attire will appear here.</td>
+                        <td class="aar-report-placeholder">Travel time will appear here.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
+
+                <section class="aar-report-section">
+                  <h2 class="aar-report-section-title">LESSONS LEARNED</h2>
+                  <div class="aar-report-box aar-report-box-lessons aar-report-placeholder">Lessons learned will appear here.</div>
+                </section>
+
+                <section class="aar-report-section">
+                  <h2 class="aar-report-section-title">REQUIREMENTS</h2>
+                  <div class="aar-report-block">
+                    <h3 class="aar-report-block-label">CREDO Requirements</h3>
+                    <div class="aar-report-box aar-report-box-requirements aar-report-placeholder">CREDO requirements will appear here.</div>
+                  </div>
+                  <div class="aar-report-block">
+                    <h3 class="aar-report-block-label">Command Requirements</h3>
+                    <div class="aar-report-box aar-report-box-requirements aar-report-placeholder">Command requirements will appear here.</div>
+                  </div>
+                </section>
+
+                <footer class="aar-report-footer">
+                  <p class="aar-report-footer-note aar-report-placeholder">Footer distribution note will appear here.</p>
+                  <p class="aar-report-footer-seq">
+                    <span class="aar-report-footer-seq-label">Sequence No.</span>
+                    <span class="aar-report-placeholder">Sequence number will appear here.</span>
+                  </p>
+                </footer>
+              </article>
+              </div>
+            </div>
+            <div id="aar-preview-view" class="aar-preview-view" hidden>
+              <div class="aar-doc-toolbar aar-doc-toolbar-preview">
+                <button type="button" class="aar-doc-back-btn" id="aar-preview-back-builder-btn">← Back to Builder</button>
+                <button type="button" class="aar-doc-back-btn" id="aar-preview-back-events-btn">Back to Events</button>
+              </div>
+              <div class="aar-doc-canvas" id="aar-preview-canvas"></div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div id="view-team" class="view" hidden>
@@ -234,35 +480,86 @@
   <dialog class="modal" id="new-event-modal">
     <form method="dialog" class="modal-content" id="new-event-form">
       <div class="modal-header">
-        <h3>New Event</h3>
+        <h3 id="event-modal-title">New Event</h3>
         <button type="button" class="modal-close" id="modal-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <label>
-          Date
-          <input type="date" name="date">
-        </label>
-        <label>
-          Event Type
-          <select name="eventType"></select>
-          <span class="field-error" id="event-type-error" hidden>Please select an event type.</span>
-        </label>
-        <label>
-          Command
-          <input type="text" name="command" placeholder="e.g. MCI West">
-        </label>
-        <label>
-          Expected Participants
-          <input type="number" name="participants" min="0">
-        </label>
-        <label>
-          Location
-          <input type="text" name="location" placeholder="e.g. Camp Pendleton">
-        </label>
+        <input type="hidden" name="editingEventId" id="editing-event-id" value="">
+
+        <fieldset class="event-form-section">
+          <legend class="event-form-section-title">Scheduling</legend>
+          <div class="date-type-group">
+            <label class="date-type-option">
+              <input type="radio" name="dateType" value="single" checked>
+              Single Date
+            </label>
+            <label class="date-type-option">
+              <input type="radio" name="dateType" value="range">
+              Date Range
+            </label>
+          </div>
+          <div id="event-single-date-fields">
+            <label>
+              Event Date
+              <input type="date" name="singleDate" id="event-single-date">
+            </label>
+          </div>
+          <div id="event-range-date-fields" hidden>
+            <label>
+              Start Date
+              <input type="date" name="rangeStartDate" id="event-range-start-date">
+            </label>
+            <label>
+              End Date
+              <input type="date" name="rangeEndDate" id="event-range-end-date">
+            </label>
+          </div>
+          <label>
+            Time
+            <input type="text" name="time" placeholder="e.g. 0800–1600">
+          </label>
+        </fieldset>
+
+        <fieldset class="event-form-section">
+          <legend class="event-form-section-title">Event Details</legend>
+          <label>
+            Event Type
+            <select name="eventType"></select>
+            <span class="field-error" id="event-type-error" hidden>Please select an event type.</span>
+          </label>
+          <label>
+            Command
+            <input type="text" name="command" placeholder="e.g. MCI West">
+          </label>
+          <label>
+            Location
+            <input type="text" name="location" placeholder="e.g. Camp Pendleton">
+          </label>
+          <label>
+            Expected Participants
+            <input type="number" name="participants" min="0">
+          </label>
+        </fieldset>
+
+        <fieldset class="event-form-section">
+          <legend class="event-form-section-title">Operational</legend>
+          <label>
+            Facilitator(s)
+            <input type="text" name="facilitators" placeholder="e.g. LT Smith, CH Jones">
+          </label>
+          <label>
+            CREDO Staff
+            <input type="text" name="credoStaff" placeholder="e.g. Director, LPO">
+          </label>
+          <label>
+            Point(s) of Contact
+            <input type="text" name="poc" placeholder="e.g. Jane Doe, jane.doe@navy.mil">
+          </label>
+        </fieldset>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="modal-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary">Add Event</button>
+        <button type="submit" class="btn btn-primary" id="event-modal-submit">Add Event</button>
       </div>
     </form>
   </dialog>
