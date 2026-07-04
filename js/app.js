@@ -27,6 +27,7 @@ import {
   updateEventType,
   updateTeamMember,
 } from './db.js';
+import { exportMonthlyImpactReportPptx } from './monthly-report-pptx-export.js';
 // PDF export temporarily disabled — jspdf/html2canvas must not load at app bootstrap.
 import {
   canDeleteEvents,
@@ -815,6 +816,174 @@ function getMonthYearRange(month, year) {
   };
 }
 
+const MIR_FYTD_CATEGORY_LABELS = {
+  suicidePrevention: 'SUICIDE PREVENTION',
+  personalGrowth: 'PERSONAL GROWTH',
+  marriageEnrichment: 'MARRIAGE ENRICHMENT',
+  retreats: 'RETREATS',
+};
+
+const MIR_FYTD_SERIES_CODES = {
+  suicidePrevention: new Set(['06', '07', '08', '09']),
+  personalGrowth: new Set(['05', '10']),
+  marriageEnrichment: new Set(['02', '03']),
+  retreats: new Set(['01', '04']),
+};
+
+const MIR_WORKSHOP_SERIES_CODES = new Set(['02', '03', '05', '06', '07', '08', '09', '10']);
+const MIR_RETREAT_SERIES_CODES = new Set(['01', '04']);
+
+function filterEventsByIsoDateRange(start, end) {
+  return events.filter((event) => {
+    const isoDate = getEventIsoDate(event);
+    return isoDate && isDateInRange(isoDate, start, end);
+  });
+}
+
+function getMirEventsForMonthYear(month, year) {
+  const { start, end } = getMonthYearRange(Number(month), Number(year));
+  return filterEventsByIsoDateRange(start, end);
+}
+
+function getMirFytdRange(month, year) {
+  const monthIndex = Number(month);
+  const yearNum = Number(year);
+  const fyEndingYear = monthIndex >= 9 ? yearNum + 1 : yearNum;
+  const start = `${fyEndingYear - 1}-10-01`;
+  const { end } = getMonthYearRange(monthIndex, yearNum);
+  return { start, end };
+}
+
+function getMirEventsForFytd(month, year) {
+  const { start, end } = getMirFytdRange(month, year);
+  return filterEventsByIsoDateRange(start, end);
+}
+
+function isMirPersonalGrowthRetreat(eventTypeName) {
+  const seriesCode = getEventTypeSeriesCode(eventTypeName);
+  return seriesCode === '05' && /retreat/i.test(eventTypeName);
+}
+
+function isMirWorkshopEvent(event) {
+  const seriesCode = getEventTypeSeriesCode(event.eventType);
+  if (!seriesCode) return false;
+  if (MIR_RETREAT_SERIES_CODES.has(seriesCode)) return false;
+  if (isMirPersonalGrowthRetreat(event.eventType)) return false;
+  if (MIR_WORKSHOP_SERIES_CODES.has(seriesCode)) return true;
+  return false;
+}
+
+function isMirRetreatEvent(event) {
+  const seriesCode = getEventTypeSeriesCode(event.eventType);
+  if (!seriesCode) return false;
+  if (MIR_RETREAT_SERIES_CODES.has(seriesCode)) return true;
+  if (isMirPersonalGrowthRetreat(event.eventType)) return true;
+  return false;
+}
+
+function getMirFytdCategoryKey(event) {
+  const seriesCode = getEventTypeSeriesCode(event.eventType);
+  if (!seriesCode) return null;
+
+  if (MIR_FYTD_SERIES_CODES.suicidePrevention.has(seriesCode)) {
+    return 'suicidePrevention';
+  }
+  if (MIR_FYTD_SERIES_CODES.marriageEnrichment.has(seriesCode)) {
+    return 'marriageEnrichment';
+  }
+  if (MIR_FYTD_SERIES_CODES.retreats.has(seriesCode)) {
+    return 'retreats';
+  }
+  if (seriesCode === '05' || seriesCode === '10') {
+    return 'personalGrowth';
+  }
+
+  return null;
+}
+
+function countMirUniqueCommands(eventList) {
+  const commands = new Set();
+  eventList.forEach((event) => {
+    if (!isTbd(event.command)) {
+      commands.add(event.command);
+    }
+  });
+  return commands.size;
+}
+
+function calculateMirMonthReach(monthEvents) {
+  let beneficiariesServed = 0;
+  let workshopsConducted = 0;
+  let retreatsConducted = 0;
+
+  monthEvents.forEach((event) => {
+    beneficiariesServed += participantCount(event.participants);
+    if (isMirWorkshopEvent(event)) {
+      workshopsConducted += 1;
+    } else if (isMirRetreatEvent(event)) {
+      retreatsConducted += 1;
+    }
+  });
+
+  return {
+    commandsSupported: countMirUniqueCommands(monthEvents),
+    beneficiariesServed,
+    workshopsConducted,
+    retreatsConducted,
+  };
+}
+
+function calculateMirFytdMissionSupport(fytdEvents) {
+  const counts = {
+    suicidePrevention: 0,
+    personalGrowth: 0,
+    marriageEnrichment: 0,
+    retreats: 0,
+  };
+
+  fytdEvents.forEach((event) => {
+    const categoryKey = getMirFytdCategoryKey(event);
+    if (categoryKey) {
+      counts[categoryKey] += 1;
+    }
+  });
+
+  return {
+    ...counts,
+    fytdTotal:
+      counts.suicidePrevention
+      + counts.personalGrowth
+      + counts.marriageEnrichment
+      + counts.retreats,
+    commands: countMirUniqueCommands(fytdEvents),
+    categoryLabels: { ...MIR_FYTD_CATEGORY_LABELS },
+  };
+}
+
+function calculateMirSection1Data(month, year) {
+  const reportMonth = Number(month);
+  const reportYear = Number(year);
+  const monthEvents = getMirEventsForMonthYear(reportMonth, reportYear);
+  const fytdEvents = getMirEventsForFytd(reportMonth, reportYear);
+  const monthRange = getMonthYearRange(reportMonth, reportYear);
+  const fytdRange = getMirFytdRange(reportMonth, reportYear);
+
+  return {
+    reportMonth,
+    reportYear,
+    monthRange,
+    fytdRange,
+    monthReach: calculateMirMonthReach(monthEvents),
+    fytdMissionSupport: calculateMirFytdMissionSupport(fytdEvents),
+  };
+}
+
+function logMirSection1Calculations(month, year) {
+  const section1 = calculateMirSection1Data(month, year);
+  console.log('[mirSection1]', section1);
+  return section1;
+}
+
 function getUniqueCommands() {
   const commands = new Set();
   events.forEach((event) => {
@@ -1229,6 +1398,11 @@ function updateMirDraftToolbar() {
   if (clearBtn) {
     clearBtn.disabled = !canEdit;
   }
+
+  const exportBtn = document.getElementById('mir-export-pptx-btn');
+  if (exportBtn) {
+    exportBtn.disabled = !mirSelectionComplete();
+  }
 }
 
 let mirSaveFeedbackTimer = null;
@@ -1264,6 +1438,8 @@ async function loadMirDraftForSelection() {
   }
 
   const { month, year } = getMirSelectedMonthYear();
+
+  logMirSection1Calculations(Number(month), Number(year));
 
   try {
     const report = await fetchMonthlyReport(Number(month), Number(year));
@@ -1307,6 +1483,32 @@ async function saveMirDraft() {
   }
 }
 
+async function exportMirDraftPptx() {
+  if (!mirSelectionComplete()) return;
+
+  const { month, year } = getMirSelectedMonthYear();
+  const fields = getMirNotesFields();
+  const monthName = MIR_MONTH_NAMES[Number(month)] ?? 'Month';
+  const section1Data = calculateMirSection1Data(Number(month), Number(year));
+
+  try {
+    await exportMonthlyImpactReportPptx({
+      monthName,
+      year: Number(year),
+      section1Data,
+      notes: {
+        reachNotes: fields[0]?.value ?? '',
+        manpowerNotes: fields[1]?.value ?? '',
+        readinessNotes: fields[2]?.value ?? '',
+        commandHighlightsNotes: fields[3]?.value ?? '',
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    alert('Failed to export PowerPoint.');
+  }
+}
+
 async function clearMirDraft() {
   if (!mirSelectionComplete() || !canEditEvents()) return;
 
@@ -1332,6 +1534,7 @@ function setupMirDraft() {
   const yearEl = document.getElementById('mir-year');
   const saveBtn = document.getElementById('mir-save-draft-btn');
   const clearBtn = document.getElementById('mir-clear-draft-btn');
+  const exportBtn = document.getElementById('mir-export-pptx-btn');
 
   if (monthEl && monthEl.dataset.mirDraftBound !== 'true') {
     monthEl.dataset.mirDraftBound = 'true';
@@ -1358,6 +1561,13 @@ function setupMirDraft() {
     clearBtn.dataset.mirDraftBound = 'true';
     clearBtn.addEventListener('click', () => {
       void clearMirDraft();
+    });
+  }
+
+  if (exportBtn && exportBtn.dataset.mirDraftBound !== 'true') {
+    exportBtn.dataset.mirDraftBound = 'true';
+    exportBtn.addEventListener('click', () => {
+      void exportMirDraftPptx();
     });
   }
 
