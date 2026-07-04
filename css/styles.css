@@ -901,6 +901,313 @@ body:has(#new-event-modal[open]) {
   border-bottom-color: #00205b;
 }
 
+#view-reports .mir-panel {
+  padding: 0;
+  overflow: visible;
+}
+
+#view-reports .mir-internal-nav {
+  display: flex;
+  gap: 0;
+  margin: 0;
+  padding: 0 32px;
+  border-bottom: 1px solid #dde3ea;
+}
+
+#view-reports .mir-internal-tab {
+  padding: 10px 18px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: #4b5563;
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#view-reports .mir-internal-tab-active {
+  color: #00205b;
+  border-bottom-color: #00205b;
+}
+
+#view-reports .mir-draft-view,
+#view-reports .mir-history-view {
+  padding: 28px 32px 32px;
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  color: #1a1a1a;
+}
+
+#view-reports .mir-report-section {
+  max-width: 960px;
+}
+
+#view-reports .mir-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #dde3ea;
+}
+
+#view-reports .mir-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 128px;
+}
+
+#view-reports .mir-filter-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #00205b;
+}
+
+#view-reports .mir-status-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 80px;
+}
+
+#view-reports .mir-status-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4b5563;
+  padding: 8px 0;
+}
+
+#view-reports .mir-saved-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 160px;
+}
+
+#view-reports .mir-saved-indicator {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #4b5563;
+  padding: 8px 0;
+}
+
+#view-reports .mir-saved-indicator.is-saved {
+  color: #343f1d;
+}
+
+#view-reports .mir-saved-indicator.is-unsaved {
+  color: #6b7280;
+}
+
+#view-reports .mir-saved-time {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #6b7280;
+}
+
+#view-reports .mir-toolbar-actions-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+#view-reports .mir-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+#view-reports .mir-save-feedback {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #343f1d;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+#view-reports .mir-save-feedback.is-fading {
+  opacity: 0;
+}
+
+#view-reports .mir-save-feedback[hidden] {
+  display: none;
+}
+
+#view-reports .mir-notes-section {
+  margin-bottom: 28px;
+}
+
+#view-reports .mir-notes-section:last-child {
+  margin-bottom: 0;
+}
+
+#view-reports .mir-section-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #00205b;
+}
+
+#view-reports .mir-section-divider {
+  height: 4px;
+  background: #00205b;
+  margin: 12px 0 16px;
+}
+
+#view-reports .mir-notes-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 160px;
+  padding: 12px 14px;
+  border: 1px solid #dde3ea;
+  border-radius: 2px;
+  background: #fff;
+  color: #1f2937;
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+#view-reports .mir-notes-field:focus {
+  outline: none;
+  border-color: #00205b;
+  box-shadow: 0 0 0 1px #00205b;
+}
+
+#view-reports .mir-empty-state {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  font-style: italic;
+  color: #5c6570;
+  font-size: 0.9375rem;
+}
+
+#view-reports .mir-history-results {
+  margin-top: 4px;
+}
+
+#view-reports .mir-history-header {
+  margin-bottom: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+#view-reports .mir-history-table thead th {
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
+#view-reports .mir-history-table tbody td {
+  padding: 10px 14px;
+  vertical-align: middle;
+}
+
+#view-reports .mir-history-table th.sortable-th {
+  padding: 0;
+}
+
+#view-reports .mir-history-table .sortable-header-btn {
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
+#view-reports .mir-history-table th:nth-child(1),
+#view-reports .mir-history-table td:nth-child(1) {
+  min-width: 160px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+#view-reports .mir-history-table th:nth-child(2),
+#view-reports .mir-history-table td:nth-child(2) {
+  min-width: 88px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+#view-reports .mir-history-table th:nth-child(3),
+#view-reports .mir-history-table td:nth-child(3) {
+  min-width: 168px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#view-reports .mir-history-table th:nth-child(4),
+#view-reports .mir-history-table td:nth-child(4) {
+  min-width: 180px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#view-reports .mir-history-table .mir-history-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+#view-reports .mir-history-table .mir-history-action-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #00205b;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+#view-reports .mir-history-table .mir-history-action-btn:hover {
+  color: #001845;
+}
+
+#view-reports .mir-history-table .mir-history-action-btn:disabled,
+#view-reports .mir-history-table .mir-history-action-btn-disabled:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+#view-reports .mir-history-table .mir-history-action-btn:disabled:hover,
+#view-reports .mir-history-table .mir-history-action-btn-disabled:disabled:hover {
+  color: #9ca3af;
+}
+
+#view-reports .mir-history-table .mir-history-action-sep {
+  color: #9ca3af;
+  font-size: 0.8125rem;
+  user-select: none;
+}
+
+#view-reports .mir-history-table .mir-status-cell {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #4b5563;
+}
+
 #view-reports .aar-search-view {
   padding: 28px 32px 32px;
   font-family: Arial, Helvetica, "Segoe UI", sans-serif;

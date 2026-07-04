@@ -183,6 +183,7 @@
         <nav class="reports-subnav" aria-label="Report sections">
           <button type="button" class="reports-subtab reports-subtab-active" data-reports-tab="event-reports">Event Reports</button>
           <button type="button" class="reports-subtab" data-reports-tab="aar">After Action Reports</button>
+          <button type="button" class="reports-subtab" data-reports-tab="mir">Monthly Impact Report</button>
         </nav>
         <section id="reports-event-panel" class="content-section reports-panel">
           <div class="reports-filter-bar">
@@ -483,6 +484,110 @@
                 <button type="button" class="aar-doc-back-btn" id="aar-preview-back-events-btn">Back to Events</button>
               </div>
               <div class="aar-doc-canvas" id="aar-preview-canvas"></div>
+            </div>
+          </div>
+        </section>
+        <section id="reports-mir-panel" class="content-section mir-panel" hidden>
+          <nav id="mir-internal-nav" class="mir-internal-nav" aria-label="Monthly Impact Report sections">
+            <button type="button" class="mir-internal-tab mir-internal-tab-active" data-mir-view="draft">Draft Report</button>
+            <button type="button" class="mir-internal-tab" data-mir-view="history">History Log</button>
+          </nav>
+          <div id="mir-draft-view" class="mir-draft-view">
+            <div class="mir-report-section">
+              <div class="mir-toolbar">
+                <label class="mir-filter-field">
+                  <span class="mir-filter-label">Month</span>
+                  <select id="mir-month" class="filter-select">
+                    <option value="">Select month</option>
+                    <option value="0">January</option>
+                    <option value="1">February</option>
+                    <option value="2">March</option>
+                    <option value="3">April</option>
+                    <option value="4">May</option>
+                    <option value="5">June</option>
+                    <option value="6">July</option>
+                    <option value="7">August</option>
+                    <option value="8">September</option>
+                    <option value="9">October</option>
+                    <option value="10">November</option>
+                    <option value="11">December</option>
+                  </select>
+                </label>
+                <label class="mir-filter-field">
+                  <span class="mir-filter-label">Year</span>
+                  <select id="mir-year" class="filter-select">
+                    <option value="">Select year</option>
+                    <option value="2024">2024</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                  </select>
+                </label>
+                <div class="mir-status-field">
+                  <span class="mir-filter-label">Status</span>
+                  <span class="mir-status-value">Draft</span>
+                </div>
+                <div class="mir-saved-field">
+                  <span class="mir-filter-label">Saved</span>
+                  <div id="mir-saved-indicator" class="mir-saved-indicator" aria-live="polite">
+                    <span id="mir-saved-indicator-text">—</span>
+                    <span id="mir-saved-indicator-time" class="mir-saved-time" hidden></span>
+                  </div>
+                </div>
+                <div class="mir-toolbar-actions-wrap">
+                  <div class="mir-toolbar-actions">
+                    <button type="button" class="btn btn-secondary" id="mir-save-draft-btn" disabled>Save Draft</button>
+                    <button type="button" class="btn btn-secondary" id="mir-clear-draft-btn" disabled>Clear Draft</button>
+                    <button type="button" class="btn btn-primary" id="mir-mark-final-btn" disabled>Mark Final</button>
+                    <button type="button" class="btn btn-secondary" id="mir-export-pptx-btn" disabled>Export PowerPoint</button>
+                  </div>
+                  <p id="mir-save-feedback" class="mir-save-feedback" hidden aria-live="polite">Draft saved.</p>
+                </div>
+              </div>
+              <section class="mir-notes-section">
+                <h2 class="mir-section-title">Reach + Mission Support Notes</h2>
+                <div class="mir-section-divider" aria-hidden="true"></div>
+                <textarea class="mir-notes-field" rows="8" aria-label="Reach and Mission Support Notes"></textarea>
+              </section>
+              <section class="mir-notes-section">
+                <h2 class="mir-section-title">Manpower / Manning Notes</h2>
+                <div class="mir-section-divider" aria-hidden="true"></div>
+                <textarea class="mir-notes-field" rows="8" aria-label="Manpower and Manning Notes"></textarea>
+              </section>
+              <section class="mir-notes-section">
+                <h2 class="mir-section-title">Readiness Outcomes Notes</h2>
+                <div class="mir-section-divider" aria-hidden="true"></div>
+                <textarea class="mir-notes-field" rows="8" aria-label="Readiness Outcomes Notes"></textarea>
+              </section>
+              <section class="mir-notes-section">
+                <h2 class="mir-section-title">Command Highlights Notes</h2>
+                <div class="mir-section-divider" aria-hidden="true"></div>
+                <textarea class="mir-notes-field" rows="8" aria-label="Command Highlights Notes"></textarea>
+              </section>
+            </div>
+          </div>
+          <div id="mir-history-view" class="mir-history-view" hidden>
+            <div class="mir-report-section">
+              <h2 class="mir-section-title">MONTHLY IMPACT REPORT HISTORY</h2>
+              <div class="mir-section-divider" aria-hidden="true"></div>
+              <div class="mir-history-results">
+                <div class="mir-history-header">
+                  <span id="mir-history-count">0 reports</span>
+                </div>
+                <div class="table-wrap">
+                  <table class="events-table mir-history-table">
+                    <thead>
+                      <tr>
+                        <th>Month / Year</th>
+                        <th>Status</th>
+                        <th>Last Modified</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="mir-history-body"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </section>

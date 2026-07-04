@@ -607,6 +607,107 @@ export async function updateCommandHighlightsNotes(notes) {
   return data.notes ?? '';
 }
 
+function monthlyReportFromRow(row) {
+  return {
+    id: row.id,
+    reportMonth: row.report_month,
+    reportYear: row.report_year,
+    reachNotes: row.reach_notes ?? '',
+    manpowerNotes: row.manpower_notes ?? '',
+    readinessNotes: row.readiness_notes ?? '',
+    commandHighlightsNotes: row.command_highlights_notes ?? '',
+    status: row.status ?? 'draft',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function fetchMonthlyReport(month, year) {
+  const reportMonth = Number(month);
+  const reportYear = Number(year);
+
+  if (!Number.isFinite(reportMonth) || !Number.isFinite(reportYear)) {
+    throw new Error('INVALID_MONTHLY_REPORT_QUERY');
+  }
+
+  const { data, error } = await supabase
+    .from('monthly_reports')
+    .select('*')
+    .eq('report_month', reportMonth)
+    .eq('report_year', reportYear)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? monthlyReportFromRow(data) : null;
+}
+
+export async function fetchMonthlyReports() {
+  const { data, error } = await supabase
+    .from('monthly_reports')
+    .select('*');
+
+  if (error) throw error;
+  return (data ?? []).map(monthlyReportFromRow);
+}
+
+export async function saveMonthlyReport(data) {
+  const reportMonth = Number(data.reportMonth);
+  const reportYear = Number(data.reportYear);
+
+  if (!Number.isFinite(reportMonth) || !Number.isFinite(reportYear)) {
+    throw new Error('INVALID_MONTHLY_REPORT');
+  }
+
+  const payload = {
+    report_month: reportMonth,
+    report_year: reportYear,
+    reach_notes: data.reachNotes ?? '',
+    manpower_notes: data.manpowerNotes ?? '',
+    readiness_notes: data.readinessNotes ?? '',
+    command_highlights_notes: data.commandHighlightsNotes ?? '',
+  };
+
+  const existing = await fetchMonthlyReport(reportMonth, reportYear);
+
+  if (existing) {
+    const { data: updated, error } = await supabase
+      .from('monthly_reports')
+      .update(payload)
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return monthlyReportFromRow(updated);
+  }
+
+  const { data: inserted, error } = await supabase
+    .from('monthly_reports')
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return monthlyReportFromRow(inserted);
+}
+
+export async function deleteMonthlyReport(month, year) {
+  const reportMonth = Number(month);
+  const reportYear = Number(year);
+
+  if (!Number.isFinite(reportMonth) || !Number.isFinite(reportYear)) {
+    throw new Error('INVALID_MONTHLY_REPORT_QUERY');
+  }
+
+  const { error } = await supabase
+    .from('monthly_reports')
+    .delete()
+    .eq('report_month', reportMonth)
+    .eq('report_year', reportYear);
+
+  if (error) throw error;
+}
+
 export async function signIn(email, password) {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;

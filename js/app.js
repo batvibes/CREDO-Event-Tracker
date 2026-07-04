@@ -2,16 +2,20 @@ import {
   createTeamMember,
   deleteEventById,
   deleteEventType,
+  deleteMonthlyReport,
   deleteTeamMember,
   fetchAarGlobalTemplates,
   fetchCommandHighlightsNotes,
   fetchEventTypes,
   fetchEvents,
+  fetchMonthlyReport,
+  fetchMonthlyReports,
   fetchTeam,
   fetchTeamMembers,
   insertEvent,
   insertEventType,
   renameEventTypeInEvents,
+  saveMonthlyReport,
   updateAarGlobalTemplates,
   updateCommandHighlightsNotes,
   updateEvent,
@@ -88,6 +92,7 @@ const DEFAULT_AAR_FILTER = {
 };
 
 let aarFilterState = { ...DEFAULT_AAR_FILTER };
+let mirScreen = 'draft';
 let dataLoadGeneration = 0;
 
 const SORT_ASC = 'asc';
@@ -97,6 +102,7 @@ const eventsTableSort = { column: null, direction: SORT_ASC };
 const reportsTableSort = { column: null, direction: SORT_ASC };
 const aarTableSort = { column: null, direction: SORT_ASC };
 const aarHistoryTableSort = { column: null, direction: SORT_ASC };
+const mirHistoryTableSort = { column: null, direction: SORT_ASC };
 
 const EVENTS_TABLE_SORT_COLUMNS = [
   { key: 'date', index: 1 },
@@ -135,6 +141,32 @@ const AAR_HISTORY_TABLE_SORT_COLUMNS = [
   { key: 'cost', index: 5 },
   { key: 'lastModified', index: 6 },
 ];
+
+const MIR_HISTORY_TABLE_SORT_COLUMNS = [
+  { key: 'monthYear', index: 0 },
+  { key: 'status', index: 1 },
+  { key: 'lastModified', index: 2 },
+];
+
+const MIR_MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const MIR_STATUS_SORT_ORDER = {
+  Draft: 1,
+  Final: 2,
+};
 
 const AAR_FIELD_LABELS = {
   aarCost: 'Cost',
@@ -308,6 +340,7 @@ function applyPermissions() {
     newEventBtn.hidden = !canEditEvents();
   }
   updateAarDocumentToolbar();
+  updateMirDraftToolbar();
 }
 
 function cycleStatus(current) {
@@ -533,6 +566,16 @@ const AAR_HISTORY_SORT_COMPARATORS = {
   lastModified: (a, b) => compareTimestamps(a.updatedAt, b.updatedAt),
 };
 
+const MIR_HISTORY_SORT_COMPARATORS = {
+  monthYear: (a, b) => {
+    const yearDiff = Number(a.reportYear) - Number(b.reportYear);
+    if (yearDiff !== 0) return yearDiff;
+    return Number(a.reportMonth) - Number(b.reportMonth);
+  },
+  status: (a, b) => compareMirStatusValues(a, b),
+  lastModified: (a, b) => compareTimestamps(a.updatedAt, b.updatedAt),
+};
+
 function sortTableData(list, sortState, comparators, defaultColumn = 'date') {
   const column = sortState.column || defaultColumn;
   const direction = sortState.column ? sortState.direction : SORT_ASC;
@@ -611,11 +654,14 @@ function resetTableSortState() {
   aarTableSort.direction = SORT_ASC;
   aarHistoryTableSort.column = null;
   aarHistoryTableSort.direction = SORT_ASC;
+  mirHistoryTableSort.column = null;
+  mirHistoryTableSort.direction = SORT_ASC;
 
   refreshSortHeaderIndicators('#view-events .events-table', EVENTS_TABLE_SORT_COLUMNS, eventsTableSort);
   refreshSortHeaderIndicators('#reports-event-panel .reports-table', REPORTS_TABLE_SORT_COLUMNS, reportsTableSort);
   refreshSortHeaderIndicators('#view-reports .aar-table:not(.aar-history-table)', AAR_TABLE_SORT_COLUMNS, aarTableSort);
   refreshSortHeaderIndicators('#aar-history-view .aar-history-table', AAR_HISTORY_TABLE_SORT_COLUMNS, aarHistoryTableSort);
+  refreshSortHeaderIndicators('#mir-history-view .mir-history-table', MIR_HISTORY_TABLE_SORT_COLUMNS, mirHistoryTableSort);
 }
 
 function setupEventsTableSorting() {
@@ -651,6 +697,17 @@ function setupAarHistoryTableSorting() {
     AAR_HISTORY_TABLE_SORT_COLUMNS,
     aarHistoryTableSort,
     () => renderAarHistoryLog()
+  );
+}
+
+function setupMirHistoryTableSorting() {
+  bindSortableTableHeaders(
+    '#mir-history-view .mir-history-table',
+    MIR_HISTORY_TABLE_SORT_COLUMNS,
+    mirHistoryTableSort,
+    () => {
+      void renderMirHistoryLog();
+    }
   );
 }
 
@@ -986,17 +1043,461 @@ function switchReportsTab(tab) {
 
   document.getElementById('reports-event-panel').hidden = tab !== 'event-reports';
   document.getElementById('reports-aar-panel').hidden = tab !== 'aar';
+  document.getElementById('reports-mir-panel').hidden = tab !== 'mir';
 
   const subtitle = document.getElementById('reports-subtitle');
   if (subtitle) {
-    subtitle.textContent = tab === 'event-reports' ? 'Event Reports' : 'After Action Reports';
+    const subtitles = {
+      'event-reports': 'Event Reports',
+      aar: 'After Action Reports',
+      mir: 'Monthly Impact Report',
+    };
+    subtitle.textContent = subtitles[tab] ?? 'Reports';
   }
 
   if (tab === 'event-reports') {
     renderReports();
   } else if (tab === 'aar') {
     renderAarSearch();
+  } else if (tab === 'mir') {
+    renderMirReport();
   }
+}
+
+function updateMirInternalNav() {
+  document.querySelectorAll('.mir-internal-tab').forEach((btn) => {
+    btn.classList.toggle('mir-internal-tab-active', btn.dataset.mirView === mirScreen);
+  });
+}
+
+function updateMirScreen() {
+  const draftView = document.getElementById('mir-draft-view');
+  const historyView = document.getElementById('mir-history-view');
+  if (!draftView || !historyView) return;
+
+  draftView.hidden = mirScreen !== 'draft';
+  historyView.hidden = mirScreen !== 'history';
+}
+
+function switchMirView(view) {
+  if (view !== 'draft' && view !== 'history') return;
+
+  mirScreen = view;
+  updateMirInternalNav();
+  updateMirScreen();
+
+  if (view === 'draft') {
+    setupMirDraft();
+    updateMirDraftToolbar();
+    loadMirDraftForSelection();
+  } else if (view === 'history') {
+    void renderMirHistoryLog();
+  }
+}
+
+function setupMirInternalNav() {
+  document.querySelectorAll('.mir-internal-tab').forEach((btn) => {
+    if (btn.dataset.mirNavBound === 'true') return;
+    btn.dataset.mirNavBound = 'true';
+    btn.addEventListener('click', () => {
+      switchMirView(btn.dataset.mirView);
+    });
+  });
+  updateMirInternalNav();
+  updateMirScreen();
+}
+
+function renderMirReport() {
+  updateMirInternalNav();
+  updateMirScreen();
+  if (mirScreen === 'draft') {
+    setupMirDraft();
+    updateMirDraftToolbar();
+    loadMirDraftForSelection();
+  } else if (mirScreen === 'history') {
+    void renderMirHistoryLog();
+  }
+}
+
+function compareMirStatusValues(a, b) {
+  const left = MIR_STATUS_SORT_ORDER[formatMirStatus(a.status)] ?? 99;
+  const right = MIR_STATUS_SORT_ORDER[formatMirStatus(b.status)] ?? 99;
+  return left - right;
+}
+
+function formatMirMonthYear(report) {
+  const month = Number(report?.reportMonth);
+  const year = Number(report?.reportYear);
+  if (!Number.isFinite(month) || !Number.isFinite(year)) return TBD;
+  const name = MIR_MONTH_NAMES[month];
+  if (!name) return TBD;
+  return `${name} ${year}`;
+}
+
+function formatMirStatus(status) {
+  const value = String(status ?? 'draft').trim();
+  if (!value) return 'Draft';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getMirNotesFields() {
+  return [...document.querySelectorAll('#mir-draft-view .mir-notes-field')];
+}
+
+function getMirSelectedMonthYear() {
+  return {
+    month: document.getElementById('mir-month')?.value ?? '',
+    year: document.getElementById('mir-year')?.value ?? '',
+  };
+}
+
+function mirSelectionComplete() {
+  const { month, year } = getMirSelectedMonthYear();
+  return month !== '' && year !== '';
+}
+
+function clearMirDraftForm() {
+  getMirNotesFields().forEach((field) => {
+    field.value = '';
+  });
+
+  const statusEl = document.querySelector('#mir-draft-view .mir-status-value');
+  if (statusEl) statusEl.textContent = 'Draft';
+
+  updateMirSavedIndicator(null);
+}
+
+function updateMirSavedIndicator(report) {
+  const textEl = document.getElementById('mir-saved-indicator-text');
+  const timeEl = document.getElementById('mir-saved-indicator-time');
+  const indicatorEl = document.getElementById('mir-saved-indicator');
+  if (!textEl || !timeEl) return;
+
+  if (!mirSelectionComplete()) {
+    textEl.textContent = '—';
+    timeEl.hidden = true;
+    timeEl.textContent = '';
+    indicatorEl?.classList.remove('is-saved', 'is-unsaved');
+    return;
+  }
+
+  if (report) {
+    textEl.textContent = 'Draft saved';
+    const savedAt = report.updatedAt || report.createdAt;
+    if (savedAt) {
+      timeEl.textContent = `Last saved: ${formatTimestamp(savedAt)}`;
+      timeEl.hidden = false;
+    } else {
+      timeEl.hidden = true;
+      timeEl.textContent = '';
+    }
+    indicatorEl?.classList.add('is-saved');
+    indicatorEl?.classList.remove('is-unsaved');
+    return;
+  }
+
+  textEl.textContent = 'No saved draft yet';
+  timeEl.hidden = true;
+  timeEl.textContent = '';
+  indicatorEl?.classList.add('is-unsaved');
+  indicatorEl?.classList.remove('is-saved');
+}
+
+function applyMirReportToForm(report) {
+  const fields = getMirNotesFields();
+  if (fields.length >= 4) {
+    fields[0].value = report.reachNotes ?? '';
+    fields[1].value = report.manpowerNotes ?? '';
+    fields[2].value = report.readinessNotes ?? '';
+    fields[3].value = report.commandHighlightsNotes ?? '';
+  }
+
+  const statusEl = document.querySelector('#mir-draft-view .mir-status-value');
+  if (statusEl) statusEl.textContent = formatMirStatus(report.status);
+
+  updateMirSavedIndicator(report);
+}
+
+function updateMirDraftToolbar() {
+  const canEdit = mirSelectionComplete() && canEditEvents();
+  const saveBtn = document.getElementById('mir-save-draft-btn');
+  if (saveBtn) {
+    saveBtn.disabled = !canEdit;
+  }
+
+  const clearBtn = document.getElementById('mir-clear-draft-btn');
+  if (clearBtn) {
+    clearBtn.disabled = !canEdit;
+  }
+}
+
+let mirSaveFeedbackTimer = null;
+
+function showMirSaveSuccessFeedback() {
+  const el = document.getElementById('mir-save-feedback');
+  if (!el) return;
+
+  if (mirSaveFeedbackTimer) {
+    clearTimeout(mirSaveFeedbackTimer);
+    mirSaveFeedbackTimer = null;
+  }
+
+  el.hidden = false;
+  el.classList.remove('is-fading');
+
+  mirSaveFeedbackTimer = setTimeout(() => {
+    el.classList.add('is-fading');
+    mirSaveFeedbackTimer = setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove('is-fading');
+      mirSaveFeedbackTimer = null;
+    }, 400);
+  }, 3000);
+}
+
+async function loadMirDraftForSelection() {
+  updateMirDraftToolbar();
+
+  if (!mirSelectionComplete()) {
+    clearMirDraftForm();
+    return;
+  }
+
+  const { month, year } = getMirSelectedMonthYear();
+
+  try {
+    const report = await fetchMonthlyReport(Number(month), Number(year));
+    if (report) {
+      applyMirReportToForm(report);
+    } else {
+      clearMirDraftForm();
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Failed to load monthly report.');
+  }
+}
+
+async function saveMirDraft() {
+  console.log('[saveMirDraft] entered');
+  const fields = getMirNotesFields();
+  const { month, year } = getMirSelectedMonthYear();
+  console.log('[saveMirDraft] month:', month);
+  console.log('[saveMirDraft] year:', year);
+  console.log('[saveMirDraft] canEditEvents():', canEditEvents());
+
+  try {
+    console.log('[saveMirDraft] before saveMonthlyReport()');
+    const saved = await saveMonthlyReport({
+      reportMonth: Number(month),
+      reportYear: Number(year),
+      reachNotes: fields[0]?.value ?? '',
+      manpowerNotes: fields[1]?.value ?? '',
+      readinessNotes: fields[2]?.value ?? '',
+      commandHighlightsNotes: fields[3]?.value ?? '',
+    });
+    console.log('[saveMirDraft] after saveMonthlyReport() returns', saved);
+    applyMirReportToForm(saved);
+    updateMirDraftToolbar();
+    showMirSaveSuccessFeedback();
+  } catch (err) {
+    console.log('[saveMirDraft] caught error:', err);
+    console.error(err);
+    alert('Failed to save monthly report draft.');
+  }
+}
+
+async function clearMirDraft() {
+  if (!mirSelectionComplete() || !canEditEvents()) return;
+
+  const confirmed = confirm(
+    'Are you sure you want to clear this monthly report draft?'
+  );
+  if (!confirmed) return;
+
+  const { month, year } = getMirSelectedMonthYear();
+
+  try {
+    await deleteMonthlyReport(Number(month), Number(year));
+    clearMirDraftForm();
+    updateMirDraftToolbar();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to clear monthly report draft.');
+  }
+}
+
+function setupMirDraft() {
+  const monthEl = document.getElementById('mir-month');
+  const yearEl = document.getElementById('mir-year');
+  const saveBtn = document.getElementById('mir-save-draft-btn');
+  const clearBtn = document.getElementById('mir-clear-draft-btn');
+
+  if (monthEl && monthEl.dataset.mirDraftBound !== 'true') {
+    monthEl.dataset.mirDraftBound = 'true';
+    monthEl.addEventListener('change', () => {
+      loadMirDraftForSelection();
+    });
+  }
+
+  if (yearEl && yearEl.dataset.mirDraftBound !== 'true') {
+    yearEl.dataset.mirDraftBound = 'true';
+    yearEl.addEventListener('change', () => {
+      loadMirDraftForSelection();
+    });
+  }
+
+  if (saveBtn && saveBtn.dataset.mirDraftBound !== 'true') {
+    saveBtn.dataset.mirDraftBound = 'true';
+    saveBtn.addEventListener('click', () => {
+      void saveMirDraft();
+    });
+  }
+
+  if (clearBtn && clearBtn.dataset.mirDraftBound !== 'true') {
+    clearBtn.dataset.mirDraftBound = 'true';
+    clearBtn.addEventListener('click', () => {
+      void clearMirDraft();
+    });
+  }
+
+  updateMirDraftToolbar();
+}
+
+async function editMirReportFromHistory(report) {
+  if (!report) return;
+
+  const monthEl = document.getElementById('mir-month');
+  const yearEl = document.getElementById('mir-year');
+  if (!monthEl || !yearEl) return;
+
+  monthEl.value = String(report.reportMonth);
+  yearEl.value = String(report.reportYear);
+
+  switchMirView('draft');
+}
+
+async function deleteMirReportFromHistory(report) {
+  if (!report || !canEditEvents()) return;
+
+  const confirmed = confirm(
+    `Are you sure you want to delete the monthly report for ${formatMirMonthYear(report)}?`
+  );
+  if (!confirmed) return;
+
+  try {
+    await deleteMonthlyReport(report.reportMonth, report.reportYear);
+    await renderMirHistoryLog();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to delete monthly report.');
+  }
+}
+
+async function renderMirHistoryLog() {
+  const tbody = document.getElementById('mir-history-body');
+  const countEl = document.getElementById('mir-history-count');
+  if (!tbody || !countEl) return;
+
+  tbody.innerHTML = '<tr><td colspan="4"><div class="mir-empty-state">Loading monthly reports…</div></td></tr>';
+
+  let reports = [];
+  try {
+    reports = await fetchMonthlyReports();
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML =
+      '<tr><td colspan="4"><div class="mir-empty-state">Failed to load monthly reports.</div></td></tr>';
+    countEl.textContent = '0 reports';
+    return;
+  }
+
+  countEl.textContent = `${reports.length} report${reports.length === 1 ? '' : 's'}`;
+
+  if (reports.length === 0) {
+    tbody.innerHTML =
+      '<tr><td colspan="4"><div class="mir-empty-state">No Monthly Reports yet.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+
+  const sorted = sortTableData(
+    reports,
+    mirHistoryTableSort,
+    MIR_HISTORY_SORT_COMPARATORS,
+    'monthYear'
+  );
+
+  sorted.forEach((report) => {
+    const row = document.createElement('tr');
+
+    const monthYearCell = document.createElement('td');
+    monthYearCell.textContent = formatMirMonthYear(report);
+    row.appendChild(monthYearCell);
+
+    const statusCell = document.createElement('td');
+    statusCell.className = 'mir-status-cell';
+    statusCell.textContent = formatMirStatus(report.status);
+    row.appendChild(statusCell);
+
+    const modifiedCell = document.createElement('td');
+    modifiedCell.textContent = formatTimestamp(report.updatedAt);
+    row.appendChild(modifiedCell);
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'mir-history-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'mir-history-action-btn mir-history-action-btn-disabled';
+    openBtn.textContent = 'Open';
+    openBtn.disabled = true;
+    openBtn.title = 'Open will be available after PowerPoint export is implemented.';
+    openBtn.setAttribute(
+      'aria-label',
+      'Open will be available after PowerPoint export is implemented.'
+    );
+    actionsCell.appendChild(openBtn);
+
+    const editSep = document.createElement('span');
+    editSep.className = 'mir-history-action-sep';
+    editSep.textContent = '|';
+    actionsCell.appendChild(editSep);
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'mir-history-action-btn';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => {
+      void editMirReportFromHistory(report);
+    });
+    actionsCell.appendChild(editBtn);
+
+    if (canEditEvents()) {
+      const deleteSep = document.createElement('span');
+      deleteSep.className = 'mir-history-action-sep';
+      deleteSep.textContent = '|';
+      actionsCell.appendChild(deleteSep);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'mir-history-action-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => {
+        void deleteMirReportFromHistory(report);
+      });
+      actionsCell.appendChild(deleteBtn);
+    }
+
+    row.appendChild(actionsCell);
+    tbody.appendChild(row);
+  });
+}
+
+function setupMirHistoryLog() {
+  setupMirHistoryTableSorting();
+  void renderMirHistoryLog();
 }
 
 function updateAarInternalNav() {
@@ -3119,6 +3620,8 @@ function render() {
       renderReports();
     } else if (reportsTab === 'aar') {
       renderAarSearch();
+    } else if (reportsTab === 'mir') {
+      renderMirReport();
     }
   } else if (currentView === 'team') {
     renderTeam();
@@ -3357,6 +3860,7 @@ async function loadAllData() {
 
 export async function refreshApp() {
   await loadAllData();
+  setupMirDraft();
   applyPermissions();
   render();
 }
@@ -3370,6 +3874,9 @@ export async function initApp() {
   setupReportsSubnav();
   setupAarSearch();
   setupAarHistoryLog();
+  setupMirInternalNav();
+  setupMirDraft();
+  setupMirHistoryLog();
   setupModal();
   applyPermissions();
   switchView('events');
