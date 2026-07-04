@@ -255,6 +255,10 @@
           </div>
         </section>
         <section id="reports-aar-panel" class="content-section aar-panel" hidden>
+          <nav id="aar-internal-nav" class="aar-internal-nav" aria-label="After Action Report sections">
+            <button type="button" class="aar-internal-tab aar-internal-tab-active" data-aar-view="search">Find Events</button>
+            <button type="button" class="aar-internal-tab" data-aar-view="history">AAR History Log</button>
+          </nav>
           <div id="aar-search-view" class="aar-search-view">
           <div class="aar-report-section">
             <h2 class="aar-section-title">FIND EVENTS</h2>
@@ -328,13 +332,39 @@
             </div>
           </div>
           </div>
+          <div id="aar-history-view" class="aar-history-view" hidden>
+            <div class="aar-report-section">
+              <h2 class="aar-section-title">AAR HISTORY LOG</h2>
+              <div class="aar-section-divider" aria-hidden="true"></div>
+              <div class="aar-results">
+                <div class="aar-results-header">
+                  <span id="aar-history-count">0 reports</span>
+                </div>
+                <div class="table-wrap">
+                  <table class="events-table aar-table aar-history-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Sequence Number</th>
+                        <th>Event Type</th>
+                        <th>Command</th>
+                        <th>Location</th>
+                        <th>Cost</th>
+                        <th>Last Modified</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="aar-history-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
           <div id="aar-document-view" class="aar-document-view" hidden>
             <div id="aar-builder-view">
               <div class="aar-doc-toolbar aar-doc-toolbar-builder">
                 <button type="button" class="aar-doc-back-btn" id="aar-back-btn">← Back to Events</button>
-                <div class="aar-doc-toolbar-actions">
-                  <button type="button" class="aar-doc-back-btn" id="aar-preview-btn">Preview AAR</button>
-                </div>
+                <div class="aar-doc-toolbar-actions"></div>
               </div>
               <div class="aar-doc-canvas">
               <article class="aar-report aar-document" id="aar-report-article">
@@ -442,6 +472,9 @@
                   </p>
                 </footer>
               </article>
+              <div class="aar-doc-confirm-bar" id="aar-doc-confirm-bar">
+                <button type="button" class="aar-doc-back-btn" id="aar-preview-btn">Confirm</button>
+              </div>
               </div>
             </div>
             <div id="aar-preview-view" class="aar-preview-view" hidden>
@@ -476,6 +509,32 @@
       </div>
     </main>
   </div>
+
+  <dialog class="modal" id="aar-audit-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="aar-audit-modal-title">AAR Audit History</h3>
+        <button type="button" class="modal-close" id="aar-audit-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body aar-audit-modal-body">
+        <div class="table-wrap">
+          <table class="events-table aar-audit-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="aar-audit-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="aar-audit-modal-close-btn">Close</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog class="modal" id="new-event-modal">
     <form method="dialog" class="modal-content" id="new-event-form">

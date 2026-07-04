@@ -43,7 +43,60 @@ export function eventFromRow(row) {
     aarFinalized: booleanFromDb(row.aar_finalized),
     aarFinalizedAt: row.aar_finalized_at ?? null,
     aarSequenceNumber: row.aar_sequence_number == null ? '' : String(row.aar_sequence_number),
+    updatedAt: row.updated_at ?? null,
   };
+}
+
+function aarAuditEntryFromRow(row) {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    action: row.action,
+    details: row.details ?? '',
+    createdAt: row.created_at,
+    createdBy: row.created_by ?? null,
+  };
+}
+
+export async function insertAarAuditEntry(eventId, action, details = null) {
+  if (!eventId || !action) {
+    throw new Error('INVALID_AAR_AUDIT_ENTRY');
+  }
+
+  const userId = await getUserId();
+  const payload = {
+    event_id: eventId,
+    action,
+    created_by: userId,
+  };
+
+  if (details != null && String(details).trim() !== '') {
+    payload.details = String(details).trim();
+  }
+
+  const { data, error } = await supabase
+    .from('aar_audit_log')
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return aarAuditEntryFromRow(data);
+}
+
+export async function fetchAarAuditLog(eventId) {
+  if (!eventId) {
+    throw new Error('INVALID_EVENT_ID');
+  }
+
+  const { data, error } = await supabase
+    .from('aar_audit_log')
+    .select('id, event_id, action, details, created_at, created_by')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(aarAuditEntryFromRow);
 }
 
 function resolveEventDates(event) {

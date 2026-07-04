@@ -18,6 +18,8 @@ import {
   updateEventAarFields,
   clearEventAar,
   finalizeEventAar,
+  fetchAarAuditLog,
+  insertAarAuditEntry,
   updateEventType,
   updateTeamMember,
 } from './db.js';
@@ -94,6 +96,7 @@ const SORT_DESC = 'desc';
 const eventsTableSort = { column: null, direction: SORT_ASC };
 const reportsTableSort = { column: null, direction: SORT_ASC };
 const aarTableSort = { column: null, direction: SORT_ASC };
+const aarHistoryTableSort = { column: null, direction: SORT_ASC };
 
 const EVENTS_TABLE_SORT_COLUMNS = [
   { key: 'date', index: 1 },
@@ -122,6 +125,23 @@ const AAR_TABLE_SORT_COLUMNS = [
   { key: 'location', index: 3 },
   { key: 'status', index: 4 },
 ];
+
+const AAR_HISTORY_TABLE_SORT_COLUMNS = [
+  { key: 'date', index: 0 },
+  { key: 'sequenceNumber', index: 1 },
+  { key: 'eventType', index: 2 },
+  { key: 'command', index: 3 },
+  { key: 'location', index: 4 },
+  { key: 'cost', index: 5 },
+  { key: 'lastModified', index: 6 },
+];
+
+const AAR_FIELD_LABELS = {
+  aarCost: 'Cost',
+  aarAttire: 'Attire',
+  aarTravelTime: 'Travel Time',
+  aarLessonsLearned: 'Lessons Learned',
+};
 
 const AAR_STATUS_SORT_ORDER = {
   'Not Started': 0,
@@ -161,6 +181,55 @@ function formatDisplayDate(isoDate) {
   const day = String(date.getDate()).padStart(2, '0');
   const year = String(date.getFullYear()).slice(-2);
   return `${month}/${day}/${year}`;
+}
+
+function formatTimestamp(isoString) {
+  if (!isoString) return TBD;
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return TBD;
+  return date.toLocaleString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function parseAarCostNumber(value) {
+  if (!hasAarFieldData(value)) return null;
+  const num = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(num) ? num : null;
+}
+
+function formatAarCost(value) {
+  if (!hasAarFieldData(value)) return TBD;
+  const num = parseAarCostNumber(value);
+  if (num != null) {
+    const formatted = num.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `$${formatted}`;
+  }
+  return String(value).trim();
+}
+
+function compareTimestamps(aVal, bVal) {
+  const left = aVal ? new Date(aVal).getTime() : 0;
+  const right = bVal ? new Date(bVal).getTime() : 0;
+  return left - right;
+}
+
+async function logAarAudit(eventId, action, details = null) {
+  if (!eventId || !action) return;
+
+  try {
+    await insertAarAuditEntry(eventId, action, details);
+  } catch (err) {
+    console.error('Failed to log AAR audit entry:', err);
+  }
 }
 
 function formatEventDateDisplay(event) {
@@ -447,6 +516,23 @@ const AAR_SORT_COMPARATORS = {
   status: compareAarStatusValues,
 };
 
+const AAR_HISTORY_SORT_COMPARATORS = {
+  date: compareEventDates,
+  sequenceNumber: (a, b) => compareTextValues(a.aarSequenceNumber, b.aarSequenceNumber),
+  eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
+  command: (a, b) => compareWithTbdLast(a.command, b.command),
+  location: (a, b) => compareWithTbdLast(a.location, b.location),
+  cost: (a, b) => {
+    const left = parseAarCostNumber(a.aarCost);
+    const right = parseAarCostNumber(b.aarCost);
+    if (left == null && right == null) return 0;
+    if (left == null) return 1;
+    if (right == null) return -1;
+    return left - right;
+  },
+  lastModified: (a, b) => compareTimestamps(a.updatedAt, b.updatedAt),
+};
+
 function sortTableData(list, sortState, comparators, defaultColumn = 'date') {
   const column = sortState.column || defaultColumn;
   const direction = sortState.column ? sortState.direction : SORT_ASC;
@@ -523,10 +609,13 @@ function resetTableSortState() {
   reportsTableSort.direction = SORT_ASC;
   aarTableSort.column = null;
   aarTableSort.direction = SORT_ASC;
+  aarHistoryTableSort.column = null;
+  aarHistoryTableSort.direction = SORT_ASC;
 
   refreshSortHeaderIndicators('#view-events .events-table', EVENTS_TABLE_SORT_COLUMNS, eventsTableSort);
   refreshSortHeaderIndicators('#reports-event-panel .reports-table', REPORTS_TABLE_SORT_COLUMNS, reportsTableSort);
-  refreshSortHeaderIndicators('#view-reports .aar-table', AAR_TABLE_SORT_COLUMNS, aarTableSort);
+  refreshSortHeaderIndicators('#view-reports .aar-table:not(.aar-history-table)', AAR_TABLE_SORT_COLUMNS, aarTableSort);
+  refreshSortHeaderIndicators('#aar-history-view .aar-history-table', AAR_HISTORY_TABLE_SORT_COLUMNS, aarHistoryTableSort);
 }
 
 function setupEventsTableSorting() {
@@ -549,10 +638,19 @@ function setupReportsTableSorting() {
 
 function setupAarTableSorting() {
   bindSortableTableHeaders(
-    '#view-reports .aar-table',
+    '#view-reports .aar-table:not(.aar-history-table)',
     AAR_TABLE_SORT_COLUMNS,
     aarTableSort,
     () => renderAarResultsTable()
+  );
+}
+
+function setupAarHistoryTableSorting() {
+  bindSortableTableHeaders(
+    '#aar-history-view .aar-history-table',
+    AAR_HISTORY_TABLE_SORT_COLUMNS,
+    aarHistoryTableSort,
+    () => renderAarHistoryLog()
   );
 }
 
@@ -901,15 +999,60 @@ function switchReportsTab(tab) {
   }
 }
 
+function updateAarInternalNav() {
+  document.querySelectorAll('.aar-internal-tab').forEach((btn) => {
+    const view = btn.dataset.aarView;
+    const isActive = (view === 'search' || view === 'history') && view === aarScreen;
+    btn.classList.toggle('aar-internal-tab-active', isActive);
+  });
+}
+
+function switchAarView(view) {
+  if (view !== 'search' && view !== 'history') return;
+
+  if (aarScreen === 'search') {
+    captureAarFilterState();
+  }
+
+  aarScreen = view;
+  updateAarInternalNav();
+  updateAarScreen();
+
+  if (view === 'search') {
+    renderAarResultsTable();
+  } else if (view === 'history') {
+    renderAarHistoryLog();
+  }
+}
+
+function setupAarInternalNav() {
+  document.querySelectorAll('.aar-internal-tab').forEach((btn) => {
+    if (btn.dataset.aarNavBound === 'true') return;
+    btn.dataset.aarNavBound = 'true';
+    btn.addEventListener('click', () => {
+      switchAarView(btn.dataset.aarView);
+    });
+  });
+  updateAarInternalNav();
+}
+
 function updateAarScreen() {
+  const internalNav = document.getElementById('aar-internal-nav');
   const searchView = document.getElementById('aar-search-view');
+  const historyView = document.getElementById('aar-history-view');
   const documentView = document.getElementById('aar-document-view');
   const builderView = document.getElementById('aar-builder-view');
   const previewView = document.getElementById('aar-preview-view');
   if (!searchView || !documentView) return;
 
+  const onListView = aarScreen === 'search' || aarScreen === 'history';
+
+  if (internalNav) {
+    internalNav.hidden = !onListView;
+  }
   searchView.hidden = aarScreen !== 'search';
-  documentView.hidden = aarScreen === 'search';
+  if (historyView) historyView.hidden = aarScreen !== 'history';
+  documentView.hidden = onListView;
   if (builderView) builderView.hidden = aarScreen !== 'document';
   if (previewView) previewView.hidden = aarScreen !== 'preview';
 }
@@ -922,6 +1065,7 @@ function openAarPreview() {
   updateAarPreviewToolbar();
   aarScreen = 'preview';
   updateAarScreen();
+  logAarAudit(event.id, 'Preview Viewed');
 }
 
 function closeAarPreview() {
@@ -968,6 +1112,7 @@ function closeAarDocument() {
   aarFinalEditEnabled = false;
   aarScreen = 'search';
   updateAarScreen();
+  updateAarInternalNav();
 }
 
 function getEventTypeTemplate(eventTypeName) {
@@ -1155,12 +1300,14 @@ function applyAarEventPatch(eventId, patch) {
 function syncAarDraftFieldsToEvent(eventId, saved) {
   if (!eventId || !saved) return;
 
-  applyAarEventPatch(eventId, {
+  const patch = {
     aarCost: saved.aarCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
     aarLessonsLearned: saved.aarLessonsLearned,
-  });
+  };
+  if (saved.updatedAt) patch.updatedAt = saved.updatedAt;
+  applyAarEventPatch(eventId, patch);
 }
 
 function syncAarFinalizeToEvent(eventId, saved) {
@@ -1174,6 +1321,7 @@ function syncAarFinalizeToEvent(eventId, saved) {
     aarFinalized: saved.aarFinalized === true,
     aarFinalizedAt: saved.aarFinalizedAt ?? null,
     aarSequenceNumber: saved.aarSequenceNumber == null ? '' : String(saved.aarSequenceNumber),
+    updatedAt: saved.updatedAt ?? null,
   });
 }
 
@@ -1184,9 +1332,22 @@ async function saveAarEditableField(event, fieldKey, inputEl) {
   const oldValue = String(event[fieldKey] ?? '').trim();
   if (newValue === oldValue) return;
 
+  const wasNotStarted = getAarStatus(event) === 'Not Started';
+  const wasFinalEdit = isAarFinalized(event) && aarFinalEditEnabled;
+
   try {
     const saved = await updateEventAarFields(event.id, { [fieldKey]: newValue });
     syncAarDraftFieldsToEvent(event.id, saved);
+    if (saved.updatedAt) {
+      applyAarEventPatch(event.id, { updatedAt: saved.updatedAt });
+    }
+
+    if (wasNotStarted) {
+      logAarAudit(event.id, 'Draft Created');
+    } else if (wasFinalEdit) {
+      const fieldLabel = AAR_FIELD_LABELS[fieldKey] ?? fieldKey;
+      logAarAudit(event.id, 'Final Saved', `Updated ${fieldLabel}`);
+    }
   } catch (err) {
     console.error(err);
     inputEl.value = oldValue;
@@ -1291,6 +1452,7 @@ function syncAarClearToEvent(eventId, saved) {
     aarFinalized: saved.aarFinalized === true,
     aarFinalizedAt: saved.aarFinalizedAt ?? null,
     aarSequenceNumber: saved.aarSequenceNumber == null ? '' : String(saved.aarSequenceNumber),
+    updatedAt: saved.updatedAt ?? null,
   });
 }
 
@@ -1306,6 +1468,7 @@ async function clearAarFromSearch(event) {
     const saved = await clearEventAar(event.id);
     syncAarClearToEvent(event.id, saved);
     syncAarStateAfterDataLoad();
+    logAarAudit(event.id, 'Draft Cleared');
 
     if (aarDocumentEventId === event.id) {
       aarFinalEditEnabled = false;
@@ -1328,7 +1491,7 @@ async function clearAarFromSearch(event) {
   }
 }
 
-function openAarDocumentForFinalEdit(event) {
+async function openAarDocumentForFinalEdit(event) {
   if (!canEditEvents() || !event || !isAarFinalized(event)) return;
 
   const confirmed = confirm(
@@ -1344,6 +1507,7 @@ function openAarDocumentForFinalEdit(event) {
   updateAarScreen();
   updateAarDocumentToolbar();
   updateAarPreviewToolbar();
+  await logAarAudit(event.id, 'Final Edited', 'Final AAR opened for editing.');
 }
 
 function setupAarDocumentToolbar() {
@@ -1432,6 +1596,11 @@ async function markAarFinal() {
     const saved = await finalizeEventAar(event.id);
     syncAarFinalizeToEvent(event.id, saved);
     syncAarStateAfterDataLoad();
+    logAarAudit(
+      event.id,
+      'Finalized',
+      saved.aarSequenceNumber ? `Sequence number ${saved.aarSequenceNumber}` : null
+    );
     const refreshed = events.find((entry) => entry.id === aarDocumentEventId);
     if (refreshed) {
       populateAarDocument(refreshed);
@@ -1442,6 +1611,9 @@ async function markAarFinal() {
       updateAarPreviewToolbar();
       if (aarSearchRan) {
         renderAarResultsTable();
+      }
+      if (reportsTab === 'aar' && aarScreen === 'history' && currentView === 'reports') {
+        renderAarHistoryLog();
       }
     }
   } catch (err) {
@@ -1485,6 +1657,10 @@ async function resetAarDraft() {
       aarLessonsLearned: '',
     });
     syncAarDraftFieldsToEvent(event.id, saved);
+    if (saved.updatedAt) {
+      applyAarEventPatch(event.id, { updatedAt: saved.updatedAt });
+    }
+    logAarAudit(event.id, 'Draft Reset');
     const refreshed = events.find((entry) => entry.id === aarDocumentEventId);
     if (refreshed) {
       populateAarDocument(refreshed);
@@ -1792,18 +1968,209 @@ function setupAarSearch() {
   setupAarDocumentToolbar();
   setupAarPreviewToolbar();
   setupAarTableSorting();
+  setupAarInternalNav();
 
   updateAarScreen();
+  updateAarInternalNav();
   restoreAarDocumentIfOpen();
-  renderAarResultsTable();
+  if (aarScreen === 'history') {
+    renderAarHistoryLog();
+  } else {
+    renderAarResultsTable();
+  }
 }
 
 function renderAarSearch() {
   populateAarFilterOptions();
   updateAarFilterState();
   updateAarScreen();
+  updateAarInternalNav();
   restoreAarDocumentIfOpen();
-  renderAarResultsTable();
+  if (aarScreen === 'history') {
+    renderAarHistoryLog();
+  } else if (aarScreen === 'search') {
+    renderAarResultsTable();
+  }
+}
+
+function getFinalizedAarEvents() {
+  return events.filter((event) => isAarFinalized(event));
+}
+
+function openAarFromHistory(event) {
+  if (!event) return;
+  openAarDocument(event);
+}
+
+function renderAarHistoryLog() {
+  const tbody = document.getElementById('aar-history-body');
+  const countEl = document.getElementById('aar-history-count');
+  if (!tbody || !countEl) return;
+
+  const finalized = getFinalizedAarEvents();
+  countEl.textContent = `${finalized.length} report${finalized.length === 1 ? '' : 's'}`;
+
+  if (finalized.length === 0) {
+    tbody.innerHTML =
+      '<tr><td colspan="8"><div class="aar-empty-state">No finalized AARs yet.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+
+  const sorted = sortTableData(finalized, aarHistoryTableSort, AAR_HISTORY_SORT_COMPARATORS);
+
+  sorted.forEach((event) => {
+    const row = document.createElement('tr');
+
+    const dateCell = document.createElement('td');
+    dateCell.textContent = formatEventDateDisplay(event);
+    row.appendChild(dateCell);
+
+    const sequenceCell = document.createElement('td');
+    sequenceCell.textContent = getAarSequenceNumber(event) || TBD;
+    row.appendChild(sequenceCell);
+
+    const typeCell = document.createElement('td');
+    typeCell.textContent = event.eventType;
+    row.appendChild(typeCell);
+
+    const commandCell = document.createElement('td');
+    commandCell.textContent = displayValue(event.command, 'command');
+    row.appendChild(commandCell);
+
+    const locationCell = document.createElement('td');
+    locationCell.textContent = displayValue(event.location, 'location');
+    row.appendChild(locationCell);
+
+    const costCell = document.createElement('td');
+    costCell.textContent = formatAarCost(event.aarCost);
+    row.appendChild(costCell);
+
+    const modifiedCell = document.createElement('td');
+    modifiedCell.textContent = formatTimestamp(event.updatedAt);
+    row.appendChild(modifiedCell);
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'aar-action-cell aar-history-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'aar-history-action-btn';
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', () => {
+      openAarFromHistory(event);
+    });
+    actionsCell.appendChild(openBtn);
+
+    if (canEditEvents()) {
+      const editSep = document.createElement('span');
+      editSep.className = 'aar-history-action-sep';
+      editSep.textContent = '|';
+      actionsCell.appendChild(editSep);
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'aar-history-action-btn';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => {
+        openAarDocumentForFinalEdit(event);
+      });
+      actionsCell.appendChild(editBtn);
+    }
+
+    const historySep = document.createElement('span');
+    historySep.className = 'aar-history-action-sep';
+    historySep.textContent = '|';
+    actionsCell.appendChild(historySep);
+
+    const historyBtn = document.createElement('button');
+    historyBtn.type = 'button';
+    historyBtn.className = 'aar-history-action-btn';
+    historyBtn.textContent = 'History';
+    historyBtn.addEventListener('click', () => {
+      openAarAuditModal(event);
+    });
+    actionsCell.appendChild(historyBtn);
+
+    row.appendChild(actionsCell);
+
+    tbody.appendChild(row);
+  });
+}
+
+async function openAarAuditModal(event) {
+  const modal = document.getElementById('aar-audit-modal');
+  const title = document.getElementById('aar-audit-modal-title');
+  const tbody = document.getElementById('aar-audit-body');
+  if (!modal || !title || !tbody || !event) return;
+
+  const sequence = getAarSequenceNumber(event);
+  title.textContent = sequence
+    ? `AAR Audit History — ${sequence}`
+    : 'AAR Audit History';
+
+  tbody.innerHTML = '<tr><td colspan="3">Loading audit history…</td></tr>';
+  modal.showModal();
+
+  try {
+    const entries = await fetchAarAuditLog(event.id);
+
+    if (entries.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="3"><div class="aar-empty-state">No audit history recorded.</div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+
+    entries.forEach((entry) => {
+      const row = document.createElement('tr');
+
+      const timestampCell = document.createElement('td');
+      timestampCell.textContent = formatTimestamp(entry.createdAt);
+      row.appendChild(timestampCell);
+
+      const actionCell = document.createElement('td');
+      actionCell.textContent = entry.action;
+      row.appendChild(actionCell);
+
+      const detailsCell = document.createElement('td');
+      detailsCell.textContent = entry.details ? entry.details : '—';
+      row.appendChild(detailsCell);
+
+      tbody.appendChild(row);
+    });
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML =
+      '<tr><td colspan="3"><div class="aar-empty-state">Failed to load audit history.</div></td></tr>';
+  }
+}
+
+function closeAarAuditModal() {
+  const modal = document.getElementById('aar-audit-modal');
+  if (modal?.open) modal.close();
+}
+
+function setupAarAuditModal() {
+  const modal = document.getElementById('aar-audit-modal');
+  if (!modal || modal.dataset.aarAuditBound === 'true') return;
+
+  modal.dataset.aarAuditBound = 'true';
+
+  document.getElementById('aar-audit-modal-close')?.addEventListener('click', closeAarAuditModal);
+  document.getElementById('aar-audit-modal-close-btn')?.addEventListener('click', closeAarAuditModal);
+  modal.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeAarAuditModal();
+  });
+}
+
+function setupAarHistoryLog() {
+  setupAarHistoryTableSorting();
+  setupAarAuditModal();
+  renderAarHistoryLog();
 }
 
 function renderReports() {
@@ -3002,6 +3369,7 @@ export async function initApp() {
   setupReports();
   setupReportsSubnav();
   setupAarSearch();
+  setupAarHistoryLog();
   setupModal();
   applyPermissions();
   switchView('events');
