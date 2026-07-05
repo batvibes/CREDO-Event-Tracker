@@ -456,6 +456,10 @@ body {
   color: var(--text-secondary);
 }
 
+.events-table tbody tr.event-row-editable {
+  cursor: pointer;
+}
+
 .editable-cell {
   cursor: pointer;
   border-radius: 6px;

@@ -3883,142 +3883,14 @@ function renderKPIs() {
 }
 
 function attachEditableCell(cell, event, field) {
-  const eventId = event.id;
   cell.classList.add('editable-cell');
 
-  function getDisplayValue() {
-    if (field === 'date') return formatEventDateDisplay(event);
-    if (field === 'eventType') return event.eventType;
-    return displayValue(event[field], field);
-  }
-
-  function showDisplay() {
-    cell.textContent = getDisplayValue();
-  }
-
-  function startEdit() {
-    if (!canEditEvents()) return;
-    if (cell.querySelector('.cell-editor')) return;
-
-    const record = events.find((e) => e.id === eventId);
-    if (!record) return;
-
-    if (field === 'date' && record.dateType === 'range') {
-      openEditEventModal(eventId);
-      return;
-    }
-
-    const original = field === 'date'
-      ? {
-          date: record.date,
-          startDate: record.startDate,
-          endDate: record.endDate,
-        }
-      : record[field];
-    let input;
-
-    if (field === 'date') {
-      input = document.createElement('input');
-      input.type = 'date';
-      input.className = 'cell-editor';
-      const start = getEventStartDate(record);
-      input.value = isTbd(start) ? '' : start;
-    } else if (field === 'eventType') {
-      input = document.createElement('select');
-      input.className = 'cell-editor';
-      populateEventTypeSelect(input, record.eventType);
-    } else if (field === 'participants') {
-      input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'cell-editor';
-      input.value = isTbd(record.participants) ? '' : String(record.participants);
-    } else if (field === 'location') {
-      input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'cell-editor';
-      input.value = isTbd(record.location) ? '' : record.location;
-    } else if (field === 'command') {
-      input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'cell-editor';
-      input.value = isTbd(record.command) ? '' : record.command;
-    }
-
-    cell.textContent = '';
-    cell.appendChild(input);
-    input.focus();
-
-    if (field === 'location' || field === 'command') {
-      input.select();
-    } else if (field === 'participants') {
-      input.select();
-    }
-
-    let committed = false;
-
-    const commit = async () => {
-      if (committed) return;
-      committed = true;
-
-      let newValue;
-
-      if (field === 'date') {
-        newValue = toFieldValue(input.value);
-      } else if (field === 'eventType') {
-        newValue = input.value;
-        if (!newValue) {
-          record[field] = original;
-          renderTable();
-          return;
-        }
-      } else if (field === 'participants') {
-        newValue = toParticipantValue(input.value);
-      } else if (field === 'location') {
-        newValue = toFieldValue(input.value.trim());
-      } else if (field === 'command') {
-        newValue = toFieldValue(input.value.trim());
-      }
-
-      if (field === 'date') {
-        if (newValue !== record.startDate) {
-          record.startDate = newValue;
-          record.endDate = newValue;
-          record.date = newValue;
-          await persistEvent(record);
-        }
-      } else if (newValue !== record[field]) {
-        record[field] = newValue;
-        await persistEvent(record);
-      }
-
-      renderKPIs();
-      renderTable();
-    };
-
-    input.addEventListener('blur', commit);
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        input.blur();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        committed = true;
-        if (field === 'date') {
-          record.date = original.date;
-          record.startDate = original.startDate;
-          record.endDate = original.endDate;
-        } else {
-          record[field] = original;
-        }
-        renderTable();
-      }
-    });
-  }
-
-  showDisplay();
-  if (canEditEvents()) {
-    cell.addEventListener('click', startEdit);
+  if (field === 'date') {
+    cell.textContent = formatEventDateDisplay(event);
+  } else if (field === 'eventType') {
+    cell.textContent = event.eventType;
+  } else {
+    cell.textContent = displayValue(event[field], field);
   }
 }
 
@@ -4041,7 +3913,10 @@ function createEditButton(eventId) {
   btn.className = 'event-edit-btn';
   btn.setAttribute('aria-label', 'Edit event');
   btn.textContent = 'Edit';
-  btn.addEventListener('click', () => openEditEventModal(eventId));
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openEditEventModal(eventId);
+  });
   return btn;
 }
 
@@ -4054,7 +3929,10 @@ function createDeleteButton(eventId) {
     <svg class="delete-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
       <path fill="currentColor" d="M5.5 2A1.5 1.5 0 0 1 7 0.5h2A1.5 1.5 0 0 1 10.5 2H13a1 1 0 1 1 0 2h-0.5l-0.6 8.2A1.5 1.5 0 0 1 10.4 14H5.6a1.5 1.5 0 0 1-1.5-1.8L3.5 4H3a1 1 0 1 1 0-2h2.5zM7 2h2l0.2 1H6.8L7 2zm0.5 4a0.5 0.5 0 0 0-1 0v6a0.5 0.5 0 0 0 1 0V6zm3 0a0.5 0.5 0 0 0-1 0v6a0.5 0.5 0 0 0 1 0V6z"/>
     </svg>`;
-  btn.addEventListener('click', () => deleteEvent(eventId));
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteEvent(eventId);
+  });
   return btn;
 }
 
@@ -4065,8 +3943,9 @@ function createRosterPill(eventId, roster) {
   btn.className = `roster-pill ${isComplete ? 'complete' : 'need-roster'}`;
   btn.textContent = isComplete ? 'Complete' : 'Need Roster';
   btn.disabled = !canEditEvents();
-  btn.addEventListener('click', async () => {
-    const event = events.find((e) => e.id === eventId);
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const event = events.find((entry) => entry.id === eventId);
     if (!event) return;
     event.roster = isComplete ? 'Need Roster' : 'Complete';
     await persistEvent(event);
@@ -4081,8 +3960,9 @@ function createStatusPill(eventId, field, status) {
   btn.className = `status-pill ${STATUS_CLASS[status]}`;
   btn.innerHTML = `<span class="status-dot"></span>${status}`;
   btn.disabled = !canEditEvents();
-  btn.addEventListener('click', async () => {
-    const event = events.find((e) => e.id === eventId);
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const event = events.find((entry) => entry.id === eventId);
     if (!event) return;
     event[field] = cycleStatus(event[field]);
     await persistEvent(event);
@@ -4113,9 +3993,14 @@ function renderTable() {
 
   sorted.forEach((event) => {
     const row = document.createElement('tr');
+    if (canEditEvents()) {
+      row.classList.add('event-row-editable');
+      row.addEventListener('click', () => openEditEventModal(event.id));
+    }
 
     const deleteCell = document.createElement('td');
     deleteCell.className = 'col-delete';
+    deleteCell.addEventListener('click', (e) => e.stopPropagation());
     if (canEditEvents()) {
       deleteCell.appendChild(createEditButton(event.id));
     }
@@ -4157,6 +4042,7 @@ function renderTable() {
     ].forEach((pill) => {
       const statusCell = document.createElement('td');
       statusCell.className = 'col-status';
+      statusCell.addEventListener('click', (e) => e.stopPropagation());
       statusCell.appendChild(pill);
       row.appendChild(statusCell);
     });
@@ -4341,6 +4227,8 @@ function setupModal() {
   function closeModal() {
     modal.close();
   }
+
+  modal.addEventListener('close', () => resetEventForm(form));
 
   openBtn.addEventListener('click', openNewEventModal);
   closeBtn.addEventListener('click', closeModal);
