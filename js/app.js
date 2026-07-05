@@ -28,7 +28,8 @@ import {
   updateTeamMember,
 } from './db.js';
 import { exportMonthlyImpactReportPptx, calculateMirSection2Data } from './monthly-report-pptx-export.js';
-// PDF export temporarily disabled — jspdf/html2canvas must not load at app bootstrap.
+import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
+// PDF libraries load on demand via aar-pdf-export.js — not at app bootstrap.
 import {
   canDeleteEvents,
   canEditEvents,
@@ -2303,6 +2304,45 @@ function setupAarPreviewToolbar() {
   updateAarPreviewToolbar();
 }
 
+function buildAarExportReportElement(event) {
+  const source = document.getElementById('aar-report-article');
+  if (!source) {
+    throw new Error('AAR report template not found.');
+  }
+
+  const article = source.cloneNode(true);
+  article.querySelectorAll('.aar-editable-field').forEach((el) => el.remove());
+  populateAarDocument(event, { root: article, editable: false });
+  return article;
+}
+
+async function exportAarFromHistory(event, triggerBtn) {
+  if (!event || !isAarFinalized(event)) {
+    alert('Only finalized AARs can be exported from History Log.');
+    return;
+  }
+
+  const filename = buildAarPdfFilename(getAarSequenceNumber(event), event.eventType);
+  const host = document.createElement('div');
+  host.className = 'aar-export-host';
+  host.setAttribute('aria-hidden', 'true');
+
+  try {
+    if (triggerBtn) triggerBtn.disabled = true;
+    host.appendChild(buildAarExportReportElement(event));
+    const reportsView = document.getElementById('view-reports');
+    (reportsView || document.body).appendChild(host);
+    await exportAarReportElementToPdf(host.querySelector('.aar-report'), { filename });
+    logAarAudit(event.id, 'PDF Exported', filename);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || 'Failed to export AAR PDF. Please try again.');
+  } finally {
+    host.remove();
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+}
+
 function updateAarPreviewToolbar() {
   const event = events.find((entry) => entry.id === aarDocumentEventId);
   const finalBtn = document.getElementById('aar-mark-final-btn');
@@ -2817,6 +2857,27 @@ function renderAarHistoryLog() {
       topRow.appendChild(topSpacer);
     }
 
+    const middleRow = document.createElement('div');
+    middleRow.className = 'aar-history-actions-row';
+
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'aar-history-action-btn';
+    exportBtn.textContent = 'Export';
+    exportBtn.addEventListener('click', () => {
+      void exportAarFromHistory(event, exportBtn);
+    });
+    middleRow.appendChild(exportBtn);
+
+    const historyBtn = document.createElement('button');
+    historyBtn.type = 'button';
+    historyBtn.className = 'aar-history-action-btn';
+    historyBtn.textContent = 'History';
+    historyBtn.addEventListener('click', () => {
+      openAarAuditModal(event);
+    });
+    middleRow.appendChild(historyBtn);
+
     const bottomRow = document.createElement('div');
     bottomRow.className = 'aar-history-actions-row';
 
@@ -2830,22 +2891,19 @@ function renderAarHistoryLog() {
       });
       bottomRow.appendChild(deleteBtn);
     } else {
-      const bottomSpacer = document.createElement('span');
-      bottomSpacer.className = 'aar-history-action-spacer';
-      bottomSpacer.setAttribute('aria-hidden', 'true');
-      bottomRow.appendChild(bottomSpacer);
+      const deleteSpacer = document.createElement('span');
+      deleteSpacer.className = 'aar-history-action-spacer';
+      deleteSpacer.setAttribute('aria-hidden', 'true');
+      bottomRow.appendChild(deleteSpacer);
     }
 
-    const historyBtn = document.createElement('button');
-    historyBtn.type = 'button';
-    historyBtn.className = 'aar-history-action-btn';
-    historyBtn.textContent = 'History';
-    historyBtn.addEventListener('click', () => {
-      openAarAuditModal(event);
-    });
-    bottomRow.appendChild(historyBtn);
+    const bottomSpacer = document.createElement('span');
+    bottomSpacer.className = 'aar-history-action-spacer';
+    bottomSpacer.setAttribute('aria-hidden', 'true');
+    bottomRow.appendChild(bottomSpacer);
 
     actionsGrid.appendChild(topRow);
+    actionsGrid.appendChild(middleRow);
     actionsGrid.appendChild(bottomRow);
     actionsCell.appendChild(actionsGrid);
 
