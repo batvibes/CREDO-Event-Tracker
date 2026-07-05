@@ -77,7 +77,6 @@ const MONTH_NAMES = [
 
 let reportResults = [];
 let aarSearchResults = [];
-let aarSearchRan = false;
 let aarScreen = 'search';
 let aarDocumentEventId = null;
 let aarFinalEditEnabled = false;
@@ -1820,9 +1819,7 @@ function openAarDocument(event) {
 }
 
 function closeAarDocument() {
-  if (aarDocumentEventId && aarSearchRan) {
-    renderAarResultsTable();
-  }
+  renderAarResultsTable();
   aarDocumentEventId = null;
   aarFinalEditEnabled = false;
   aarScreen = 'search';
@@ -2206,6 +2203,38 @@ async function clearAarFromSearch(event) {
   }
 }
 
+async function deleteAarFromHistory(event) {
+  if (!canEditEvents() || !event || !isAarFinalized(event)) return;
+
+  const confirmed = confirm(
+    'Delete this After Action Report?\n\nThis will permanently remove the finalized report.\n\nThe associated Event will NOT be deleted.'
+  );
+  if (!confirmed) return;
+
+  try {
+    const saved = await clearEventAar(event.id);
+    syncAarClearToEvent(event.id, saved);
+    syncAarStateAfterDataLoad();
+    logAarAudit(event.id, 'Final Deleted');
+
+    if (aarDocumentEventId === event.id) {
+      aarDocumentEventId = null;
+      aarFinalEditEnabled = false;
+      aarScreen = 'history';
+      updateAarScreen();
+      updateAarInternalNav();
+    }
+
+    renderAarHistoryLog();
+    if (aarScreen === 'search') {
+      renderAarResultsTable();
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Failed to delete After Action Report.');
+  }
+}
+
 async function openAarDocumentForFinalEdit(event) {
   if (!canEditEvents() || !event || !isAarFinalized(event)) return;
 
@@ -2324,9 +2353,7 @@ async function markAarFinal() {
       }
       updateAarDocumentToolbar();
       updateAarPreviewToolbar();
-      if (aarSearchRan) {
-        renderAarResultsTable();
-      }
+      renderAarResultsTable();
       if (reportsTab === 'aar' && aarScreen === 'history' && currentView === 'reports') {
         renderAarHistoryLog();
       }
@@ -2425,7 +2452,6 @@ function applyAarFilterState() {
 }
 
 function syncAarStateAfterDataLoad() {
-  if (!aarSearchRan) return;
   aarSearchResults = filterAarEvents(aarFilterState);
 }
 
@@ -2497,14 +2523,14 @@ function filterAarEvents(state = aarFilterState) {
 
     if (filterType === 'cy') {
       const year = state.year;
-      if (!year) return false;
+      if (!year) return true;
       const { start, end } = getCalendarYearRange(Number(year));
       return isoDate && isDateInRange(isoDate, start, end);
     }
 
     if (filterType === 'fy') {
       const fyYear = state.year;
-      if (!fyYear) return false;
+      if (!fyYear) return true;
       const { start, end } = getFiscalYearRange(Number(fyYear));
       return isoDate && isDateInRange(isoDate, start, end);
     }
@@ -2512,7 +2538,7 @@ function filterAarEvents(state = aarFilterState) {
     if (filterType === 'month-year') {
       const month = state.month;
       const year = state.year;
-      if (month === '' || !year) return false;
+      if (month === '' || !year) return true;
       const { start, end } = getMonthYearRange(Number(month), Number(year));
       return isoDate && isDateInRange(isoDate, start, end);
     }
@@ -2520,20 +2546,20 @@ function filterAarEvents(state = aarFilterState) {
     if (filterType === 'date-range') {
       const startDate = state.startDate;
       const endDate = state.endDate;
-      if (!startDate || !endDate) return false;
+      if (!startDate || !endDate) return true;
       return isoDate && isDateInRange(isoDate, startDate, endDate);
     }
 
     if (filterType === 'command') {
       const command = state.command;
-      if (!command) return false;
+      if (!command) return true;
       const eventCommand = isTbd(event.command) ? TBD : event.command;
       return eventCommand === command;
     }
 
     if (filterType === 'event-type') {
       const eventType = state.eventType;
-      if (!eventType) return false;
+      if (!eventType) return true;
       return event.eventType === eventType;
     }
 
@@ -2546,12 +2572,8 @@ function renderAarResultsTable() {
   const countEl = document.getElementById('aar-result-count');
   if (!tbody || !countEl) return;
 
-  if (!aarSearchRan) {
-    countEl.textContent = '0 events';
-    tbody.innerHTML =
-      '<tr><td colspan="6"><div class="aar-empty-state">Use filters above and click Search Events.</div></td></tr>';
-    return;
-  }
+  captureAarFilterState();
+  aarSearchResults = filterAarEvents();
 
   countEl.textContent = `${aarSearchResults.length} event${aarSearchResults.length === 1 ? '' : 's'}`;
 
@@ -2596,7 +2618,7 @@ function renderAarResultsTable() {
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.className = 'aar-action-btn';
-    openBtn.textContent = 'Open AAR';
+    openBtn.textContent = 'Draft';
     openBtn.addEventListener('click', () => {
       openAarDocument(event);
     });
@@ -2631,9 +2653,6 @@ function renderAarResultsTable() {
 }
 
 function searchAarEvents() {
-  captureAarFilterState();
-  aarSearchRan = true;
-  aarSearchResults = filterAarEvents();
   renderAarResultsTable();
 }
 
@@ -2641,8 +2660,6 @@ function clearAarFilters() {
   aarFilterState = { ...DEFAULT_AAR_FILTER };
   applyAarFilterState();
   updateAarFilterState();
-  aarSearchRan = false;
-  aarSearchResults = [];
   renderAarResultsTable();
 }
 
@@ -2769,6 +2786,12 @@ function renderAarHistoryLog() {
     const actionsCell = document.createElement('td');
     actionsCell.className = 'aar-action-cell aar-history-actions';
 
+    const actionsGrid = document.createElement('div');
+    actionsGrid.className = 'aar-history-actions-grid';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'aar-history-actions-row';
+
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.className = 'aar-history-action-btn';
@@ -2776,14 +2799,9 @@ function renderAarHistoryLog() {
     openBtn.addEventListener('click', () => {
       openAarFromHistory(event);
     });
-    actionsCell.appendChild(openBtn);
+    topRow.appendChild(openBtn);
 
     if (canEditEvents()) {
-      const editSep = document.createElement('span');
-      editSep.className = 'aar-history-action-sep';
-      editSep.textContent = '|';
-      actionsCell.appendChild(editSep);
-
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.className = 'aar-history-action-btn';
@@ -2791,13 +2809,32 @@ function renderAarHistoryLog() {
       editBtn.addEventListener('click', () => {
         openAarDocumentForFinalEdit(event);
       });
-      actionsCell.appendChild(editBtn);
+      topRow.appendChild(editBtn);
+    } else {
+      const topSpacer = document.createElement('span');
+      topSpacer.className = 'aar-history-action-spacer';
+      topSpacer.setAttribute('aria-hidden', 'true');
+      topRow.appendChild(topSpacer);
     }
 
-    const historySep = document.createElement('span');
-    historySep.className = 'aar-history-action-sep';
-    historySep.textContent = '|';
-    actionsCell.appendChild(historySep);
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'aar-history-actions-row';
+
+    if (canEditEvents()) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'aar-history-action-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => {
+        void deleteAarFromHistory(event);
+      });
+      bottomRow.appendChild(deleteBtn);
+    } else {
+      const bottomSpacer = document.createElement('span');
+      bottomSpacer.className = 'aar-history-action-spacer';
+      bottomSpacer.setAttribute('aria-hidden', 'true');
+      bottomRow.appendChild(bottomSpacer);
+    }
 
     const historyBtn = document.createElement('button');
     historyBtn.type = 'button';
@@ -2806,7 +2843,11 @@ function renderAarHistoryLog() {
     historyBtn.addEventListener('click', () => {
       openAarAuditModal(event);
     });
-    actionsCell.appendChild(historyBtn);
+    bottomRow.appendChild(historyBtn);
+
+    actionsGrid.appendChild(topRow);
+    actionsGrid.appendChild(bottomRow);
+    actionsCell.appendChild(actionsGrid);
 
     row.appendChild(actionsCell);
 
