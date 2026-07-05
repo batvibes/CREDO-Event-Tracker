@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aiden0z/pptx-renderer": "^1.2.3",
     "@supabase/supabase-js": "^2.49.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

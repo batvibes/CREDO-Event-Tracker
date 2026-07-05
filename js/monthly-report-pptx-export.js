@@ -40,20 +40,6 @@ export function calculateMirSection2Data(teamMembers) {
   return { rows };
 }
 
-function applySection2ToSlide1(slideXml, { rows }) {
-  let xml = slideXml;
-  for (let rowIndex = 0; rowIndex < MIR_MANPOWER_MAX_ROWS; rowIndex += 1) {
-    const rowNumber = rowIndex + 1;
-    const row = rows[rowIndex] ?? {};
-    for (const field of MANPOWER_ROW_FIELDS) {
-      const shapeName = `mir_manpower_row${rowNumber}_${field.shapeSuffix}`;
-      const value = String(row[field.dataKey] ?? '');
-      xml = setShapeText(xml, shapeName, value);
-    }
-  }
-  return xml;
-}
-
 function hasUserNote(value) {
   return String(value ?? '').trim().length > 0;
 }
@@ -90,27 +76,6 @@ function setShapeText(slideXml, shapeName, text) {
   return slideXml.replace(shape, updatedShape);
 }
 
-function applySection1ToSlide1(slideXml, { monthYearLabel, section1Data }) {
-  const { monthReach, fytdMissionSupport } = section1Data;
-  let xml = slideXml;
-
-  xml = setShapeText(xml, 'mir_month_label', monthYearLabel.toUpperCase());
-
-  xml = setShapeText(xml, 'mir_month_reach_commands', formatCount(monthReach.commandsSupported));
-  xml = setShapeText(xml, 'mir_month_reach_beneficiaries', formatCount(monthReach.beneficiariesServed));
-  xml = setShapeText(xml, 'mir_month_reach_workshops', formatCount(monthReach.workshopsConducted));
-  xml = setShapeText(xml, 'mir_month_reach_retreats', formatCount(monthReach.retreatsConducted));
-
-  xml = setShapeText(xml, 'mir_fytd_marriage', formatCount(fytdMissionSupport.marriageEnrichment));
-  xml = setShapeText(xml, 'mir_fytd_personal_growth', formatCount(fytdMissionSupport.personalGrowth));
-  xml = setShapeText(xml, 'mir_fytd_suicide', formatCount(fytdMissionSupport.suicidePrevention));
-  xml = setShapeText(xml, 'mir_fytd_retreats', formatCount(fytdMissionSupport.retreats));
-  xml = setShapeText(xml, 'mir_fytd_total', formatCount(fytdMissionSupport.fytdTotal));
-  xml = setShapeText(xml, 'mir_fytd_commands', formatCount(fytdMissionSupport.commands));
-
-  return xml;
-}
-
 const NOTES_SECTIONS = [
   {
     noteKey: 'reachNotes',
@@ -138,24 +103,89 @@ const NOTES_SECTIONS = [
   },
 ];
 
-function applyNotesToSlide2(slideXml, { monthYearLabel, notes }) {
-  let xml = slideXml;
-  const label = `${monthYearLabel.toUpperCase()} — NOTES / AMPLIFICATION`;
+function getMirManpowerShapeNames() {
+  const shapeNames = [];
+  for (let rowIndex = 1; rowIndex <= MIR_MANPOWER_MAX_ROWS; rowIndex += 1) {
+    for (const field of MANPOWER_ROW_FIELDS) {
+      shapeNames.push(`mir_manpower_row${rowIndex}_${field.shapeSuffix}`);
+    }
+  }
+  return shapeNames;
+}
 
-  xml = setShapeText(xml, 'mir_notes_month_label', label);
+const SLIDE1_SHAPE_NAMES = [
+  'mir_month_label',
+  'mir_month_reach_commands',
+  'mir_month_reach_beneficiaries',
+  'mir_month_reach_workshops',
+  'mir_month_reach_retreats',
+  'mir_fytd_marriage',
+  'mir_fytd_personal_growth',
+  'mir_fytd_suicide',
+  'mir_fytd_retreats',
+  'mir_fytd_total',
+  'mir_fytd_commands',
+  ...getMirManpowerShapeNames(),
+];
 
-  for (const section of NOTES_SECTIONS) {
-    const userText = notes[section.noteKey];
-    if (hasUserNote(userText)) {
-      xml = setShapeText(xml, section.shape, String(userText).trim());
-      for (const guideLine of section.guideLines) {
-        xml = removeShape(xml, guideLine);
-      }
-    } else {
-      xml = setShapeText(xml, section.shape, section.placeholder);
+const SLIDE2_SHAPE_NAMES = [
+  'mir_notes_month_label',
+  ...NOTES_SECTIONS.map((section) => section.shape),
+];
+
+function buildMirReportShapeValues({ monthName, year, section1Data, section2Data, notes }) {
+  const monthYearLabel = `${monthName} ${year}`;
+  const { monthReach, fytdMissionSupport } = section1Data;
+  const values = {};
+
+  values.mir_month_label = monthYearLabel.toUpperCase();
+  values.mir_month_reach_commands = formatCount(monthReach.commandsSupported);
+  values.mir_month_reach_beneficiaries = formatCount(monthReach.beneficiariesServed);
+  values.mir_month_reach_workshops = formatCount(monthReach.workshopsConducted);
+  values.mir_month_reach_retreats = formatCount(monthReach.retreatsConducted);
+  values.mir_fytd_marriage = formatCount(fytdMissionSupport.marriageEnrichment);
+  values.mir_fytd_personal_growth = formatCount(fytdMissionSupport.personalGrowth);
+  values.mir_fytd_suicide = formatCount(fytdMissionSupport.suicidePrevention);
+  values.mir_fytd_retreats = formatCount(fytdMissionSupport.retreats);
+  values.mir_fytd_total = formatCount(fytdMissionSupport.fytdTotal);
+  values.mir_fytd_commands = formatCount(fytdMissionSupport.commands);
+
+  for (let rowIndex = 0; rowIndex < MIR_MANPOWER_MAX_ROWS; rowIndex += 1) {
+    const rowNumber = rowIndex + 1;
+    const row = section2Data.rows[rowIndex] ?? {};
+    for (const field of MANPOWER_ROW_FIELDS) {
+      values[`mir_manpower_row${rowNumber}_${field.shapeSuffix}`] = String(row[field.dataKey] ?? '');
     }
   }
 
+  values.mir_notes_month_label = `${monthYearLabel.toUpperCase()} — NOTES / AMPLIFICATION`;
+  for (const section of NOTES_SECTIONS) {
+    const userText = notes[section.noteKey];
+    values[section.shape] = hasUserNote(userText)
+      ? String(userText).trim()
+      : section.placeholder;
+  }
+
+  return values;
+}
+
+function applyShapeValuesToSlide(slideXml, shapeNames, shapeValues) {
+  let xml = slideXml;
+  for (const shapeName of shapeNames) {
+    if (!Object.prototype.hasOwnProperty.call(shapeValues, shapeName)) continue;
+    xml = setShapeText(xml, shapeName, shapeValues[shapeName]);
+  }
+  return xml;
+}
+
+function applyNotesGuideLines(slideXml, notes) {
+  let xml = slideXml;
+  for (const section of NOTES_SECTIONS) {
+    if (!hasUserNote(notes[section.noteKey])) continue;
+    for (const guideLine of section.guideLines) {
+      xml = removeShape(xml, guideLine);
+    }
+  }
   return xml;
 }
 
@@ -176,6 +206,37 @@ function triggerDownload(blob, fileName) {
   URL.revokeObjectURL(url);
 }
 
+async function loadMirTemplateBuffer() {
+  const response = await fetch(TEMPLATE_URL);
+  if (!response.ok) {
+    throw new Error(`Failed to load MIR template (${response.status})`);
+  }
+  return response.arrayBuffer();
+}
+
+const MIR_PPTX_MIME =
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+export async function generateMirPresentationBlob({
+  monthName,
+  year,
+  section1Data,
+  section2Data,
+  notes,
+}) {
+  const templateBuffer = await loadMirTemplateBuffer();
+  const output = await buildMirPresentationZip({
+    templateBuffer,
+    monthName,
+    year,
+    section1Data,
+    section2Data,
+    notes,
+  });
+
+  return new Blob([output], { type: MIR_PPTX_MIME });
+}
+
 export async function buildMirPresentationZip({
   templateBuffer,
   monthName,
@@ -184,7 +245,13 @@ export async function buildMirPresentationZip({
   section2Data,
   notes,
 }) {
-  const monthYearLabel = `${monthName} ${year}`;
+  const shapeValues = buildMirReportShapeValues({
+    monthName,
+    year,
+    section1Data,
+    section2Data,
+    notes,
+  });
   const zip = await JSZip.loadAsync(templateBuffer);
 
   const slide1Path = 'ppt/slides/slide1.xml';
@@ -193,10 +260,11 @@ export async function buildMirPresentationZip({
   const slide1Xml = await zip.file(slide1Path).async('string');
   const slide2Xml = await zip.file(slide2Path).async('string');
 
-  let slide1 = applySection1ToSlide1(slide1Xml, { monthYearLabel, section1Data });
-  slide1 = applySection2ToSlide1(slide1, section2Data);
+  const slide1 = applyShapeValuesToSlide(slide1Xml, SLIDE1_SHAPE_NAMES, shapeValues);
+  let slide2 = applyShapeValuesToSlide(slide2Xml, SLIDE2_SHAPE_NAMES, shapeValues);
+  slide2 = applyNotesGuideLines(slide2, notes);
   zip.file(slide1Path, slide1);
-  zip.file(slide2Path, applyNotesToSlide2(slide2Xml, { monthYearLabel, notes }));
+  zip.file(slide2Path, slide2);
 
   return zip.generateAsync({
     type: 'uint8array',
@@ -212,14 +280,7 @@ export async function exportMonthlyImpactReportPptx({
   section2Data,
   notes,
 }) {
-  const response = await fetch(TEMPLATE_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to load MIR template (${response.status})`);
-  }
-
-  const templateBuffer = await response.arrayBuffer();
-  const output = await buildMirPresentationZip({
-    templateBuffer,
+  const blob = await generateMirPresentationBlob({
     monthName,
     year,
     section1Data,
@@ -227,10 +288,5 @@ export async function exportMonthlyImpactReportPptx({
     notes,
   });
 
-  triggerDownload(
-    new Blob([output], {
-      type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    }),
-    buildFileName(monthName, year),
-  );
+  triggerDownload(blob, buildFileName(monthName, year));
 }

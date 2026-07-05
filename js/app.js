@@ -27,7 +27,15 @@ import {
   updateEventType,
   updateTeamMember,
 } from './db.js';
-import { exportMonthlyImpactReportPptx, calculateMirSection2Data } from './monthly-report-pptx-export.js';
+import {
+  exportMonthlyImpactReportPptx,
+  generateMirPresentationBlob,
+  calculateMirSection2Data,
+} from './monthly-report-pptx-export.js';
+import {
+  destroyMirPresentationPreview,
+  renderMirPresentationPreview,
+} from './mir-pptx-preview.js';
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
 // PDF libraries load on demand via aar-pdf-export.js — not at app bootstrap.
 import {
@@ -94,6 +102,8 @@ const DEFAULT_AAR_FILTER = {
 
 let aarFilterState = { ...DEFAULT_AAR_FILTER };
 let mirScreen = 'draft';
+let mirOpenReport = null;
+
 let dataLoadGeneration = 0;
 
 const SORT_ASC = 'asc';
@@ -1265,17 +1275,20 @@ function switchReportsTab(tab) {
 
 function updateMirInternalNav() {
   document.querySelectorAll('.mir-internal-tab').forEach((btn) => {
-    btn.classList.toggle('mir-internal-tab-active', btn.dataset.mirView === mirScreen);
+    const activeView = mirScreen === 'open' ? 'history' : mirScreen;
+    btn.classList.toggle('mir-internal-tab-active', btn.dataset.mirView === activeView);
   });
 }
 
 function updateMirScreen() {
   const draftView = document.getElementById('mir-draft-view');
   const historyView = document.getElementById('mir-history-view');
-  if (!draftView || !historyView) return;
+  const openView = document.getElementById('mir-open-view');
+  if (!draftView || !historyView || !openView) return;
 
   draftView.hidden = mirScreen !== 'draft';
   historyView.hidden = mirScreen !== 'history';
+  openView.hidden = mirScreen !== 'open';
 }
 
 function switchMirView(view) {
@@ -1315,6 +1328,50 @@ function renderMirReport() {
     loadMirDraftForSelection();
   } else if (mirScreen === 'history') {
     void renderMirHistoryLog();
+  } else if (mirScreen === 'open' && mirOpenReport) {
+    void populateMirOpenView(mirOpenReport);
+  }
+}
+
+function getMirReportNotes(report) {
+  return {
+    reachNotes: report.reachNotes ?? '',
+    manpowerNotes: report.manpowerNotes ?? '',
+    readinessNotes: report.readinessNotes ?? '',
+    commandHighlightsNotes: report.commandHighlightsNotes ?? '',
+  };
+}
+
+async function prepareMirReportGenerationInput(report) {
+  const month = Number(report.reportMonth);
+  const year = Number(report.reportYear);
+  const monthName = MIR_MONTH_NAMES[month] ?? 'Month';
+  const notes = getMirReportNotes(report);
+  const teamMembers = await fetchTeamMembers();
+  const section1Data = calculateMirSection1Data(month, year);
+  const section2Data = calculateMirSection2Data(teamMembers);
+
+  return {
+    monthName,
+    year,
+    section1Data,
+    section2Data,
+    notes,
+  };
+}
+
+async function exportMirReportPptx(report, triggerBtn) {
+  if (!report) return;
+
+  try {
+    if (triggerBtn) triggerBtn.disabled = true;
+    const input = await prepareMirReportGenerationInput(report);
+    await exportMonthlyImpactReportPptx(input);
+  } catch (err) {
+    console.error(err);
+    alert('Failed to export PowerPoint.');
+  } finally {
+    if (triggerBtn) triggerBtn.disabled = false;
   }
 }
 
@@ -1518,29 +1575,16 @@ async function exportMirDraftPptx() {
 
   const { month, year } = getMirSelectedMonthYear();
   const fields = getMirNotesFields();
-  const monthName = MIR_MONTH_NAMES[Number(month)] ?? 'Month';
-  const section1Data = calculateMirSection1Data(Number(month), Number(year));
+  const report = {
+    reportMonth: Number(month),
+    reportYear: Number(year),
+    reachNotes: fields[0]?.value ?? '',
+    manpowerNotes: fields[1]?.value ?? '',
+    readinessNotes: fields[2]?.value ?? '',
+    commandHighlightsNotes: fields[3]?.value ?? '',
+  };
 
-  try {
-    const teamMembers = await fetchTeamMembers();
-    const section2Data = calculateMirSection2Data(teamMembers);
-
-    await exportMonthlyImpactReportPptx({
-      monthName,
-      year: Number(year),
-      section1Data,
-      section2Data,
-      notes: {
-        reachNotes: fields[0]?.value ?? '',
-        manpowerNotes: fields[1]?.value ?? '',
-        readinessNotes: fields[2]?.value ?? '',
-        commandHighlightsNotes: fields[3]?.value ?? '',
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    alert('Failed to export PowerPoint.');
-  }
+  await exportMirReportPptx(report);
 }
 
 async function clearMirDraft() {
@@ -1621,6 +1665,53 @@ async function editMirReportFromHistory(report) {
   switchMirView('draft');
 }
 
+async function exportMirFromHistory(report, triggerBtn) {
+  if (!report) return;
+  await exportMirReportPptx(report, triggerBtn);
+}
+
+function openMirHistoryDetails() {
+  alert('Monthly report history details are not implemented yet.');
+}
+
+async function openMirFromHistory(report) {
+  if (!report) return;
+
+  mirOpenReport = report;
+  mirScreen = 'open';
+  updateMirInternalNav();
+  updateMirScreen();
+  await populateMirOpenView(report);
+}
+
+async function populateMirOpenView(report) {
+  if (!report) return;
+
+  const canvas = document.getElementById('mir-preview-canvas');
+  if (!canvas) return;
+
+  try {
+    const input = await prepareMirReportGenerationInput(report);
+    const blob = await generateMirPresentationBlob(input);
+    await renderMirPresentationPreview(canvas, blob);
+  } catch (err) {
+    console.error(err);
+    alert('Failed to load monthly report preview.');
+  }
+}
+
+function setupMirOpenView() {
+  const backBtn = document.getElementById('mir-open-back-btn');
+  if (!backBtn || backBtn.dataset.mirOpenBound === 'true') return;
+
+  backBtn.dataset.mirOpenBound = 'true';
+  backBtn.addEventListener('click', () => {
+    destroyMirPresentationPreview(document.getElementById('mir-preview-canvas'));
+    mirOpenReport = null;
+    switchMirView('history');
+  });
+}
+
 async function deleteMirReportFromHistory(report) {
   if (!report || !canEditEvents()) return;
 
@@ -1690,24 +1781,22 @@ async function renderMirHistoryLog() {
     row.appendChild(modifiedCell);
 
     const actionsCell = document.createElement('td');
-    actionsCell.className = 'mir-history-actions';
+    actionsCell.className = 'mir-action-cell mir-history-actions';
+
+    const actionsGrid = document.createElement('div');
+    actionsGrid.className = 'mir-history-actions-grid';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'mir-history-actions-row';
 
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
-    openBtn.className = 'mir-history-action-btn mir-history-action-btn-disabled';
+    openBtn.className = 'mir-history-action-btn';
     openBtn.textContent = 'Open';
-    openBtn.disabled = true;
-    openBtn.title = 'Open will be available after PowerPoint export is implemented.';
-    openBtn.setAttribute(
-      'aria-label',
-      'Open will be available after PowerPoint export is implemented.'
-    );
-    actionsCell.appendChild(openBtn);
-
-    const editSep = document.createElement('span');
-    editSep.className = 'mir-history-action-sep';
-    editSep.textContent = '|';
-    actionsCell.appendChild(editSep);
+    openBtn.addEventListener('click', () => {
+      void openMirFromHistory(report);
+    });
+    topRow.appendChild(openBtn);
 
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
@@ -1716,14 +1805,33 @@ async function renderMirHistoryLog() {
     editBtn.addEventListener('click', () => {
       void editMirReportFromHistory(report);
     });
-    actionsCell.appendChild(editBtn);
+    topRow.appendChild(editBtn);
+
+    const middleRow = document.createElement('div');
+    middleRow.className = 'mir-history-actions-row';
+
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'mir-history-action-btn';
+    exportBtn.textContent = 'Export';
+    exportBtn.addEventListener('click', () => {
+      void exportMirFromHistory(report, exportBtn);
+    });
+    middleRow.appendChild(exportBtn);
+
+    const historyBtn = document.createElement('button');
+    historyBtn.type = 'button';
+    historyBtn.className = 'mir-history-action-btn';
+    historyBtn.textContent = 'History';
+    historyBtn.addEventListener('click', () => {
+      openMirHistoryDetails();
+    });
+    middleRow.appendChild(historyBtn);
+
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'mir-history-actions-row';
 
     if (canEditEvents()) {
-      const deleteSep = document.createElement('span');
-      deleteSep.className = 'mir-history-action-sep';
-      deleteSep.textContent = '|';
-      actionsCell.appendChild(deleteSep);
-
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
       deleteBtn.className = 'mir-history-action-btn';
@@ -1731,8 +1839,23 @@ async function renderMirHistoryLog() {
       deleteBtn.addEventListener('click', () => {
         void deleteMirReportFromHistory(report);
       });
-      actionsCell.appendChild(deleteBtn);
+      bottomRow.appendChild(deleteBtn);
+    } else {
+      const deleteSpacer = document.createElement('span');
+      deleteSpacer.className = 'mir-history-action-spacer';
+      deleteSpacer.setAttribute('aria-hidden', 'true');
+      bottomRow.appendChild(deleteSpacer);
     }
+
+    const bottomSpacer = document.createElement('span');
+    bottomSpacer.className = 'mir-history-action-spacer';
+    bottomSpacer.setAttribute('aria-hidden', 'true');
+    bottomRow.appendChild(bottomSpacer);
+
+    actionsGrid.appendChild(topRow);
+    actionsGrid.appendChild(middleRow);
+    actionsGrid.appendChild(bottomRow);
+    actionsCell.appendChild(actionsGrid);
 
     row.appendChild(actionsCell);
     tbody.appendChild(row);
@@ -1741,6 +1864,7 @@ async function renderMirHistoryLog() {
 
 function setupMirHistoryLog() {
   setupMirHistoryTableSorting();
+  setupMirOpenView();
   void renderMirHistoryLog();
 }
 
