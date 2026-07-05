@@ -37,6 +37,8 @@ export function eventFromRow(row) {
     time: row.time || '',
     poc: row.poc || '',
     aarCost: row.aar_cost || '',
+    aarVenueCost: row.aar_venue_cost || '',
+    aarCateringCost: row.aar_catering_cost || '',
     aarAttire: row.aar_attire || '',
     aarTravelTime: row.aar_travel_time || '',
     aarLessonsLearned: row.aar_lessons_learned || '',
@@ -223,6 +225,8 @@ export async function updateEventAarFields(id, fields) {
 
   const row = {};
   if (fields.aarCost !== undefined) row.aar_cost = fields.aarCost;
+  if (fields.aarVenueCost !== undefined) row.aar_venue_cost = fields.aarVenueCost;
+  if (fields.aarCateringCost !== undefined) row.aar_catering_cost = fields.aarCateringCost;
   if (fields.aarAttire !== undefined) row.aar_attire = fields.aarAttire;
   if (fields.aarTravelTime !== undefined) row.aar_travel_time = fields.aarTravelTime;
   if (fields.aarLessonsLearned !== undefined) row.aar_lessons_learned = fields.aarLessonsLearned;
@@ -252,6 +256,8 @@ export async function clearEventAar(id) {
     .from('events')
     .update({
       aar_cost: '',
+      aar_venue_cost: '',
+      aar_catering_cost: '',
       aar_attire: '',
       aar_travel_time: '',
       aar_lessons_learned: '',

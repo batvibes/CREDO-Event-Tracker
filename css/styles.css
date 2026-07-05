@@ -1371,14 +1371,25 @@ body:has(#new-event-modal[open]) {
   gap: 8px;
 }
 
+#view-reports .aar-history-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 64rem;
+}
+
 #view-reports .aar-history-table thead th {
-  padding: 10px 14px;
-  white-space: nowrap;
+  padding: 8px 10px;
+  white-space: normal;
+  text-align: center;
+  vertical-align: middle;
+  overflow: hidden;
 }
 
 #view-reports .aar-history-table tbody td {
-  padding: 10px 14px;
+  padding: 8px 10px;
   vertical-align: middle;
+  text-align: center;
+  overflow: hidden;
 }
 
 #view-reports .aar-history-table th.sortable-th {
@@ -1386,76 +1397,84 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-reports .aar-history-table .sortable-header-btn {
-  padding: 10px 14px;
-  white-space: nowrap;
+  padding: 8px 10px;
+  white-space: normal;
+  justify-content: center;
+  text-align: center;
 }
 
 #view-reports .aar-history-table th:nth-child(1),
 #view-reports .aar-history-table td:nth-child(1) {
-  min-width: 80px;
-  text-align: center;
-  white-space: nowrap;
+  width: 4.75rem;
 }
 
 #view-reports .aar-history-table th:nth-child(2),
 #view-reports .aar-history-table td:nth-child(2) {
-  min-width: 132px;
-  text-align: center;
-  white-space: nowrap;
+  width: 5.5rem;
 }
 
 #view-reports .aar-history-table th:nth-child(3),
 #view-reports .aar-history-table td:nth-child(3) {
-  min-width: 240px;
-  text-align: left;
+  width: calc((100% - 43.5rem) / 3);
 }
 
 #view-reports .aar-history-table th:nth-child(4),
 #view-reports .aar-history-table td:nth-child(4) {
-  min-width: 120px;
-  text-align: left;
+  width: calc((100% - 43.5rem) / 3);
 }
 
 #view-reports .aar-history-table th:nth-child(5),
 #view-reports .aar-history-table td:nth-child(5) {
-  min-width: 180px;
-  text-align: left;
-  white-space: nowrap;
+  width: calc((100% - 43.5rem) / 3);
 }
 
 #view-reports .aar-history-table th:nth-child(6),
 #view-reports .aar-history-table td:nth-child(6) {
-  min-width: 88px;
-  text-align: right;
-  white-space: nowrap;
+  width: 4.75rem;
 }
 
 #view-reports .aar-history-table th:nth-child(7),
 #view-reports .aar-history-table td:nth-child(7) {
-  min-width: 168px;
-  text-align: center;
-  white-space: nowrap;
+  width: 5rem;
 }
 
 #view-reports .aar-history-table th:nth-child(8),
 #view-reports .aar-history-table td:nth-child(8) {
-  min-width: 168px;
-  text-align: center;
+  width: 11.5rem;
+}
+
+#view-reports .aar-history-table th:nth-child(9),
+#view-reports .aar-history-table td:nth-child(9) {
+  width: 12rem;
+}
+
+#view-reports .aar-history-table th:nth-child(1),
+#view-reports .aar-history-table td:nth-child(1),
+#view-reports .aar-history-table th:nth-child(2),
+#view-reports .aar-history-table td:nth-child(2),
+#view-reports .aar-history-table th:nth-child(6),
+#view-reports .aar-history-table td:nth-child(6),
+#view-reports .aar-history-table th:nth-child(7),
+#view-reports .aar-history-table td:nth-child(7),
+#view-reports .aar-history-table th:nth-child(8),
+#view-reports .aar-history-table td:nth-child(8) {
   white-space: nowrap;
 }
 
-#view-reports .aar-history-table th:nth-child(1) .sortable-header-btn,
-#view-reports .aar-history-table th:nth-child(2) .sortable-header-btn,
-#view-reports .aar-history-table th:nth-child(7) .sortable-header-btn {
-  justify-content: center;
-}
-
-#view-reports .aar-history-table th:nth-child(6) .sortable-header-btn {
-  justify-content: flex-end;
+#view-reports .aar-history-table th:nth-child(3),
+#view-reports .aar-history-table td:nth-child(3),
+#view-reports .aar-history-table th:nth-child(4),
+#view-reports .aar-history-table td:nth-child(4),
+#view-reports .aar-history-table th:nth-child(5),
+#view-reports .aar-history-table td:nth-child(5) {
+  white-space: normal;
+  word-break: break-word;
 }
 
 #view-reports .aar-history-table .aar-action-cell {
   vertical-align: middle;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 #view-reports .aar-history-actions-grid {
@@ -1463,23 +1482,35 @@ body:has(#new-event-modal[open]) {
   flex-direction: column;
   align-items: center;
   gap: 5px;
+  width: 100%;
+  max-width: 11.5rem;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 #view-reports .aar-history-actions-row {
   display: grid;
-  grid-template-columns: 4.25rem 4.25rem;
-  column-gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 0.625rem;
+  width: 100%;
+  max-width: 11.5rem;
   justify-content: center;
   align-items: center;
+  box-sizing: border-box;
 }
 
 #view-reports .aar-history-actions-row .aar-history-action-btn {
   justify-self: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #view-reports .aar-history-action-spacer {
   display: block;
-  width: 4.25rem;
+  width: 100%;
+  max-width: 4.25rem;
   height: 0;
 }
 
@@ -1848,7 +1879,7 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-reports .aar-cost-table th {
-  width: 33.333%;
+  width: 25%;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -1858,7 +1889,7 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-reports .aar-cost-table td {
-  width: 33.333%;
+  width: 25%;
   min-height: 34px;
   font-weight: 400;
   color: #000;

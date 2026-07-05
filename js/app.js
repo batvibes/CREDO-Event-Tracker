@@ -139,8 +139,9 @@ const AAR_HISTORY_TABLE_SORT_COLUMNS = [
   { key: 'eventType', index: 2 },
   { key: 'command', index: 3 },
   { key: 'location', index: 4 },
-  { key: 'cost', index: 5 },
-  { key: 'lastModified', index: 6 },
+  { key: 'venueCost', index: 5 },
+  { key: 'cateringCost', index: 6 },
+  { key: 'lastModified', index: 7 },
 ];
 
 const MIR_HISTORY_TABLE_SORT_COLUMNS = [
@@ -170,7 +171,8 @@ const MIR_STATUS_SORT_ORDER = {
 };
 
 const AAR_FIELD_LABELS = {
-  aarCost: 'Cost',
+  aarVenueCost: 'Venue Cost',
+  aarCateringCost: 'Catering Cost',
   aarAttire: 'Attire',
   aarTravelTime: 'Travel Time',
   aarLessonsLearned: 'Lessons Learned',
@@ -247,6 +249,39 @@ function formatAarCost(value) {
     return `$${formatted}`;
   }
   return String(value).trim();
+}
+
+function formatAarCostForStorage(value) {
+  const num = parseAarCostNumber(value);
+  if (num == null) return String(value ?? '').trim();
+  return formatAarCost(String(num));
+}
+
+function resolveAarVenueCost(event) {
+  if (hasAarFieldData(event.aarVenueCost)) return event.aarVenueCost;
+  if (!hasAarFieldData(event.aarCateringCost) && hasAarFieldData(event.aarCost)) {
+    return event.aarCost;
+  }
+  return '';
+}
+
+function resolveAarCateringCost(event) {
+  return hasAarFieldData(event.aarCateringCost) ? event.aarCateringCost : '';
+}
+
+function compareAarHistoryCostValues(leftValue, rightValue) {
+  const left = parseAarCostNumber(leftValue);
+  const right = parseAarCostNumber(rightValue);
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+  return left - right;
+}
+
+function formatAarHistoryCostValue(value) {
+  if (!hasAarFieldData(value)) return '—';
+  const formatted = formatAarCost(value);
+  return formatted === TBD ? '—' : formatted;
 }
 
 function compareTimestamps(aVal, bVal) {
@@ -556,14 +591,9 @@ const AAR_HISTORY_SORT_COMPARATORS = {
   eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
   command: (a, b) => compareWithTbdLast(a.command, b.command),
   location: (a, b) => compareWithTbdLast(a.location, b.location),
-  cost: (a, b) => {
-    const left = parseAarCostNumber(a.aarCost);
-    const right = parseAarCostNumber(b.aarCost);
-    if (left == null && right == null) return 0;
-    if (left == null) return 1;
-    if (right == null) return -1;
-    return left - right;
-  },
+  venueCost: (a, b) => compareAarHistoryCostValues(resolveAarVenueCost(a), resolveAarVenueCost(b)),
+  cateringCost: (a, b) =>
+    compareAarHistoryCostValues(resolveAarCateringCost(a), resolveAarCateringCost(b)),
   lastModified: (a, b) => compareTimestamps(a.updatedAt, b.updatedAt),
 };
 
@@ -1842,6 +1872,17 @@ function aarPlainField(value) {
   return trimmed === '' ? TBD : trimmed;
 }
 
+function setAarCostTextElement(element, text, emptyPlaceholder) {
+  if (!element) return;
+  if (!hasAarFieldData(text)) {
+    element.textContent = emptyPlaceholder;
+    element.classList.add('aar-report-placeholder');
+    return;
+  }
+  element.textContent = formatAarCost(text);
+  element.classList.remove('aar-report-placeholder');
+}
+
 function setAarTextElement(element, text, emptyPlaceholder) {
   if (!element) return;
   const trimmed = String(text ?? '').trim();
@@ -2015,6 +2056,8 @@ function syncAarDraftFieldsToEvent(eventId, saved) {
 
   const patch = {
     aarCost: saved.aarCost,
+    aarVenueCost: saved.aarVenueCost,
+    aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
     aarLessonsLearned: saved.aarLessonsLearned,
@@ -2028,6 +2071,8 @@ function syncAarFinalizeToEvent(eventId, saved) {
 
   applyAarEventPatch(eventId, {
     aarCost: saved.aarCost,
+    aarVenueCost: saved.aarVenueCost,
+    aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
     aarLessonsLearned: saved.aarLessonsLearned,
@@ -2036,6 +2081,44 @@ function syncAarFinalizeToEvent(eventId, saved) {
     aarSequenceNumber: saved.aarSequenceNumber == null ? '' : String(saved.aarSequenceNumber),
     updatedAt: saved.updatedAt ?? null,
   });
+}
+
+async function saveAarCostField(event, fieldKey, inputEl) {
+  if (!canEditAarDocumentFields(event)) return;
+
+  const raw = inputEl.value.trim();
+  const newValue = raw === '' ? '' : formatAarCostForStorage(raw);
+  const oldResolved = fieldKey === 'aarVenueCost'
+    ? resolveAarVenueCost(event)
+    : resolveAarCateringCost(event);
+  const oldFormatted = hasAarFieldData(oldResolved) ? formatAarCostForStorage(oldResolved) : '';
+  if (newValue === oldFormatted) {
+    inputEl.value = newValue;
+    return;
+  }
+
+  const wasNotStarted = getAarStatus(event) === 'Not Started';
+  const wasFinalEdit = isAarFinalized(event) && aarFinalEditEnabled;
+
+  try {
+    const saved = await updateEventAarFields(event.id, { [fieldKey]: newValue });
+    syncAarDraftFieldsToEvent(event.id, saved);
+    if (saved.updatedAt) {
+      applyAarEventPatch(event.id, { updatedAt: saved.updatedAt });
+    }
+    inputEl.value = newValue;
+
+    if (wasNotStarted) {
+      logAarAudit(event.id, 'Draft Created');
+    } else if (wasFinalEdit) {
+      const fieldLabel = AAR_FIELD_LABELS[fieldKey] ?? fieldKey;
+      logAarAudit(event.id, 'Final Saved', `Updated ${fieldLabel}`);
+    }
+  } catch (err) {
+    console.error(err);
+    inputEl.value = oldFormatted;
+    alert('Failed to save AAR field.');
+  }
 }
 
 async function saveAarEditableField(event, fieldKey, inputEl) {
@@ -2066,6 +2149,29 @@ async function saveAarEditableField(event, fieldKey, inputEl) {
     inputEl.value = oldValue;
     alert('Failed to save AAR field.');
   }
+}
+
+function renderAarEditableCostCell(cell, event, fieldKey, emptyPlaceholder) {
+  if (!cell) return;
+  cell.textContent = '';
+  cell.classList.remove('aar-report-placeholder');
+
+  const displayValue = fieldKey === 'aarVenueCost'
+    ? resolveAarVenueCost(event)
+    : resolveAarCateringCost(event);
+
+  if (!canEditAarDocumentFields(event)) {
+    setAarCostTextElement(cell, displayValue, emptyPlaceholder);
+    return;
+  }
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'aar-editable-field';
+  input.value = hasAarFieldData(displayValue) ? formatAarCostForStorage(displayValue) : '';
+  input.placeholder = emptyPlaceholder;
+  input.addEventListener('blur', () => saveAarCostField(event, fieldKey, input));
+  cell.appendChild(input);
 }
 
 function renderAarEditableCell(cell, event, fieldKey, emptyPlaceholder) {
@@ -2110,9 +2216,10 @@ function renderAarEditableFields(event, root) {
   const costRow = reportRoot?.querySelector('.aar-cost-table tbody tr:nth-child(2)');
   if (costRow) {
     const cells = costRow.querySelectorAll('td');
-    renderAarEditableCell(cells[0], event, 'aarCost', 'Cost will appear here.');
-    renderAarEditableCell(cells[1], event, 'aarAttire', 'Attire will appear here.');
-    renderAarEditableCell(cells[2], event, 'aarTravelTime', 'Travel time will appear here.');
+    renderAarEditableCostCell(cells[0], event, 'aarVenueCost', 'Venue cost will appear here.');
+    renderAarEditableCostCell(cells[1], event, 'aarCateringCost', 'Catering cost will appear here.');
+    renderAarEditableCell(cells[2], event, 'aarAttire', 'Attire will appear here.');
+    renderAarEditableCell(cells[3], event, 'aarTravelTime', 'Travel time will appear here.');
   }
 
   const lessonsBox = reportRoot?.querySelector('.aar-report-box-lessons');
@@ -2124,9 +2231,10 @@ function renderAarReadOnlyFields(event, root) {
   const costRow = reportRoot?.querySelector('.aar-cost-table tbody tr:nth-child(2)');
   if (costRow) {
     const cells = costRow.querySelectorAll('td');
-    setAarTextElement(cells[0], event.aarCost, 'Cost will appear here.');
-    setAarTextElement(cells[1], event.aarAttire, 'Attire will appear here.');
-    setAarTextElement(cells[2], event.aarTravelTime, 'Travel time will appear here.');
+    setAarCostTextElement(cells[0], resolveAarVenueCost(event), 'Venue cost will appear here.');
+    setAarCostTextElement(cells[1], resolveAarCateringCost(event), 'Catering cost will appear here.');
+    setAarTextElement(cells[2], event.aarAttire, 'Attire will appear here.');
+    setAarTextElement(cells[3], event.aarTravelTime, 'Travel time will appear here.');
   }
 
   const lessonsBox = reportRoot?.querySelector('.aar-report-box-lessons');
@@ -2140,7 +2248,9 @@ function hasAarFieldData(value) {
 function getAarStatus(event) {
   if (isAarFinalized(event)) return 'Final';
   if (
-    hasAarFieldData(event.aarCost)
+    hasAarFieldData(event.aarVenueCost)
+    || hasAarFieldData(event.aarCateringCost)
+    || hasAarFieldData(event.aarCost)
     || hasAarFieldData(event.aarAttire)
     || hasAarFieldData(event.aarTravelTime)
     || hasAarFieldData(event.aarLessonsLearned)
@@ -2159,6 +2269,8 @@ function syncAarClearToEvent(eventId, saved) {
 
   applyAarEventPatch(eventId, {
     aarCost: saved.aarCost,
+    aarVenueCost: saved.aarVenueCost,
+    aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
     aarLessonsLearned: saved.aarLessonsLearned,
@@ -2173,7 +2285,7 @@ async function clearAarFromSearch(event) {
   if (!canEditEvents() || !event || !hasAarProgress(event)) return;
 
   const confirmed = confirm(
-    'Clear this AAR? This will remove the AAR draft/final status, sequence number, finalized date, Cost, Attire, Travel Time, and Lessons Learned. The event itself will not be deleted.'
+    'Clear this AAR? This will remove the AAR draft/final status, sequence number, finalized date, Venue Cost, Catering Cost, Attire, Travel Time, and Lessons Learned. The event itself will not be deleted.'
   );
   if (!confirmed) return;
 
@@ -2427,13 +2539,15 @@ async function resetAarDraft() {
   if (!event || isAarFinalized(event)) return;
 
   const confirmed = confirm(
-    'Reset this draft? This will clear Cost, Attire, Travel Time, and Lessons Learned.'
+    'Reset this draft? This will clear Venue Cost, Catering Cost, Attire, Travel Time, and Lessons Learned.'
   );
   if (!confirmed) return;
 
   try {
     const saved = await updateEventAarFields(event.id, {
       aarCost: '',
+      aarVenueCost: '',
+      aarCateringCost: '',
       aarAttire: '',
       aarTravelTime: '',
       aarLessonsLearned: '',
@@ -2784,7 +2898,7 @@ function renderAarHistoryLog() {
 
   if (finalized.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="8"><div class="aar-empty-state">No finalized AARs yet.</div></td></tr>';
+      '<tr><td colspan="9"><div class="aar-empty-state">No finalized AARs yet.</div></td></tr>';
     return;
   }
 
@@ -2815,9 +2929,13 @@ function renderAarHistoryLog() {
     locationCell.textContent = displayValue(event.location, 'location');
     row.appendChild(locationCell);
 
-    const costCell = document.createElement('td');
-    costCell.textContent = formatAarCost(event.aarCost);
-    row.appendChild(costCell);
+    const venueCostCell = document.createElement('td');
+    venueCostCell.textContent = formatAarHistoryCostValue(resolveAarVenueCost(event));
+    row.appendChild(venueCostCell);
+
+    const cateringCostCell = document.createElement('td');
+    cateringCostCell.textContent = formatAarHistoryCostValue(resolveAarCateringCost(event));
+    row.appendChild(cateringCostCell);
 
     const modifiedCell = document.createElement('td');
     modifiedCell.textContent = formatTimestamp(event.updatedAt);
