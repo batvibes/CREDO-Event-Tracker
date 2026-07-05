@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildMirPresentationZip } from '../js/monthly-report-pptx-export.js';
+import { buildMirPresentationZip, calculateMirSection2Data } from '../js/monthly-report-pptx-export.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -42,6 +42,7 @@ const outputBytes = await buildMirPresentationZip({
   monthName: 'June',
   year: 2026,
   section1Data,
+  section2Data: calculateMirSection2Data([]),
   notes,
 });
 

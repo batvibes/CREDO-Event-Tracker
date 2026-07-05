@@ -18,6 +18,42 @@ function formatCount(value) {
   return Number(value ?? 0).toLocaleString('en-US');
 }
 
+export const MIR_MANPOWER_MAX_ROWS = 5;
+
+const MANPOWER_ROW_FIELDS = [
+  { shapeSuffix: 'name', dataKey: 'name' },
+  { shapeSuffix: 'title', dataKey: 'billetOrRole' },
+  { shapeSuffix: 'role', dataKey: 'statusNextAction' },
+  { shapeSuffix: 'date', dataKey: 'prdEaos' },
+];
+
+export function calculateMirSection2Data(teamMembers) {
+  const sorted = [...(teamMembers ?? [])].sort(
+    (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0),
+  );
+  const rows = sorted.slice(0, MIR_MANPOWER_MAX_ROWS).map((member) => ({
+    name: member.name ?? '',
+    billetOrRole: member.billetOrRole ?? '',
+    statusNextAction: member.statusNextAction ?? '',
+    prdEaos: member.prdEaos ?? '',
+  }));
+  return { rows };
+}
+
+function applySection2ToSlide1(slideXml, { rows }) {
+  let xml = slideXml;
+  for (let rowIndex = 0; rowIndex < MIR_MANPOWER_MAX_ROWS; rowIndex += 1) {
+    const rowNumber = rowIndex + 1;
+    const row = rows[rowIndex] ?? {};
+    for (const field of MANPOWER_ROW_FIELDS) {
+      const shapeName = `mir_manpower_row${rowNumber}_${field.shapeSuffix}`;
+      const value = String(row[field.dataKey] ?? '');
+      xml = setShapeText(xml, shapeName, value);
+    }
+  }
+  return xml;
+}
+
 function hasUserNote(value) {
   return String(value ?? '').trim().length > 0;
 }
@@ -145,6 +181,7 @@ export async function buildMirPresentationZip({
   monthName,
   year,
   section1Data,
+  section2Data,
   notes,
 }) {
   const monthYearLabel = `${monthName} ${year}`;
@@ -156,7 +193,9 @@ export async function buildMirPresentationZip({
   const slide1Xml = await zip.file(slide1Path).async('string');
   const slide2Xml = await zip.file(slide2Path).async('string');
 
-  zip.file(slide1Path, applySection1ToSlide1(slide1Xml, { monthYearLabel, section1Data }));
+  let slide1 = applySection1ToSlide1(slide1Xml, { monthYearLabel, section1Data });
+  slide1 = applySection2ToSlide1(slide1, section2Data);
+  zip.file(slide1Path, slide1);
   zip.file(slide2Path, applyNotesToSlide2(slide2Xml, { monthYearLabel, notes }));
 
   return zip.generateAsync({
@@ -170,6 +209,7 @@ export async function exportMonthlyImpactReportPptx({
   monthName,
   year,
   section1Data,
+  section2Data,
   notes,
 }) {
   const response = await fetch(TEMPLATE_URL);
@@ -183,6 +223,7 @@ export async function exportMonthlyImpactReportPptx({
     monthName,
     year,
     section1Data,
+    section2Data,
     notes,
   });
 

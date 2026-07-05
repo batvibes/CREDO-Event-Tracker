@@ -27,7 +27,7 @@ import {
   updateEventType,
   updateTeamMember,
 } from './db.js';
-import { exportMonthlyImpactReportPptx } from './monthly-report-pptx-export.js';
+import { exportMonthlyImpactReportPptx, calculateMirSection2Data } from './monthly-report-pptx-export.js';
 // PDF export temporarily disabled — jspdf/html2canvas must not load at app bootstrap.
 import {
   canDeleteEvents,
@@ -1492,10 +1492,14 @@ async function exportMirDraftPptx() {
   const section1Data = calculateMirSection1Data(Number(month), Number(year));
 
   try {
+    const teamMembers = await fetchTeamMembers();
+    const section2Data = calculateMirSection2Data(teamMembers);
+
     await exportMonthlyImpactReportPptx({
       monthName,
       year: Number(year),
       section1Data,
+      section2Data,
       notes: {
         reachNotes: fields[0]?.value ?? '',
         manpowerNotes: fields[1]?.value ?? '',
