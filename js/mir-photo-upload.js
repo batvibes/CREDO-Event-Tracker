@@ -324,17 +324,61 @@ async function openMirPhotoCropModal(slotEl, slotIndex, file) {
   }
 }
 
+function getMirPhotoCropOutputDimensions(frameMode = mirPhotoCropFrameMode) {
+  return frameMode === 'tall'
+    ? { width: 675, height: 1200 }
+    : { width: 1200, height: 675 };
+}
+
+function prepareMirPhotoFromCropperCanvas(cropper, frameMode, slotKey) {
+  const { width, height } = getMirPhotoCropOutputDimensions(frameMode);
+  const canvas = cropper.getCroppedCanvas({
+    width,
+    height,
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'high',
+  });
+
+  if (!canvas) {
+    throw new Error('Failed to export cropped image.');
+  }
+
+  const imageData = canvas.toDataURL(MIR_PHOTO_CONTENT_TYPE, MIR_PHOTO_JPEG_QUALITY);
+  const prepared = {
+    imageData,
+    contentType: MIR_PHOTO_CONTENT_TYPE,
+    width,
+    height,
+  };
+
+  console.log(
+    '[MIR photo prepared]',
+    slotKey,
+    prepared.contentType,
+    prepared.width,
+    prepared.height,
+    estimateBase64DataBytes(prepared.imageData),
+  );
+
+  return prepared;
+}
+
 async function acceptMirPhotoCropSelection() {
-  if (!mirPhotoCropSession) return;
+  if (!mirPhotoCropSession || !mirPhotoCropper) return;
 
   const session = mirPhotoCropSession;
-  closeMirPhotoCropModal();
+  const cropper = mirPhotoCropper;
+  const frameMode = mirPhotoCropFrameMode;
+  const { useBtn } = getMirPhotoCropModalElements();
+  if (useBtn) useBtn.disabled = true;
 
   try {
-    const prepared = await prepareMirPhotoFromFile(session.file, session.slotKey);
+    const prepared = prepareMirPhotoFromCropperCanvas(cropper, frameMode, session.slotKey);
+    closeMirPhotoCropModal();
     setSlotPreviewFromPrepared(session.slotEl, session.slotIndex, prepared);
   } catch (err) {
-    console.error(err);
+    console.error('[MIR photo crop accept] failed', err);
+    closeMirPhotoCropModal();
     showSlotError(session.slotEl, 'Failed to prepare image. Please try another file.');
   }
 }
@@ -527,6 +571,24 @@ export function clearMirPhotoSlots() {
   });
 }
 
+function summarizeMirPhotosPayload(photos) {
+  const slots = Object.entries(photos ?? {}).map(([slotKey, entry]) => ({
+    slotKey,
+    hasImage: typeof entry?.imageData === 'string' && entry.imageData.startsWith('data:image/'),
+    imageBytesApprox: typeof entry?.imageData === 'string'
+      ? estimateBase64DataBytes(entry.imageData)
+      : 0,
+  }));
+
+  return {
+    slotCount: slots.length,
+    imageCount: slots.filter((slot) => slot.hasImage).length,
+    totalBytesApprox: slots.reduce((sum, slot) => sum + slot.imageBytesApprox, 0),
+    jsonChars: JSON.stringify(photos ?? {}).length,
+    slots,
+  };
+}
+
 export async function getMirPhotosForSave() {
   const photos = {};
   const slots = getMirPhotoSlots();
@@ -551,6 +613,7 @@ export async function getMirPhotosForSave() {
     photos[slotKey] = entry;
   }
 
+  console.log('[MIR photos for save]', summarizeMirPhotosPayload(photos));
   return photos;
 }
 

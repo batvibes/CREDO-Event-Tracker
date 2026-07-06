@@ -1576,8 +1576,15 @@ async function saveMirDraft() {
 
   try {
     const photos = await getMirPhotosForSave();
+    const reportMonth = Number(month);
+    console.log('[MIR save draft] report_month', {
+      rawMonth: month,
+      reportMonth,
+      reportYear: Number(year),
+      dbConstraintAllows: '0-11 (0=January, 11=December)',
+    });
     const saved = await saveMonthlyReport({
-      reportMonth: Number(month),
+      reportMonth,
       reportYear: Number(year),
       reachNotes: fields[0]?.value ?? '',
       manpowerNotes: fields[1]?.value ?? '',
@@ -1588,7 +1595,13 @@ async function saveMirDraft() {
     applyMirReportToForm(saved);
     showMirSaveSuccessFeedback();
   } catch (err) {
-    console.error(err);
+    console.error('[MIR save draft] failed', {
+      message: err?.message,
+      code: err?.code,
+      details: err?.details,
+      hint: err?.hint,
+      error: err,
+    });
     alert('Failed to save monthly report draft.');
   } finally {
     mirDraftSaveInProgress = false;

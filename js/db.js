@@ -616,7 +616,7 @@ export async function updateCommandHighlightsNotes(notes) {
 function monthlyReportFromRow(row) {
   return {
     id: row.id,
-    reportMonth: row.report_month,
+    reportMonth: fromDbReportMonth(row.report_month),
     reportYear: row.report_year,
     reachNotes: row.reach_notes ?? '',
     manpowerNotes: row.manpower_notes ?? '',
@@ -632,7 +632,7 @@ function monthlyReportFromRow(row) {
 }
 
 export async function fetchMonthlyReport(month, year) {
-  const reportMonth = Number(month);
+  const reportMonth = toDbReportMonth(month);
   const reportYear = Number(year);
 
   if (!Number.isFinite(reportMonth) || !Number.isFinite(reportYear)) {
@@ -659,14 +659,69 @@ export async function fetchMonthlyReports() {
   return (data ?? []).map(monthlyReportFromRow);
 }
 
+const MONTHLY_REPORT_SAVE_SELECT = [
+  'id',
+  'report_month',
+  'report_year',
+  'reach_notes',
+  'manpower_notes',
+  'readiness_notes',
+  'command_highlights_notes',
+  'status',
+  'created_at',
+  'updated_at',
+].join(', ');
+
+// Live Supabase monthly_reports.report_month uses calendar months 1–12.
+const DB_REPORT_MONTH_MIN = 1;
+const DB_REPORT_MONTH_MAX = 12;
+const APP_REPORT_MONTH_MIN = 0;
+const APP_REPORT_MONTH_MAX = 11;
+
+function toDbReportMonth(appReportMonth) {
+  const month = Number(appReportMonth);
+  if (!Number.isFinite(month) || !Number.isInteger(month)) {
+    return NaN;
+  }
+
+  // MIR UI month select uses 0-based indices (0=Jan..11=Dec).
+  if (month >= APP_REPORT_MONTH_MIN && month <= APP_REPORT_MONTH_MAX) {
+    return month + 1;
+  }
+
+  return NaN;
+}
+
+function fromDbReportMonth(dbReportMonth) {
+  const month = Number(dbReportMonth);
+  if (!Number.isFinite(month) || !Number.isInteger(month)) {
+    return NaN;
+  }
+
+  if (month >= DB_REPORT_MONTH_MIN && month <= DB_REPORT_MONTH_MAX) {
+    return month - 1;
+  }
+
+  return NaN;
+}
+
+function monthlyReportFromSaveRow(row, photos) {
+  return monthlyReportFromRow({
+    ...row,
+    photos: photos ?? {},
+  });
+}
+
 export async function saveMonthlyReport(data) {
-  const reportMonth = Number(data.reportMonth);
+  const appReportMonth = Number(data.reportMonth);
+  const reportMonth = toDbReportMonth(data.reportMonth);
   const reportYear = Number(data.reportYear);
 
   if (!Number.isFinite(reportMonth) || !Number.isFinite(reportYear)) {
     throw new Error('INVALID_MONTHLY_REPORT');
   }
 
+  const photos = data.photos ?? {};
   const payload = {
     report_month: reportMonth,
     report_year: reportYear,
@@ -674,35 +729,80 @@ export async function saveMonthlyReport(data) {
     manpower_notes: data.manpowerNotes ?? '',
     readiness_notes: data.readinessNotes ?? '',
     command_highlights_notes: data.commandHighlightsNotes ?? '',
-    photos: data.photos ?? {},
+    photos,
   };
 
-  const existing = await fetchMonthlyReport(reportMonth, reportYear);
+  const photosJsonChars = JSON.stringify(photos).length;
+  console.log('[saveMonthlyReport] report_month mapping', {
+    appReportMonth,
+    dbReportMonth: reportMonth,
+    reportYear,
+    constraintAllows: `${DB_REPORT_MONTH_MIN}-${DB_REPORT_MONTH_MAX}`,
+    withinConstraint:
+      reportMonth >= DB_REPORT_MONTH_MIN && reportMonth <= DB_REPORT_MONTH_MAX,
+    photosJsonChars,
+    photosJsonMb: Number((photosJsonChars / (1024 * 1024)).toFixed(2)),
+  });
 
-  if (existing) {
+  const { data: existingRow, error: existingError } = await supabase
+    .from('monthly_reports')
+    .select('id')
+    .eq('report_month', reportMonth)
+    .eq('report_year', reportYear)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error('[saveMonthlyReport] existing lookup failed', {
+      message: existingError.message,
+      code: existingError.code,
+      details: existingError.details,
+      hint: existingError.hint,
+    });
+    throw existingError;
+  }
+
+  if (existingRow) {
     const { data: updated, error } = await supabase
       .from('monthly_reports')
       .update(payload)
-      .eq('id', existing.id)
-      .select()
+      .eq('id', existingRow.id)
+      .select(MONTHLY_REPORT_SAVE_SELECT)
       .single();
 
-    if (error) throw error;
-    return monthlyReportFromRow(updated);
+    if (error) {
+      console.error('[saveMonthlyReport] update failed', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw error;
+    }
+
+    return monthlyReportFromSaveRow(updated, photos);
   }
 
   const { data: inserted, error } = await supabase
     .from('monthly_reports')
     .insert(payload)
-    .select()
+    .select(MONTHLY_REPORT_SAVE_SELECT)
     .single();
 
-  if (error) throw error;
-  return monthlyReportFromRow(inserted);
+  if (error) {
+    console.error('[saveMonthlyReport] insert failed', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
+
+  return monthlyReportFromSaveRow(inserted, photos);
 }
 
 export async function deleteMonthlyReport(month, year) {
-  const reportMonth = Number(month);
+  const reportMonth = toDbReportMonth(month);
   const reportYear = Number(year);
 
   if (!Number.isFinite(reportMonth) || !Number.isFinite(reportYear)) {
