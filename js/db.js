@@ -622,6 +622,9 @@ function monthlyReportFromRow(row) {
     manpowerNotes: row.manpower_notes ?? '',
     readinessNotes: row.readiness_notes ?? '',
     commandHighlightsNotes: row.command_highlights_notes ?? '',
+    photos: row.photos && typeof row.photos === 'object' && !Array.isArray(row.photos)
+      ? row.photos
+      : {},
     status: row.status ?? 'draft',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -671,6 +674,7 @@ export async function saveMonthlyReport(data) {
     manpower_notes: data.manpowerNotes ?? '',
     readiness_notes: data.readinessNotes ?? '',
     command_highlights_notes: data.commandHighlightsNotes ?? '',
+    photos: data.photos ?? {},
   };
 
   const existing = await fetchMonthlyReport(reportMonth, reportYear);

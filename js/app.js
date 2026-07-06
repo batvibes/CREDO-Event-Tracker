@@ -36,6 +36,7 @@ import {
   destroyMirPresentationPreview,
   renderMirPresentationPreview,
 } from './mir-pptx-preview.js';
+import { applyMirPhotoSlots, clearMirPhotoSlots, getMirPhotosForSave, setupMirPhotoUploads } from './mir-photo-upload.js';
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
 // PDF libraries load on demand via aar-pdf-export.js — not at app bootstrap.
 import {
@@ -1357,6 +1358,7 @@ async function prepareMirReportGenerationInput(report) {
     section1Data,
     section2Data,
     notes,
+    photos: report.photos ?? {},
   };
 }
 
@@ -1416,6 +1418,7 @@ function clearMirDraftForm() {
   getMirNotesFields().forEach((field) => {
     field.value = '';
   });
+  clearMirPhotoSlots();
 
   const statusEl = document.querySelector('#mir-draft-view .mir-status-value');
   if (statusEl) statusEl.textContent = 'Draft';
@@ -1471,6 +1474,7 @@ function applyMirReportToForm(report) {
   const statusEl = document.querySelector('#mir-draft-view .mir-status-value');
   if (statusEl) statusEl.textContent = formatMirStatus(report.status);
 
+  applyMirPhotoSlots(report.photos ?? {});
   updateMirSavedIndicator(report);
 }
 
@@ -1478,7 +1482,10 @@ function updateMirDraftToolbar() {
   const canEdit = mirSelectionComplete() && canEditEvents();
   const saveBtn = document.getElementById('mir-save-draft-btn');
   if (saveBtn) {
-    saveBtn.disabled = !canEdit;
+    saveBtn.disabled = !canEdit || mirDraftSaveInProgress;
+    if (!mirDraftSaveInProgress) {
+      saveBtn.textContent = MIR_SAVE_DRAFT_BUTTON_LABEL;
+    }
   }
 
   const clearBtn = document.getElementById('mir-clear-draft-btn');
@@ -1493,6 +1500,22 @@ function updateMirDraftToolbar() {
 }
 
 let mirSaveFeedbackTimer = null;
+let mirDraftSaveInProgress = false;
+
+const MIR_SAVE_DRAFT_BUTTON_LABEL = 'Save Draft';
+
+function setMirSaveDraftButtonSaving(isSaving) {
+  const saveBtn = document.getElementById('mir-save-draft-btn');
+  if (!saveBtn) return;
+
+  if (isSaving) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    return;
+  }
+
+  saveBtn.textContent = MIR_SAVE_DRAFT_BUTTON_LABEL;
+}
 
 function showMirSaveSuccessFeedback() {
   const el = document.getElementById('mir-save-feedback');
@@ -1518,6 +1541,7 @@ function showMirSaveSuccessFeedback() {
 
 async function loadMirDraftForSelection() {
   updateMirDraftToolbar();
+  clearMirPhotoSlots();
 
   if (!mirSelectionComplete()) {
     clearMirDraftForm();
@@ -1542,15 +1566,16 @@ async function loadMirDraftForSelection() {
 }
 
 async function saveMirDraft() {
-  console.log('[saveMirDraft] entered');
+  if (mirDraftSaveInProgress) return;
+
+  mirDraftSaveInProgress = true;
+  setMirSaveDraftButtonSaving(true);
+
   const fields = getMirNotesFields();
   const { month, year } = getMirSelectedMonthYear();
-  console.log('[saveMirDraft] month:', month);
-  console.log('[saveMirDraft] year:', year);
-  console.log('[saveMirDraft] canEditEvents():', canEditEvents());
 
   try {
-    console.log('[saveMirDraft] before saveMonthlyReport()');
+    const photos = await getMirPhotosForSave();
     const saved = await saveMonthlyReport({
       reportMonth: Number(month),
       reportYear: Number(year),
@@ -1558,15 +1583,17 @@ async function saveMirDraft() {
       manpowerNotes: fields[1]?.value ?? '',
       readinessNotes: fields[2]?.value ?? '',
       commandHighlightsNotes: fields[3]?.value ?? '',
+      photos,
     });
-    console.log('[saveMirDraft] after saveMonthlyReport() returns', saved);
     applyMirReportToForm(saved);
-    updateMirDraftToolbar();
     showMirSaveSuccessFeedback();
   } catch (err) {
-    console.log('[saveMirDraft] caught error:', err);
     console.error(err);
     alert('Failed to save monthly report draft.');
+  } finally {
+    mirDraftSaveInProgress = false;
+    setMirSaveDraftButtonSaving(false);
+    updateMirDraftToolbar();
   }
 }
 
@@ -1575,6 +1602,7 @@ async function exportMirDraftPptx() {
 
   const { month, year } = getMirSelectedMonthYear();
   const fields = getMirNotesFields();
+  const photos = await getMirPhotosForSave();
   const report = {
     reportMonth: Number(month),
     reportYear: Number(year),
@@ -1582,6 +1610,7 @@ async function exportMirDraftPptx() {
     manpowerNotes: fields[1]?.value ?? '',
     readinessNotes: fields[2]?.value ?? '',
     commandHighlightsNotes: fields[3]?.value ?? '',
+    photos,
   };
 
   await exportMirReportPptx(report);
@@ -1649,6 +1678,7 @@ function setupMirDraft() {
     });
   }
 
+  setupMirPhotoUploads();
   updateMirDraftToolbar();
 }
 

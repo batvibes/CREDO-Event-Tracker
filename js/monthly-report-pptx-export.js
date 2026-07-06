@@ -76,6 +76,210 @@ function setShapeText(slideXml, shapeName, text) {
   return slideXml.replace(shape, updatedShape);
 }
 
+function setShapeTextAligned(slideXml, shapeName, text, alignment = 'ctr') {
+  const shape = extractShape(slideXml, shapeName);
+  const escaped = escapeXml(text);
+  let updatedShape = shape;
+
+  if (/<a:pPr[^>]*\balgn="/i.test(updatedShape)) {
+    updatedShape = updatedShape.replace(
+      /(<a:pPr[^>]*\balgn=")([^"]*)(")/i,
+      `$1${alignment}$3`,
+    );
+  } else {
+    updatedShape = updatedShape.replace(/<a:p>/, `<a:p><a:pPr algn="${alignment}"/>`);
+  }
+
+  let replaced = false;
+  updatedShape = updatedShape.replace(/<a:t>[^<]*<\/a:t>/, (match) => {
+    if (replaced) return match;
+    replaced = true;
+    return `<a:t>${escaped}</a:t>`;
+  });
+  if (!replaced) {
+    throw new Error(`MIR template shape has no <a:t> node: ${shapeName}`);
+  }
+
+  return slideXml.replace(shape, updatedShape);
+}
+
+function getShapeBounds(slideXml, shapeName) {
+  const shape = extractShape(slideXml, shapeName);
+  const offMatch = shape.match(/<a:off x="(\d+)" y="(\d+)"/);
+  const extMatch = shape.match(/<a:ext cx="(\d+)" cy="(\d+)"/);
+  if (!offMatch || !extMatch) {
+    throw new Error(`MIR template shape has no bounds: ${shapeName}`);
+  }
+
+  return {
+    x: Number(offMatch[1]),
+    y: Number(offMatch[2]),
+    cx: Number(extMatch[1]),
+    cy: Number(extMatch[2]),
+  };
+}
+
+function calculateCenteredImagePlacement(frame, imageWidth, imageHeight) {
+  const width = Math.max(1, Number(imageWidth));
+  const height = Math.max(1, Number(imageHeight));
+  const imageAspect = width / height;
+  const frameAspect = frame.cx / frame.cy;
+
+  let cx;
+  let cy;
+
+  if (imageAspect > frameAspect) {
+    cx = frame.cx;
+    cy = Math.round(frame.cx / imageAspect);
+  } else {
+    cy = frame.cy;
+    cx = Math.round(frame.cy * imageAspect);
+  }
+
+  return {
+    x: frame.x + Math.round((frame.cx - cx) / 2),
+    y: frame.y + Math.round((frame.cy - cy) / 2),
+    cx,
+    cy,
+  };
+}
+
+function hasMirPhotoImage(slotData) {
+  return typeof slotData?.imageData === 'string' && slotData.imageData.startsWith('data:image/');
+}
+
+function hasMirPhotoText(value) {
+  return String(value ?? '').trim().length > 0;
+}
+
+function dataUrlToBytes(dataUrl) {
+  const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    throw new Error('Invalid MIR photo data URL.');
+  }
+
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return {
+    contentType: match[1],
+    bytes,
+  };
+}
+
+function getNextShapeId(slideXml) {
+  const ids = [...slideXml.matchAll(/\bid="(\d+)"/g)].map((match) => Number(match[1]));
+  return Math.max(0, ...ids) + 1;
+}
+
+function getNextMediaFileName(zip) {
+  let maxIndex = 0;
+  Object.keys(zip.files).forEach((path) => {
+    const match = path.match(/^ppt\/media\/image(\d+)\.(jpe?g|png)$/i);
+    if (match) {
+      maxIndex = Math.max(maxIndex, Number(match[1]));
+    }
+  });
+  return `image${maxIndex + 1}.jpeg`;
+}
+
+function getNextRelationshipId(relsXml) {
+  const ids = [...relsXml.matchAll(/\bId="rId(\d+)"/g)].map((match) => Number(match[1]));
+  return `rId${Math.max(0, ...ids) + 1}`;
+}
+
+function addSlideImageRelationship(relsXml, mediaTarget) {
+  const rId = getNextRelationshipId(relsXml);
+  const relationship =
+    `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${mediaTarget}"/>`;
+  return {
+    relsXml: relsXml.replace('</Relationships>', `${relationship}</Relationships>`),
+    rId,
+  };
+}
+
+function buildMirPhotoPictureXml({ id, name, rId, x, y, cx, cy }) {
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${escapeXml(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+}
+
+const MIR_PHOTO_SLOT_CONFIG = [
+  {
+    slotKey: '1',
+    frameShape: 'Rectangle 76',
+    labelShape: 'mir_photo_slot_1',
+    titleShape: 'mir_photo_slot_1_title',
+    captionShape: 'mir_photo_slot_1_caption',
+  },
+  {
+    slotKey: '2',
+    frameShape: 'Rectangle 80',
+    labelShape: 'mir_photo_slot_2',
+    titleShape: 'mir_photo_slot_2_title',
+    captionShape: 'mir_photo_slot_2_caption',
+  },
+  {
+    slotKey: '3',
+    frameShape: 'Rectangle 84',
+    labelShape: 'mir_photo_slot_3',
+    titleShape: 'mir_photo_slot_3_title',
+    captionShape: 'mir_photo_slot_3_caption',
+  },
+];
+
+async function applyMirPhotosToSlide1(zip, slideXml, photos = {}) {
+  let xml = slideXml;
+  const relsPath = 'ppt/slides/_rels/slide1.xml.rels';
+  let relsXml = await zip.file(relsPath).async('string');
+  let nextShapeId = getNextShapeId(xml);
+
+  for (const slot of MIR_PHOTO_SLOT_CONFIG) {
+    const slotData = photos?.[slot.slotKey];
+    if (!hasMirPhotoImage(slotData)) continue;
+
+    const imageWidth = Number(slotData.width);
+    const imageHeight = Number(slotData.height);
+    if (!Number.isFinite(imageWidth) || !Number.isFinite(imageHeight)) {
+      continue;
+    }
+
+    const frame = getShapeBounds(xml, slot.frameShape);
+    const placement = calculateCenteredImagePlacement(frame, imageWidth, imageHeight);
+    const { bytes } = dataUrlToBytes(slotData.imageData);
+    const mediaFileName = getNextMediaFileName(zip);
+    const mediaPath = `ppt/media/${mediaFileName}`;
+
+    zip.file(mediaPath, bytes);
+
+    const relationship = addSlideImageRelationship(relsXml, `../media/${mediaFileName}`);
+    relsXml = relationship.relsXml;
+
+    const pictureXml = buildMirPhotoPictureXml({
+      id: nextShapeId,
+      name: `mir_photo_image_${slot.slotKey}`,
+      rId: relationship.rId,
+      ...placement,
+    });
+    nextShapeId += 1;
+
+    xml = xml.replace('</p:spTree>', `${pictureXml}</p:spTree>`);
+    xml = setShapeText(xml, slot.labelShape, '');
+
+    if (hasMirPhotoText(slotData.eventTitle)) {
+      xml = setShapeTextAligned(xml, slot.titleShape, String(slotData.eventTitle).trim(), 'ctr');
+    }
+
+    if (hasMirPhotoText(slotData.caption)) {
+      xml = setShapeTextAligned(xml, slot.captionShape, String(slotData.caption).trim(), 'ctr');
+    }
+  }
+
+  zip.file(relsPath, relsXml);
+  return xml;
+}
+
 const NOTES_SECTIONS = [
   {
     noteKey: 'reachNotes',
@@ -223,6 +427,7 @@ export async function generateMirPresentationBlob({
   section1Data,
   section2Data,
   notes,
+  photos,
 }) {
   const templateBuffer = await loadMirTemplateBuffer();
   const output = await buildMirPresentationZip({
@@ -232,6 +437,7 @@ export async function generateMirPresentationBlob({
     section1Data,
     section2Data,
     notes,
+    photos,
   });
 
   return new Blob([output], { type: MIR_PPTX_MIME });
@@ -244,6 +450,7 @@ export async function buildMirPresentationZip({
   section1Data,
   section2Data,
   notes,
+  photos = {},
 }) {
   const shapeValues = buildMirReportShapeValues({
     monthName,
@@ -260,7 +467,8 @@ export async function buildMirPresentationZip({
   const slide1Xml = await zip.file(slide1Path).async('string');
   const slide2Xml = await zip.file(slide2Path).async('string');
 
-  const slide1 = applyShapeValuesToSlide(slide1Xml, SLIDE1_SHAPE_NAMES, shapeValues);
+  let slide1 = applyShapeValuesToSlide(slide1Xml, SLIDE1_SHAPE_NAMES, shapeValues);
+  slide1 = await applyMirPhotosToSlide1(zip, slide1, photos);
   let slide2 = applyShapeValuesToSlide(slide2Xml, SLIDE2_SHAPE_NAMES, shapeValues);
   slide2 = applyNotesGuideLines(slide2, notes);
   zip.file(slide1Path, slide1);
@@ -279,6 +487,7 @@ export async function exportMonthlyImpactReportPptx({
   section1Data,
   section2Data,
   notes,
+  photos,
 }) {
   const blob = await generateMirPresentationBlob({
     monthName,
@@ -286,6 +495,7 @@ export async function exportMonthlyImpactReportPptx({
     section1Data,
     section2Data,
     notes,
+    photos,
   });
 
   triggerDownload(blob, buildFileName(monthName, year));
