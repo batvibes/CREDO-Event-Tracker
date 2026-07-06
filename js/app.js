@@ -36,6 +36,7 @@ import {
   destroyMirPresentationPreview,
   renderMirPresentationPreview,
 } from './mir-pptx-preview.js';
+import { clearMirOpenPhotoSection, renderMirOpenPhotoSection } from './mir-photo-view.js';
 import { applyMirPhotoSlots, clearMirPhotoSlots, getMirPhotosForSave, setupMirPhotoUploads } from './mir-photo-upload.js';
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
 // PDF libraries load on demand via aar-pdf-export.js — not at app bootstrap.
@@ -1731,7 +1732,10 @@ async function populateMirOpenView(report) {
   if (!report) return;
 
   const canvas = document.getElementById('mir-preview-canvas');
+  const photoGrid = document.getElementById('mir-open-photo-grid');
   if (!canvas) return;
+
+  renderMirOpenPhotoSection(photoGrid, report.photos ?? {});
 
   try {
     const input = await prepareMirReportGenerationInput(report);
@@ -1750,6 +1754,7 @@ function setupMirOpenView() {
   backBtn.dataset.mirOpenBound = 'true';
   backBtn.addEventListener('click', () => {
     destroyMirPresentationPreview(document.getElementById('mir-preview-canvas'));
+    clearMirOpenPhotoSection(document.getElementById('mir-open-photo-grid'));
     mirOpenReport = null;
     switchMirView('history');
   });
