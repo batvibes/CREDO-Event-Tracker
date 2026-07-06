@@ -1270,6 +1270,109 @@ body:has(#new-event-modal[open]) {
   }
 }
 
+#mir-photo-crop-modal .mir-photo-crop-modal-content {
+  width: min(720px, calc(100vw - 32px));
+}
+
+#mir-photo-crop-modal .mir-photo-crop-modal-body {
+  gap: 12px;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-help {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #5c6570;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-toggle {
+  display: inline-flex;
+  border: 1px solid #dde3ea;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-btn {
+  padding: 6px 14px;
+  border: none;
+  border-right: 1px solid #dde3ea;
+  background: #fff;
+  color: #4b5563;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-btn:last-child {
+  border-right: none;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-btn:hover {
+  background: #f3f4f6;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-btn-active {
+  background: #00205b;
+  color: #fff;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-frame-btn-active:hover {
+  background: #00205b;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-stage {
+  width: 100%;
+  max-height: min(60vh, 420px);
+  background: #f8f9fb;
+  overflow: hidden;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-stage > img {
+  display: block;
+  max-width: 100%;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-zoom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-zoom-field input[type="range"] {
+  width: 100%;
+  margin: 0;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-status {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #5c6570;
+  font-style: italic;
+}
+
+#mir-photo-crop-modal .mir-photo-crop-status[hidden] {
+  display: none;
+}
+
 #view-reports .mir-notes-section {
   margin-bottom: 28px;
 }

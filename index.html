@@ -722,6 +722,37 @@
     </div>
   </dialog>
 
+  <dialog class="modal" id="mir-photo-crop-modal">
+    <div class="modal-content mir-photo-crop-modal-content">
+      <div class="modal-header">
+        <h3 id="mir-photo-crop-modal-title">Adjust Photo</h3>
+        <button type="button" class="modal-close" id="mir-photo-crop-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body mir-photo-crop-modal-body">
+        <p class="mir-photo-crop-help">Drag to reposition. Scroll or use the slider to zoom.</p>
+        <div class="mir-photo-crop-frame-field">
+          <span class="mir-photo-crop-frame-label">Photo Frame</span>
+          <div class="mir-photo-crop-frame-toggle" role="group" aria-label="Photo frame orientation">
+            <button type="button" class="mir-photo-crop-frame-btn mir-photo-crop-frame-btn-active" id="mir-photo-crop-frame-wide" data-frame="wide">Landscape</button>
+            <button type="button" class="mir-photo-crop-frame-btn" id="mir-photo-crop-frame-tall" data-frame="tall">Portrait</button>
+          </div>
+        </div>
+        <div class="mir-photo-crop-stage">
+          <img id="mir-photo-crop-image" alt="">
+        </div>
+        <label class="mir-photo-crop-zoom-field">
+          <span>Zoom</span>
+          <input type="range" id="mir-photo-crop-zoom" min="0" max="100" value="0" step="1">
+        </label>
+        <p id="mir-photo-crop-status" class="mir-photo-crop-status" hidden aria-live="polite">Preparing image…</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="mir-photo-crop-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="mir-photo-crop-use-btn" disabled>Use Photo</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="modal" id="new-event-modal">
     <form method="dialog" class="modal-content" id="new-event-form">
       <div class="modal-header">

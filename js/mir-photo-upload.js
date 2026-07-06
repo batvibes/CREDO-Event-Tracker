@@ -1,3 +1,6 @@
+import Cropper from 'cropperjs';
+import 'cropperjs/dist/cropper.css';
+
 const MIR_PHOTO_OBJECT_URLS = new Map();
 const MIR_PHOTO_PENDING_DATA = new Map();
 const MIR_PHOTO_SAVED_IMAGE_DATA = new Map();
@@ -5,6 +8,15 @@ const MIR_PHOTO_SAVED_IMAGE_DATA = new Map();
 const MIR_PHOTO_MAX_DIMENSION = 1200;
 const MIR_PHOTO_JPEG_QUALITY = 0.82;
 const MIR_PHOTO_CONTENT_TYPE = 'image/jpeg';
+const MIR_PHOTO_CROP_ASPECT_RATIO_WIDE = 1200 / 675;
+const MIR_PHOTO_CROP_ASPECT_RATIO_TALL = 675 / 1200;
+
+let mirPhotoCropper = null;
+let mirPhotoCropSession = null;
+let mirPhotoCropModalInitialized = false;
+let mirPhotoCropZoomSyncing = false;
+let mirPhotoCropZoomRange = { min: 1, max: 1 };
+let mirPhotoCropFrameMode = 'wide';
 
 function isImageFile(file) {
   return Boolean(file && typeof file.type === 'string' && file.type.startsWith('image/'));
@@ -107,6 +119,248 @@ async function loadOrientedImageSource(file) {
     height: img.naturalHeight,
     cleanup: () => {},
   };
+}
+
+async function createOrientedImageDataUrl(file) {
+  const { source, width, height, cleanup } = await loadOrientedImageSource(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    cleanup();
+    throw new Error('Canvas is unavailable.');
+  }
+
+  context.drawImage(source, 0, 0, width, height);
+  cleanup();
+  return canvas.toDataURL(MIR_PHOTO_CONTENT_TYPE, 0.92);
+}
+
+function getMirPhotoCropModalElements() {
+  return {
+    modal: document.getElementById('mir-photo-crop-modal'),
+    title: document.getElementById('mir-photo-crop-modal-title'),
+    image: document.getElementById('mir-photo-crop-image'),
+    status: document.getElementById('mir-photo-crop-status'),
+    zoom: document.getElementById('mir-photo-crop-zoom'),
+    useBtn: document.getElementById('mir-photo-crop-use-btn'),
+  };
+}
+
+function destroyMirPhotoCropper() {
+  if (mirPhotoCropper) {
+    mirPhotoCropper.destroy();
+    mirPhotoCropper = null;
+  }
+}
+
+function resetMirPhotoCropImage() {
+  const { image } = getMirPhotoCropModalElements();
+  if (!image) return;
+  image.removeAttribute('src');
+  image.removeAttribute('style');
+}
+
+function getMirPhotoCropAspectRatio(frameMode = mirPhotoCropFrameMode) {
+  return frameMode === 'tall'
+    ? MIR_PHOTO_CROP_ASPECT_RATIO_TALL
+    : MIR_PHOTO_CROP_ASPECT_RATIO_WIDE;
+}
+
+function updateMirPhotoCropFrameButtons(frameMode) {
+  document.getElementById('mir-photo-crop-frame-wide')?.classList.toggle(
+    'mir-photo-crop-frame-btn-active',
+    frameMode === 'wide',
+  );
+  document.getElementById('mir-photo-crop-frame-tall')?.classList.toggle(
+    'mir-photo-crop-frame-btn-active',
+    frameMode === 'tall',
+  );
+}
+
+function setMirPhotoCropFrameMode(frameMode) {
+  if (frameMode !== 'wide' && frameMode !== 'tall') return;
+  if (mirPhotoCropFrameMode === frameMode) return;
+
+  mirPhotoCropFrameMode = frameMode;
+  updateMirPhotoCropFrameButtons(frameMode);
+
+  if (!mirPhotoCropper) return;
+
+  mirPhotoCropper.setAspectRatio(getMirPhotoCropAspectRatio(frameMode));
+  initializeMirPhotoCropZoomControls(mirPhotoCropper);
+}
+
+function getMirPhotoCropZoomRatio(cropper) {
+  const canvasData = cropper.getCanvasData();
+  if (!canvasData?.naturalWidth) return 0;
+  return canvasData.width / canvasData.naturalWidth;
+}
+
+function updateMirPhotoCropZoomSlider(cropper) {
+  const { zoom } = getMirPhotoCropModalElements();
+  if (!zoom || !cropper) return;
+
+  const { min, max } = mirPhotoCropZoomRange;
+  if (max <= min) {
+    zoom.value = '0';
+    return;
+  }
+
+  const ratio = getMirPhotoCropZoomRatio(cropper);
+  const percent = Math.round(((ratio - min) / (max - min)) * 100);
+  mirPhotoCropZoomSyncing = true;
+  zoom.value = String(Math.max(0, Math.min(100, percent)));
+  mirPhotoCropZoomSyncing = false;
+}
+
+function applyMirPhotoCropZoomFromSlider() {
+  if (mirPhotoCropZoomSyncing || !mirPhotoCropper) return;
+
+  const { zoom } = getMirPhotoCropModalElements();
+  if (!zoom) return;
+
+  const { min, max } = mirPhotoCropZoomRange;
+  const targetRatio = min + ((max - min) * Number(zoom.value)) / 100;
+
+  mirPhotoCropZoomSyncing = true;
+  mirPhotoCropper.zoomTo(targetRatio);
+  updateMirPhotoCropZoomSlider(mirPhotoCropper);
+  mirPhotoCropZoomSyncing = false;
+}
+
+function initializeMirPhotoCropZoomControls(cropper) {
+  const { zoom } = getMirPhotoCropModalElements();
+  if (!zoom) return;
+
+  const initialRatio = getMirPhotoCropZoomRatio(cropper);
+  mirPhotoCropZoomRange = {
+    min: initialRatio,
+    max: initialRatio * 3,
+  };
+  updateMirPhotoCropZoomSlider(cropper);
+}
+
+function closeMirPhotoCropModal() {
+  destroyMirPhotoCropper();
+  resetMirPhotoCropImage();
+
+  const { modal, status, useBtn, zoom } = getMirPhotoCropModalElements();
+  if (status) {
+    status.hidden = true;
+    status.textContent = 'Preparing image…';
+  }
+  if (useBtn) useBtn.disabled = true;
+  if (zoom) zoom.value = '0';
+  mirPhotoCropFrameMode = 'wide';
+  updateMirPhotoCropFrameButtons('wide');
+  if (modal?.open) modal.close();
+
+  mirPhotoCropSession = null;
+}
+
+async function openMirPhotoCropModal(slotEl, slotIndex, file) {
+  const slotKey = getMirPhotoSlotKey(slotEl, slotIndex);
+  mirPhotoCropSession = { slotEl, slotIndex, file, slotKey };
+
+  const { modal, title, image, status, useBtn } = getMirPhotoCropModalElements();
+  if (!modal || !image) {
+    mirPhotoCropSession = null;
+    throw new Error('MIR photo crop modal is unavailable.');
+  }
+
+  title.textContent = `Adjust Photo ${slotKey}`;
+  status.hidden = false;
+  status.textContent = 'Preparing image…';
+  useBtn.disabled = true;
+  mirPhotoCropFrameMode = 'wide';
+  updateMirPhotoCropFrameButtons('wide');
+  destroyMirPhotoCropper();
+  resetMirPhotoCropImage();
+  modal.showModal();
+
+  try {
+    image.src = await createOrientedImageDataUrl(file);
+    await new Promise((resolve, reject) => {
+      if (image.complete) {
+        resolve();
+        return;
+      }
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Failed to load image.'));
+    });
+
+    mirPhotoCropper = new Cropper(image, {
+      aspectRatio: getMirPhotoCropAspectRatio('wide'),
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 1,
+      cropBoxMovable: false,
+      cropBoxResizable: false,
+      toggleDragModeOnDblclick: false,
+      guides: true,
+      center: true,
+      background: true,
+      zoomOnWheel: true,
+      wheelZoomRatio: 0.08,
+      responsive: true,
+      restore: false,
+      checkOrientation: false,
+      ready() {
+        initializeMirPhotoCropZoomControls(mirPhotoCropper);
+        status.hidden = true;
+        useBtn.disabled = false;
+      },
+      zoom() {
+        if (!mirPhotoCropper || mirPhotoCropZoomSyncing) return;
+        updateMirPhotoCropZoomSlider(mirPhotoCropper);
+      },
+    });
+  } catch (err) {
+    closeMirPhotoCropModal();
+    throw err;
+  }
+}
+
+async function acceptMirPhotoCropSelection() {
+  if (!mirPhotoCropSession) return;
+
+  const session = mirPhotoCropSession;
+  closeMirPhotoCropModal();
+
+  try {
+    const prepared = await prepareMirPhotoFromFile(session.file, session.slotKey);
+    setSlotPreviewFromPrepared(session.slotEl, session.slotIndex, prepared);
+  } catch (err) {
+    console.error(err);
+    showSlotError(session.slotEl, 'Failed to prepare image. Please try another file.');
+  }
+}
+
+function setupMirPhotoCropModal() {
+  if (mirPhotoCropModalInitialized) return;
+  mirPhotoCropModalInitialized = true;
+
+  const { modal, zoom } = getMirPhotoCropModalElements();
+  document.getElementById('mir-photo-crop-cancel-btn')?.addEventListener('click', closeMirPhotoCropModal);
+  document.getElementById('mir-photo-crop-modal-close')?.addEventListener('click', closeMirPhotoCropModal);
+  document.getElementById('mir-photo-crop-use-btn')?.addEventListener('click', () => {
+    void acceptMirPhotoCropSelection();
+  });
+  zoom?.addEventListener('input', applyMirPhotoCropZoomFromSlider);
+  document.getElementById('mir-photo-crop-frame-wide')?.addEventListener('click', () => {
+    setMirPhotoCropFrameMode('wide');
+  });
+  document.getElementById('mir-photo-crop-frame-tall')?.addEventListener('click', () => {
+    setMirPhotoCropFrameMode('tall');
+  });
+
+  modal?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeMirPhotoCropModal();
+  });
 }
 
 function scaleMirPhotoDimensions(width, height) {
@@ -228,11 +482,8 @@ async function handleFileSelected(slotEl, slotIndex, file) {
 
   hideSlotError(slotEl);
 
-  const slotKey = getMirPhotoSlotKey(slotEl, slotIndex);
-
   try {
-    const prepared = await prepareMirPhotoFromFile(file, slotKey);
-    setSlotPreviewFromPrepared(slotEl, slotIndex, prepared);
+    await openMirPhotoCropModal(slotEl, slotIndex, file);
   } catch (err) {
     console.error(err);
     showSlotError(slotEl, 'Failed to prepare image. Please try another file.');
@@ -248,6 +499,8 @@ let mirPhotoUploadsInitialized = false;
 export function setupMirPhotoUploads() {
   if (mirPhotoUploadsInitialized) return;
   mirPhotoUploadsInitialized = true;
+
+  setupMirPhotoCropModal();
 
   getMirPhotoSlots().forEach((slotEl, slotIndex) => {
     const { fileInput, uploadPrompt, replaceBtn } = getSlotElements(slotEl);
