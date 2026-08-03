@@ -2167,6 +2167,7 @@ function populateAarDocument(event, options = {}) {
   );
   setAarRmtField('Facilitator(s)', aarPlainField(event.facilitators), 'Facilitator(s) will appear here.', root);
   setAarRmtField('Staffing', aarPlainField(event.credoStaff), 'Staffing will appear here.', root);
+  setAarRmtField('Waitlist', event.aarWaitlist, 'Waitlist will appear here.', root);
   setAarRmtField('Time', aarPlainField(event.time), 'Time will appear here.', root);
   setAarRmtField(
     'Point(s) of Contact',
