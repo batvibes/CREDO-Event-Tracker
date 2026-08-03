@@ -41,6 +41,7 @@ export function eventFromRow(row) {
     aarCateringCost: row.aar_catering_cost || '',
     aarAttire: row.aar_attire || '',
     aarTravelTime: row.aar_travel_time || '',
+    aarWaitlist: row.aar_waitlist || '',
     aarLessonsLearned: row.aar_lessons_learned || '',
     aarFinalized: booleanFromDb(row.aar_finalized),
     aarFinalizedAt: row.aar_finalized_at ?? null,
@@ -229,6 +230,7 @@ export async function updateEventAarFields(id, fields) {
   if (fields.aarCateringCost !== undefined) row.aar_catering_cost = fields.aarCateringCost;
   if (fields.aarAttire !== undefined) row.aar_attire = fields.aarAttire;
   if (fields.aarTravelTime !== undefined) row.aar_travel_time = fields.aarTravelTime;
+  if (fields.aarWaitlist !== undefined) row.aar_waitlist = fields.aarWaitlist;
   if (fields.aarLessonsLearned !== undefined) row.aar_lessons_learned = fields.aarLessonsLearned;
 
   const { data, error } = await supabase
@@ -260,6 +262,7 @@ export async function clearEventAar(id) {
       aar_catering_cost: '',
       aar_attire: '',
       aar_travel_time: '',
+      aar_waitlist: '',
       aar_lessons_learned: '',
       aar_finalized: false,
       aar_finalized_at: null,

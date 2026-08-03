@@ -187,6 +187,7 @@ const AAR_FIELD_LABELS = {
   aarCateringCost: 'Catering Cost',
   aarAttire: 'Attire',
   aarTravelTime: 'Travel Time',
+  aarWaitlist: 'Waitlist',
   aarLessonsLearned: 'Lessons Learned',
 };
 
@@ -2232,6 +2233,7 @@ function syncAarDraftFieldsToEvent(eventId, saved) {
     aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
+    aarWaitlist: saved.aarWaitlist,
     aarLessonsLearned: saved.aarLessonsLearned,
   };
   if (saved.updatedAt) patch.updatedAt = saved.updatedAt;
@@ -2247,6 +2249,7 @@ function syncAarFinalizeToEvent(eventId, saved) {
     aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
+    aarWaitlist: saved.aarWaitlist,
     aarLessonsLearned: saved.aarLessonsLearned,
     aarFinalized: saved.aarFinalized === true,
     aarFinalizedAt: saved.aarFinalizedAt ?? null,
@@ -2394,6 +2397,9 @@ function renderAarEditableFields(event, root) {
     renderAarEditableCell(cells[3], event, 'aarTravelTime', 'Travel time will appear here.');
   }
 
+  const waitlistCell = reportRoot?.querySelector('.aar-waitlist-cell');
+  renderAarEditableCell(waitlistCell, event, 'aarWaitlist', 'Waitlist will appear here.');
+
   const lessonsBox = reportRoot?.querySelector('.aar-report-box-lessons');
   renderAarEditableBox(lessonsBox, event, 'aarLessonsLearned', 'Lessons learned will appear here.');
 }
@@ -2408,6 +2414,9 @@ function renderAarReadOnlyFields(event, root) {
     setAarTextElement(cells[2], event.aarAttire, 'Attire will appear here.');
     setAarTextElement(cells[3], event.aarTravelTime, 'Travel time will appear here.');
   }
+
+  const waitlistCell = reportRoot?.querySelector('.aar-waitlist-cell');
+  setAarTextElement(waitlistCell, event.aarWaitlist, 'Waitlist will appear here.');
 
   const lessonsBox = reportRoot?.querySelector('.aar-report-box-lessons');
   setAarTextElement(lessonsBox, event.aarLessonsLearned, 'Lessons learned will appear here.');
@@ -2425,6 +2434,7 @@ function getAarStatus(event) {
     || hasAarFieldData(event.aarCost)
     || hasAarFieldData(event.aarAttire)
     || hasAarFieldData(event.aarTravelTime)
+    || hasAarFieldData(event.aarWaitlist)
     || hasAarFieldData(event.aarLessonsLearned)
   ) {
     return 'Draft';
@@ -2445,6 +2455,7 @@ function syncAarClearToEvent(eventId, saved) {
     aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
+    aarWaitlist: saved.aarWaitlist,
     aarLessonsLearned: saved.aarLessonsLearned,
     aarFinalized: saved.aarFinalized === true,
     aarFinalizedAt: saved.aarFinalizedAt ?? null,
@@ -2457,7 +2468,7 @@ async function clearAarFromSearch(event) {
   if (!canEditEvents() || !event || !hasAarProgress(event)) return;
 
   const confirmed = confirm(
-    'Clear this AAR? This will remove the AAR draft/final status, sequence number, finalized date, Venue Cost, Catering Cost, Attire, Travel Time, and Lessons Learned. The event itself will not be deleted.'
+    'Clear this AAR? This will remove the AAR draft/final status, sequence number, finalized date, Venue Cost, Catering Cost, Attire, Travel Time, Waitlist, and Lessons Learned. The event itself will not be deleted.'
   );
   if (!confirmed) return;
 
@@ -2711,7 +2722,7 @@ async function resetAarDraft() {
   if (!event || isAarFinalized(event)) return;
 
   const confirmed = confirm(
-    'Reset this draft? This will clear Venue Cost, Catering Cost, Attire, Travel Time, and Lessons Learned.'
+    'Reset this draft? This will clear Venue Cost, Catering Cost, Attire, Travel Time, Waitlist, and Lessons Learned.'
   );
   if (!confirmed) return;
 
@@ -2722,6 +2733,7 @@ async function resetAarDraft() {
       aarCateringCost: '',
       aarAttire: '',
       aarTravelTime: '',
+      aarWaitlist: '',
       aarLessonsLearned: '',
     });
     syncAarDraftFieldsToEvent(event.id, saved);
