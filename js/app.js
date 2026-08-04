@@ -39,6 +39,7 @@ import {
 import { clearMirOpenPhotoSection, renderMirOpenPhotoSection } from './mir-photo-view.js';
 import { applyMirPhotoSlots, clearMirPhotoSlots, getMirPhotosForSave, setupMirPhotoUploads } from './mir-photo-upload.js';
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
+import { exportEventSyncReportPdf } from './event-report-pdf-export.js';
 // PDF libraries load on demand via aar-pdf-export.js — not at app bootstrap.
 import {
   canDeleteEvents,
@@ -1188,37 +1189,59 @@ function clearReportFilters() {
   generateReport();
 }
 
-function csvEscape(value) {
-  const text = String(value);
-  if (/[",\n]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
+function getReportFilterSummary() {
+  const reportType = document.getElementById('report-type').value;
+  const labels = {
+    all: 'All Events',
+    cy: 'Calendar Year',
+    fy: 'Fiscal Year',
+    'month-year': 'Month & Year',
+    'date-range': 'Date Range',
+    command: 'Command',
+    'event-type': 'Event Type',
+  };
+
+  if (reportType === 'cy' || reportType === 'fy') {
+    return `${labels[reportType]}: ${document.getElementById('report-year').value || 'All'}`;
   }
-  return text;
+  if (reportType === 'month-year') {
+    const monthSelect = document.getElementById('report-month');
+    const month = monthSelect.options[monthSelect.selectedIndex]?.text || '';
+    const year = document.getElementById('report-year').value || '';
+    return `Month & Year: ${month} ${year}`.trim();
+  }
+  if (reportType === 'date-range') {
+    const start = document.getElementById('report-start-date').value;
+    const end = document.getElementById('report-end-date').value;
+    return `Date Range: ${formatDisplayDate(start)} – ${formatDisplayDate(end)}`;
+  }
+  if (reportType === 'command') {
+    return `Command: ${document.getElementById('report-command').value || 'All'}`;
+  }
+  if (reportType === 'event-type') {
+    return `Event Type: ${document.getElementById('report-event-type').value || 'All'}`;
+  }
+  return 'All Events';
 }
 
-function exportReportCsv() {
+async function exportReportPdf() {
   if (reportResults.length === 0) return;
 
-  const headers = ['Date', 'Event Type', 'Command', 'Expected Participants', 'Location'];
-  const rows = reportResults.map((event) =>
-    [
-      displayValue(event.date, 'date'),
-      event.eventType,
-      displayValue(event.command, 'command'),
-      displayValue(event.participants, 'participants'),
-      displayValue(event.location, 'location'),
-    ]
-      .map(csvEscape)
-      .join(',')
-  );
+  const sorted = sortTableData(reportResults, reportsTableSort, REPORTS_SORT_COMPARATORS);
+  const rows = sorted.map((event) => ({
+    dates: formatEventDateDisplay(event),
+    eventType: event.eventType,
+    command: displayValue(event.command, 'command'),
+    facilitators: event.facilitators || TBD,
+    staff: event.credoStaff || TBD,
+    expectedParticipants: displayValue(event.participants, 'participants'),
+    location: displayValue(event.location, 'location'),
+    reservation: event.reservation || 'Not Started',
+    catering: event.catering || 'Not Started',
+    packout: event.packout || 'Not Started',
+  }));
 
-  const csv = [headers.join(','), ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'credo-event-report.csv';
-  link.click();
-  URL.revokeObjectURL(link.href);
+  await exportEventSyncReportPdf({ rows, filterSummary: getReportFilterSummary() });
 }
 
 function setupReports() {
@@ -1228,7 +1251,7 @@ function setupReports() {
   document.getElementById('report-type').addEventListener('change', updateReportFilterState);
   document.getElementById('report-generate-btn').addEventListener('click', generateReport);
   document.getElementById('report-clear-btn').addEventListener('click', clearReportFilters);
-  document.getElementById('report-export-btn').addEventListener('click', exportReportCsv);
+  document.getElementById('report-export-btn').addEventListener('click', exportReportPdf);
 
   setupReportsTableSorting();
   renderReportTable();
