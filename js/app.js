@@ -2577,15 +2577,8 @@ function updateAarDocumentToolbar() {
 }
 
 function setupAarPreviewToolbar() {
-  const toolbar = document.querySelector('#aar-preview-view .aar-doc-toolbar-preview');
-  if (!toolbar) return;
-
-  let actions = toolbar.querySelector('.aar-doc-toolbar-actions');
-  if (!actions) {
-    actions = document.createElement('div');
-    actions.className = 'aar-doc-toolbar-actions';
-    toolbar.appendChild(actions);
-  }
+  const confirmBar = document.getElementById('aar-doc-confirm-bar');
+  if (!confirmBar) return;
 
   if (!document.getElementById('aar-mark-final-btn')) {
     const finalBtn = document.createElement('button');
@@ -2594,7 +2587,7 @@ function setupAarPreviewToolbar() {
     finalBtn.id = 'aar-mark-final-btn';
     finalBtn.textContent = 'Mark Final';
     finalBtn.addEventListener('click', markAarFinal);
-    actions.appendChild(finalBtn);
+    confirmBar.appendChild(finalBtn);
   }
 
   updateAarPreviewToolbar();
