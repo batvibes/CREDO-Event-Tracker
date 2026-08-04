@@ -112,7 +112,7 @@ let dataLoadGeneration = 0;
 const SORT_ASC = 'asc';
 const SORT_DESC = 'desc';
 
-const eventsTableSort = { column: null, direction: SORT_ASC };
+const eventsTableSort = { column: 'date', direction: SORT_DESC };
 const reportsTableSort = { column: null, direction: SORT_ASC };
 const aarTableSort = { column: null, direction: SORT_ASC };
 const aarHistoryTableSort = { column: null, direction: SORT_ASC };
@@ -691,8 +691,8 @@ function bindSortableTableHeaders(tableSelector, columns, sortState, onSortChang
 }
 
 function resetTableSortState() {
-  eventsTableSort.column = null;
-  eventsTableSort.direction = SORT_ASC;
+  eventsTableSort.column = 'date';
+  eventsTableSort.direction = SORT_DESC;
   reportsTableSort.column = null;
   reportsTableSort.direction = SORT_ASC;
   aarTableSort.column = null;
