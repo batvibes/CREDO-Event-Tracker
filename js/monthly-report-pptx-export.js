@@ -27,7 +27,66 @@ const MANPOWER_ROW_FIELDS = [
   { shapeSuffix: 'date', dataKey: 'prdEaos' },
 ];
 
-export function calculateMirSection2Data(teamMembers) {
+export const MIR_PERSONNEL_CHANGE_MAX_ROWS = 2;
+
+const MIR_PERSONNEL_CHANGES_START = '\n[MIR_PERSONNEL_CHANGES]\n';
+const MIR_PERSONNEL_CHANGES_END = '\n[/MIR_PERSONNEL_CHANGES]';
+
+function normalizeMirPersonnelChangeRows(rows) {
+  return (rows ?? [])
+    .map((row) => ({
+      name: String(row?.name ?? '').trim(),
+      billetOrPosition: String(row?.billetOrPosition ?? '').trim(),
+      date: String(row?.date ?? '').trim(),
+    }))
+    .filter((row) => row.name || row.billetOrPosition || row.date);
+}
+
+export function extractMirManpowerNotesText(value) {
+  const raw = String(value ?? '');
+  const startIndex = raw.indexOf(MIR_PERSONNEL_CHANGES_START.trim());
+  if (startIndex === -1) return raw.trim();
+  return raw.slice(0, startIndex).trim();
+}
+
+export function extractMirPersonnelChanges(value) {
+  const raw = String(value ?? '');
+  const startToken = MIR_PERSONNEL_CHANGES_START.trim();
+  const endToken = MIR_PERSONNEL_CHANGES_END.trim();
+  const startIndex = raw.indexOf(startToken);
+  const endIndex = raw.indexOf(endToken);
+
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return { incoming: [], outgoing: [] };
+  }
+
+  const jsonText = raw.slice(startIndex + startToken.length, endIndex).trim();
+  try {
+    const parsed = JSON.parse(jsonText);
+    return {
+      incoming: normalizeMirPersonnelChangeRows(parsed.incoming),
+      outgoing: normalizeMirPersonnelChangeRows(parsed.outgoing),
+    };
+  } catch (_err) {
+    return { incoming: [], outgoing: [] };
+  }
+}
+
+export function mergeMirManpowerNotesWithPersonnelChanges(notes, changes) {
+  const cleanNotes = extractMirManpowerNotesText(notes);
+  const payload = {
+    incoming: normalizeMirPersonnelChangeRows(changes?.incoming),
+    outgoing: normalizeMirPersonnelChangeRows(changes?.outgoing),
+  };
+
+  if (payload.incoming.length === 0 && payload.outgoing.length === 0) {
+    return cleanNotes;
+  }
+
+  return `${cleanNotes}${MIR_PERSONNEL_CHANGES_START}${JSON.stringify(payload)}${MIR_PERSONNEL_CHANGES_END}`.trim();
+}
+
+export function calculateMirSection2Data(teamMembers, personnelChanges = { incoming: [], outgoing: [] }) {
   const sorted = [...(teamMembers ?? [])].sort(
     (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0),
   );
@@ -37,7 +96,13 @@ export function calculateMirSection2Data(teamMembers) {
     statusNextAction: member.statusNextAction ?? '',
     prdEaos: member.prdEaos ?? '',
   }));
-  return { rows };
+  return {
+    rows,
+    personnelChanges: {
+      incoming: normalizeMirPersonnelChangeRows(personnelChanges.incoming),
+      outgoing: normalizeMirPersonnelChangeRows(personnelChanges.outgoing),
+    },
+  };
 }
 
 function hasUserNote(value) {
@@ -117,6 +182,150 @@ function getShapeBounds(slideXml, shapeName) {
     cx: Number(extMatch[1]),
     cy: Number(extMatch[2]),
   };
+}
+
+
+function updateShapeBounds(slideXml, shapeName, bounds) {
+  const shape = extractShape(slideXml, shapeName);
+  let updatedShape = shape;
+  updatedShape = updatedShape.replace(
+    /<a:off x="\d+" y="\d+"\/>/,
+    `<a:off x="${bounds.x}" y="${bounds.y}"/>`,
+  );
+  updatedShape = updatedShape.replace(
+    /<a:ext cx="\d+" cy="\d+"\/>/,
+    `<a:ext cx="${bounds.cx}" cy="${bounds.cy}"/>`,
+  );
+  return slideXml.replace(shape, updatedShape);
+}
+
+function srgb(color) {
+  return String(color).replace('#', '').toUpperCase();
+}
+
+function getTextRunXml({ text: value, size = 700, bold = false, color = '00205B' }) {
+  return `<a:r><a:rPr lang="en-US" sz="${size}"${bold ? ' b="1"' : ''}><a:solidFill><a:srgbClr val="${srgb(color)}"/></a:solidFill><a:latin typeface="Arial"/><a:ea typeface="Arial"/><a:cs typeface="Arial"/></a:rPr><a:t>${escapeXml(value)}</a:t></a:r>`;
+}
+
+function buildMirTextShapeXml({ id, name, x, y, cx, cy, text: value, size = 700, bold = false, color = '00205B', align = 'l' }) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${escapeXml(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="${align}"/>${getTextRunXml({ text: value, size, bold, color })}</a:p></p:txBody></p:sp>`;
+}
+
+function buildMirRectShapeXml({ id, name, x, y, cx, cy, fill = 'FFFFFF', line = 'C5CCD8', lineWidth = 6350 }) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${escapeXml(name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${srgb(fill)}"/></a:solidFill><a:ln w="${lineWidth}"><a:solidFill><a:srgbClr val="${srgb(line)}"/></a:solidFill></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
+}
+
+function insertShapes(slideXml, shapes) {
+  return slideXml.replace('</p:spTree>', `${shapes.join('')}</p:spTree>`);
+}
+
+function createDisplayPersonnelChangeRows(rows, emptyLabel) {
+  const normalized = normalizeMirPersonnelChangeRows(rows);
+  if (normalized.length === 0) {
+    return [{ name: emptyLabel, billetOrPosition: '', date: '' }];
+  }
+
+  const visible = normalized.slice(0, MIR_PERSONNEL_CHANGE_MAX_ROWS);
+  const remaining = normalized.length - visible.length;
+  if (remaining > 0) {
+    visible.push({ name: `+ ${remaining} additional`, billetOrPosition: '', date: '' });
+  }
+  return visible;
+}
+
+function addMirPersonnelChangeTable(shapes, nextIdRef, { x, y, width, sectionTitle, headerFill, titleColor, rows, emptyLabel, dateLabel }) {
+  const headerHeight = 177800;
+  const columnHeaderHeight = 165100;
+  const rowHeight = 228600;
+  const nameWidth = 571500;
+  const dateWidth = 469900;
+  const billetWidth = width - nameWidth - dateWidth;
+
+  shapes.push(buildMirRectShapeXml({ id: nextIdRef.id++, name: `${sectionTitle}_header_fill`, x, y, cx: width, cy: headerHeight, fill: headerFill, line: 'C5CCD8' }));
+  shapes.push(buildMirTextShapeXml({ id: nextIdRef.id++, name: `${sectionTitle}_title`, x: x + 76200, y: y + 35560, cx: width - 152400, cy: 101600, text: sectionTitle, size: 820, bold: true, color: titleColor }));
+
+  const headerY = y + headerHeight;
+  const columns = [
+    { label: 'NAME', x, w: nameWidth },
+    { label: 'BILLET / POSITION', x: x + nameWidth, w: billetWidth },
+    { label: dateLabel, x: x + nameWidth + billetWidth, w: dateWidth },
+  ];
+  for (const column of columns) {
+    shapes.push(buildMirRectShapeXml({ id: nextIdRef.id++, name: `${sectionTitle}_${column.label}_cell`, x: column.x, y: headerY, cx: column.w, cy: columnHeaderHeight, fill: 'FFFFFF', line: 'C5CCD8' }));
+    shapes.push(buildMirTextShapeXml({ id: nextIdRef.id++, name: `${sectionTitle}_${column.label}_text`, x: column.x + 50800, y: headerY + 35560, cx: column.w - 101600, cy: 88900, text: column.label, size: 620, bold: true, color: '00205B' }));
+  }
+
+  createDisplayPersonnelChangeRows(rows, emptyLabel).forEach((row, index) => {
+    const rowY = headerY + columnHeaderHeight + rowHeight * index;
+    const fill = index % 2 === 0 ? 'FFFFFF' : 'F7F9FC';
+    const values = [
+      { value: row.name, x, w: nameWidth, bold: true },
+      { value: row.billetOrPosition, x: x + nameWidth, w: billetWidth, bold: false },
+      { value: row.date, x: x + nameWidth + billetWidth, w: dateWidth, bold: true },
+    ];
+    for (const cell of values) {
+      shapes.push(buildMirRectShapeXml({ id: nextIdRef.id++, name: `${sectionTitle}_row${index}_cell`, x: cell.x, y: rowY, cx: cell.w, cy: rowHeight, fill, line: 'C5CCD8' }));
+      shapes.push(buildMirTextShapeXml({ id: nextIdRef.id++, name: `${sectionTitle}_row${index}_text`, x: cell.x + 50800, y: rowY + 50800, cx: cell.w - 101600, cy: 88900, text: cell.value, size: 600, bold: cell.bold, color: '00205B' }));
+    }
+  });
+}
+
+function applyMirSection2Layout(slideXml, section2Data) {
+  let xml = slideXml;
+  const manpowerRows = [
+    { bg: 'Rectangle 156', checkbox: 'Rectangle 157', row: 1, y: 2209800 },
+    { bg: 'Rectangle 162', checkbox: 'Rectangle 163', row: 2, y: 2552700 },
+    { bg: 'Rectangle 168', checkbox: 'Rectangle 169', row: 3, y: 2895600 },
+    { bg: 'Rectangle 174', checkbox: 'Rectangle 175', row: 4, y: 3238500 },
+    { bg: 'Rectangle 180', checkbox: 'Rectangle 181', row: 5, y: 3581400 },
+  ];
+
+  xml = updateShapeBounds(xml, 'TextBox 152', { x: 6502400, y: 1911350, cx: 1257300, cy: 171450 });
+  xml = updateShapeBounds(xml, 'TextBox 153', { x: 7950200, y: 1911350, cx: 914400, cy: 171450 });
+  xml = updateShapeBounds(xml, 'TextBox 154', { x: 8902700, y: 1911350, cx: 635000, cy: 171450 });
+  xml = updateShapeBounds(xml, 'Rectangle 155', { x: 6388100, y: 2101850, cx: 3048000, cy: 8255 });
+
+  for (const row of manpowerRows) {
+    xml = updateShapeBounds(xml, row.bg, { x: 6388100, y: row.y, cx: 3048000, cy: 327025 });
+    xml = updateShapeBounds(xml, row.checkbox, { x: 6539700, y: row.y + 114300, cx: 107950, cy: 107950 });
+    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_name`, { x: 6743700, y: row.y + 63500, cx: 1016000, cy: 215444 });
+    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_title`, { x: 6743700, y: row.y + 193040, cx: 1016000, cy: 110489 });
+    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_role`, { x: 7975600, y: row.y + 78740, cx: 863600, cy: 200055 });
+    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_date`, { x: 8940800, y: row.y + 78740, cx: 558800, cy: 184150 });
+  }
+
+  const shapes = [];
+  const nextIdRef = { id: getNextShapeId(xml) };
+  shapes.push(buildMirRectShapeXml({ id: nextIdRef.id++, name: 'mir_personnel_changes_divider', x: 9575800, y: 1917700, cx: 9525, cy: 1993900, fill: '9AA7B8', line: '9AA7B8' }));
+  shapes.push(buildMirTextShapeXml({ id: nextIdRef.id++, name: 'mir_personnel_changes_heading', x: 9766300, y: 1911350, cx: 1917700, cy: 171450, text: 'PROJECTED PERSONNEL CHANGES', size: 760, bold: true, color: '00205B', align: 'ctr' }));
+
+  const tableX = 9715500;
+  const tableWidth = 1974850;
+  addMirPersonnelChangeTable(shapes, nextIdRef, {
+    x: tableX,
+    y: 2146300,
+    width: tableWidth,
+    sectionTitle: 'INCOMING',
+    headerFill: 'EAF4EA',
+    titleColor: '107C41',
+    rows: section2Data?.personnelChanges?.incoming,
+    emptyLabel: 'None projected',
+    dateLabel: 'ETA',
+  });
+  addMirPersonnelChangeTable(shapes, nextIdRef, {
+    x: tableX,
+    y: 3048000,
+    width: tableWidth,
+    sectionTitle: 'OUTGOING',
+    headerFill: 'FDE8E8',
+    titleColor: 'C00000',
+    rows: section2Data?.personnelChanges?.outgoing,
+    emptyLabel: 'None projected',
+    dateLabel: 'PRD / EAOS',
+  });
+  shapes.push(buildMirTextShapeXml({ id: nextIdRef.id++, name: 'mir_personnel_changes_note', x: tableX, y: 3860800, cx: tableWidth, cy: 88900, text: '* Dates based on current orders / projections and are subject to change.', size: 520, bold: false, color: '00205B' }));
+
+  return insertShapes(xml, shapes);
 }
 
 function calculateCenteredImagePlacement(frame, imageWidth, imageHeight) {
@@ -468,6 +677,7 @@ export async function buildMirPresentationZip({
   const slide2Xml = await zip.file(slide2Path).async('string');
 
   let slide1 = applyShapeValuesToSlide(slide1Xml, SLIDE1_SHAPE_NAMES, shapeValues);
+  slide1 = applyMirSection2Layout(slide1, section2Data);
   slide1 = await applyMirPhotosToSlide1(zip, slide1, photos);
   let slide2 = applyShapeValuesToSlide(slide2Xml, SLIDE2_SHAPE_NAMES, shapeValues);
   slide2 = applyNotesGuideLines(slide2, notes);

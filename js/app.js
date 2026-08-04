@@ -31,6 +31,9 @@ import {
   exportMonthlyImpactReportPptx,
   generateMirPresentationBlob,
   calculateMirSection2Data,
+  extractMirManpowerNotesText,
+  extractMirPersonnelChanges,
+  mergeMirManpowerNotesWithPersonnelChanges,
 } from './monthly-report-pptx-export.js';
 import {
   destroyMirPresentationPreview,
@@ -1359,10 +1362,266 @@ function renderMirReport() {
   }
 }
 
+
+function ensureMirPersonnelChangesFields() {
+  const manpowerField = getMirNotesFields()[1];
+  if (!manpowerField) return;
+
+  const section = manpowerField.closest('.mir-notes-section');
+  if (!section || section.querySelector('#mir-personnel-changes-fields')) return;
+
+  if (!document.getElementById('mir-personnel-changes-styles')) {
+    const style = document.createElement('style');
+    style.id = 'mir-personnel-changes-styles';
+    style.textContent = `
+      .mir-personnel-changes-editor {
+        margin-top: 18px;
+        border-top: 1px solid #d7dee8;
+        padding-top: 16px;
+      }
+      .mir-personnel-change-groups {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .mir-personnel-change-group {
+        min-width: 0;
+        border: 1px solid #d7dee8;
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+      .mir-personnel-change-group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #d7dee8;
+        background: #f5f7fa;
+      }
+      .mir-personnel-change-group-title {
+        margin: 0;
+        color: #00205b;
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+      }
+      .mir-personnel-change-add-btn {
+        padding: 5px 9px;
+        font-size: .75rem;
+      }
+      .mir-personnel-change-list {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+      }
+      .mir-personnel-change-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.25fr) minmax(110px, .75fr) auto;
+        gap: 8px;
+        align-items: end;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e7ebf0;
+      }
+      .mir-personnel-change-row:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .mir-personnel-change-field {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+      .mir-personnel-change-field-label {
+        color: #4b5563;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+      }
+      .mir-personnel-change-input {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        border: 1px solid #cfd7e3;
+        border-radius: 5px;
+        background: #fff;
+        padding: 8px 9px;
+        color: #111827;
+        font: inherit;
+        font-size: .82rem;
+      }
+      .mir-personnel-change-remove-btn {
+        min-width: 34px;
+        height: 34px;
+        padding: 0;
+        border: 1px solid #cfd7e3;
+        border-radius: 5px;
+        background: #fff;
+        color: #7f1d1d;
+        font-size: 1rem;
+        cursor: pointer;
+      }
+      .mir-personnel-change-empty {
+        margin: 0;
+        padding: 4px 0;
+        color: #6b7280;
+        font-size: .8rem;
+      }
+      .mir-personnel-change-help {
+        margin: 10px 0 0;
+      }
+      @media (max-width: 900px) {
+        .mir-personnel-change-groups {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 640px) {
+        .mir-personnel-change-row {
+          grid-template-columns: 1fr;
+          align-items: stretch;
+        }
+        .mir-personnel-change-remove-btn {
+          width: 100%;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'mir-personnel-changes-fields';
+  wrapper.className = 'mir-personnel-changes-editor';
+  wrapper.innerHTML = `
+    <h3 class="mir-photo-field-label" style="margin:0 0 10px;letter-spacing:.08em;text-transform:uppercase;color:#00205b;">Projected Personnel Changes</h3>
+    <div class="mir-personnel-change-groups">
+      <section class="mir-personnel-change-group" data-personnel-type="incoming">
+        <div class="mir-personnel-change-group-header">
+          <h4 class="mir-personnel-change-group-title">Incoming</h4>
+          <button type="button" class="btn btn-secondary mir-personnel-change-add-btn" data-add-personnel="incoming">+ Add Person</button>
+        </div>
+        <div class="mir-personnel-change-list" id="mir-incoming-personnel-list"></div>
+      </section>
+      <section class="mir-personnel-change-group" data-personnel-type="outgoing">
+        <div class="mir-personnel-change-group-header">
+          <h4 class="mir-personnel-change-group-title">Outgoing</h4>
+          <button type="button" class="btn btn-secondary mir-personnel-change-add-btn" data-add-personnel="outgoing">+ Add Person</button>
+        </div>
+        <div class="mir-personnel-change-list" id="mir-outgoing-personnel-list"></div>
+      </section>
+    </div>
+    <p class="settings-help mir-personnel-change-help">The MIR displays the first two incoming and first two outgoing entries. Additional entries are summarized.</p>
+  `;
+  section.appendChild(wrapper);
+
+  wrapper.querySelectorAll('[data-add-personnel]').forEach((button) => {
+    button.addEventListener('click', () => {
+      addMirPersonnelChangeRow(button.dataset.addPersonnel);
+    });
+  });
+
+  renderMirPersonnelChangeRows('incoming', []);
+  renderMirPersonnelChangeRows('outgoing', []);
+}
+
+function createMirPersonnelChangeRow(type, row = {}) {
+  const element = document.createElement('div');
+  element.className = 'mir-personnel-change-row';
+  element.dataset.personnelType = type;
+  const dateLabel = type === 'incoming' ? 'ETA' : 'PRD / EAOS';
+  element.innerHTML = `
+    <label class="mir-personnel-change-field">
+      <span class="mir-personnel-change-field-label">Name</span>
+      <input type="text" class="mir-personnel-change-input" data-personnel-field="name" value="">
+    </label>
+    <label class="mir-personnel-change-field">
+      <span class="mir-personnel-change-field-label">Billet / Position</span>
+      <input type="text" class="mir-personnel-change-input" data-personnel-field="billetOrPosition" value="">
+    </label>
+    <label class="mir-personnel-change-field">
+      <span class="mir-personnel-change-field-label">${dateLabel}</span>
+      <input type="text" class="mir-personnel-change-input" data-personnel-field="date" value="" placeholder="e.g. OCT 26">
+    </label>
+    <button type="button" class="mir-personnel-change-remove-btn" aria-label="Remove ${type} person">×</button>
+  `;
+
+  element.querySelector('[data-personnel-field="name"]').value = String(row.name ?? '');
+  element.querySelector('[data-personnel-field="billetOrPosition"]').value = String(row.billetOrPosition ?? '');
+  element.querySelector('[data-personnel-field="date"]').value = String(row.date ?? '');
+
+  element.querySelector('.mir-personnel-change-remove-btn').addEventListener('click', () => {
+    element.remove();
+    ensureMirPersonnelChangeMinimumRow(type);
+  });
+
+  return element;
+}
+
+function getMirPersonnelChangeList(type) {
+  return document.getElementById(`mir-${type}-personnel-list`);
+}
+
+function ensureMirPersonnelChangeMinimumRow(type) {
+  const list = getMirPersonnelChangeList(type);
+  if (!list || list.querySelector('.mir-personnel-change-row')) return;
+  list.appendChild(createMirPersonnelChangeRow(type));
+}
+
+function addMirPersonnelChangeRow(type, row = {}) {
+  ensureMirPersonnelChangesFields();
+  const list = getMirPersonnelChangeList(type);
+  if (!list) return;
+  list.appendChild(createMirPersonnelChangeRow(type, row));
+}
+
+function renderMirPersonnelChangeRows(type, rows) {
+  const list = getMirPersonnelChangeList(type);
+  if (!list) return;
+  list.textContent = '';
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  if (normalizedRows.length === 0) {
+    list.appendChild(createMirPersonnelChangeRow(type));
+    return;
+  }
+  normalizedRows.forEach((row) => list.appendChild(createMirPersonnelChangeRow(type, row)));
+}
+
+function readMirPersonnelChangeRows(type) {
+  const list = getMirPersonnelChangeList(type);
+  if (!list) return [];
+  return [...list.querySelectorAll('.mir-personnel-change-row')]
+    .map((row) => ({
+      name: row.querySelector('[data-personnel-field="name"]')?.value.trim() ?? '',
+      billetOrPosition: row.querySelector('[data-personnel-field="billetOrPosition"]')?.value.trim() ?? '',
+      date: row.querySelector('[data-personnel-field="date"]')?.value.trim() ?? '',
+    }))
+    .filter((row) => row.name || row.billetOrPosition || row.date);
+}
+
+function readMirPersonnelChangesFromForm() {
+  ensureMirPersonnelChangesFields();
+  return {
+    incoming: readMirPersonnelChangeRows('incoming'),
+    outgoing: readMirPersonnelChangeRows('outgoing'),
+  };
+}
+
+function applyMirPersonnelChangesToForm(changes) {
+  ensureMirPersonnelChangesFields();
+  renderMirPersonnelChangeRows('incoming', changes?.incoming ?? []);
+  renderMirPersonnelChangeRows('outgoing', changes?.outgoing ?? []);
+}
+
+function clearMirPersonnelChangesForm() {
+  applyMirPersonnelChangesToForm({ incoming: [], outgoing: [] });
+}
+
 function getMirReportNotes(report) {
   return {
     reachNotes: report.reachNotes ?? '',
-    manpowerNotes: report.manpowerNotes ?? '',
+    manpowerNotes: extractMirManpowerNotesText(report.manpowerNotes ?? ''),
     readinessNotes: report.readinessNotes ?? '',
     commandHighlightsNotes: report.commandHighlightsNotes ?? '',
   };
@@ -1374,8 +1633,9 @@ async function prepareMirReportGenerationInput(report) {
   const monthName = MIR_MONTH_NAMES[month] ?? 'Month';
   const notes = getMirReportNotes(report);
   const teamMembers = await fetchTeamMembers();
+  const personnelChanges = extractMirPersonnelChanges(report.manpowerNotes ?? '');
   const section1Data = calculateMirSection1Data(month, year);
-  const section2Data = calculateMirSection2Data(teamMembers);
+  const section2Data = calculateMirSection2Data(teamMembers, personnelChanges);
 
   return {
     monthName,
@@ -1443,6 +1703,7 @@ function clearMirDraftForm() {
   getMirNotesFields().forEach((field) => {
     field.value = '';
   });
+  clearMirPersonnelChangesForm();
   clearMirPhotoSlots();
 
   const statusEl = document.querySelector('#mir-draft-view .mir-status-value');
@@ -1491,10 +1752,12 @@ function applyMirReportToForm(report) {
   const fields = getMirNotesFields();
   if (fields.length >= 4) {
     fields[0].value = report.reachNotes ?? '';
-    fields[1].value = report.manpowerNotes ?? '';
+    fields[1].value = extractMirManpowerNotesText(report.manpowerNotes ?? '');
     fields[2].value = report.readinessNotes ?? '';
     fields[3].value = report.commandHighlightsNotes ?? '';
   }
+
+  applyMirPersonnelChangesToForm(extractMirPersonnelChanges(report.manpowerNotes ?? ''));
 
   const statusEl = document.querySelector('#mir-draft-view .mir-status-value');
   if (statusEl) statusEl.textContent = formatMirStatus(report.status);
@@ -1612,7 +1875,10 @@ async function saveMirDraft() {
       reportMonth,
       reportYear: Number(year),
       reachNotes: fields[0]?.value ?? '',
-      manpowerNotes: fields[1]?.value ?? '',
+      manpowerNotes: mergeMirManpowerNotesWithPersonnelChanges(
+        fields[1]?.value ?? '',
+        readMirPersonnelChangesFromForm(),
+      ),
       readinessNotes: fields[2]?.value ?? '',
       commandHighlightsNotes: fields[3]?.value ?? '',
       photos,
@@ -1645,7 +1911,10 @@ async function exportMirDraftPptx() {
     reportMonth: Number(month),
     reportYear: Number(year),
     reachNotes: fields[0]?.value ?? '',
-    manpowerNotes: fields[1]?.value ?? '',
+    manpowerNotes: mergeMirManpowerNotesWithPersonnelChanges(
+      fields[1]?.value ?? '',
+      readMirPersonnelChangesFromForm(),
+    ),
     readinessNotes: fields[2]?.value ?? '',
     commandHighlightsNotes: fields[3]?.value ?? '',
     photos,
@@ -1675,6 +1944,8 @@ async function clearMirDraft() {
 }
 
 function setupMirDraft() {
+  ensureMirPersonnelChangesFields();
+
   const monthEl = document.getElementById('mir-month');
   const yearEl = document.getElementById('mir-year');
   const saveBtn = document.getElementById('mir-save-draft-btn');
