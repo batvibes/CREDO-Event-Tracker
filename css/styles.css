@@ -2022,13 +2022,23 @@ body:has(#new-event-modal[open]) {
   border-top: 1px solid #eef2f7;
 }
 
-#view-reports .aar-doc-confirm-bar .aar-doc-back-btn {
+#view-reports .aar-doc-confirm-bar .aar-doc-back-btn,
+#view-reports .aar-doc-confirm-bar .aar-doc-final-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 140px;
   height: 40px;
+  min-width: 140px;
   padding: 0;
+  border: 1px solid #00205b;
+  border-radius: 2px;
+  font-family: inherit;
   font-size: 0.875rem;
   font-weight: 600;
-  min-width: 0;
+  line-height: 1;
+  cursor: pointer;
 }
 
 #view-reports .aar-action-btn.aar-clear-btn {
@@ -2114,17 +2124,8 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-reports .aar-doc-final-btn {
-  width: 140px;
-  height: 40px;
-  padding: 0;
-  border: 1px solid #00205b;
-  border-radius: 2px;
   background: #00205b;
   color: #fff;
-  font-family: inherit;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 #view-reports .aar-doc-final-btn:hover {
