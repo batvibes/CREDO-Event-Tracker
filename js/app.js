@@ -125,7 +125,7 @@ const EVENTS_TABLE_SORT_COLUMNS = [
   { key: 'date', index: 1 },
   { key: 'eventType', index: 2 },
   { key: 'command', index: 3 },
-  { key: 'participants', index: 4 },
+  { key: 'facilitators', index: 4 },
   { key: 'location', index: 5 },
   { key: 'reservation', index: 6 },
   { key: 'catering', index: 7 },
@@ -578,7 +578,7 @@ const EVENTS_SORT_COMPARATORS = {
   date: compareEventDates,
   eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
   command: (a, b) => compareWithTbdLast(a.command, b.command),
-  participants: compareEventParticipants,
+  facilitators: (a, b) => compareWithTbdLast(a.facilitators, b.facilitators),
   location: (a, b) => compareWithTbdLast(a.location, b.location),
   reservation: (a, b) => compareWorkflowStatus(a.reservation, b.reservation),
   catering: (a, b) => compareWorkflowStatus(a.catering, b.catering),
@@ -4372,10 +4372,10 @@ function renderTable() {
     attachEditableCell(commandCell, event, 'command');
     row.appendChild(commandCell);
 
-    const participantsCell = document.createElement('td');
-    participantsCell.className = 'col-participants';
-    attachEditableCell(participantsCell, event, 'participants');
-    row.appendChild(participantsCell);
+    const facilitatorsCell = document.createElement('td');
+    facilitatorsCell.className = 'col-participants';
+    attachEditableCell(facilitatorsCell, event, 'facilitators');
+    row.appendChild(facilitatorsCell);
 
     const locationCell = document.createElement('td');
     locationCell.className = 'col-location';
