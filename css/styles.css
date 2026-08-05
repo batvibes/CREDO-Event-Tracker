@@ -3102,3 +3102,24 @@ body:has(#new-event-modal[open]) {
 #view-events .events-table td.col-type {
   width: 150px;
 }
+
+
+/* Event venue and catering details */
+#new-event-modal .event-form-paired-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr);
+  gap: 12px;
+}
+
+#view-events .events-table td.col-status { vertical-align: middle; }
+#view-events .status-detail {
+  margin-top: 5px; max-width: 110px; overflow: hidden; color: var(--text-muted);
+  font-size: 0.6875rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap;
+}
+#view-reports .aar-cost-table th,
+#view-reports .aar-cost-table td {
+  width: 16.6667%; padding-left: 5px; padding-right: 5px; font-size: 7.25pt;
+}
+@media (max-width: 640px) {
+  #new-event-modal .event-form-paired-fields { grid-template-columns: 1fr; }
+}

@@ -187,7 +187,9 @@ const MIR_STATUS_SORT_ORDER = {
 };
 
 const AAR_FIELD_LABELS = {
+  aarVenue: 'Venue',
   aarVenueCost: 'Venue Cost',
+  aarCateringVendor: 'Catering',
   aarCateringCost: 'Catering Cost',
   aarAttire: 'Attire',
   aarTravelTime: 'Travel Time',
@@ -274,16 +276,28 @@ function formatAarCostForStorage(value) {
   return formatAarCost(String(num));
 }
 
+function resolveAarVenue(event) {
+  return hasAarFieldData(event.aarVenue) ? event.aarVenue : (event.venue || '');
+}
+
 function resolveAarVenueCost(event) {
   if (hasAarFieldData(event.aarVenueCost)) return event.aarVenueCost;
+  if (hasAarFieldData(event.venueCost)) return event.venueCost;
   if (!hasAarFieldData(event.aarCateringCost) && hasAarFieldData(event.aarCost)) {
     return event.aarCost;
   }
   return '';
 }
 
+function resolveAarCateringVendor(event) {
+  return hasAarFieldData(event.aarCateringVendor)
+    ? event.aarCateringVendor
+    : (event.cateringVendor || '');
+}
+
 function resolveAarCateringCost(event) {
-  return hasAarFieldData(event.aarCateringCost) ? event.aarCateringCost : '';
+  if (hasAarFieldData(event.aarCateringCost)) return event.aarCateringCost;
+  return hasAarFieldData(event.cateringCost) ? event.cateringCost : '';
 }
 
 function compareAarHistoryCostValues(leftValue, rightValue) {
@@ -349,6 +363,12 @@ function normalizeEvent(event) {
   event.participants = toParticipantValue(event.participants);
   event.location = toFieldValue(event.location);
   event.command = toFieldValue(event.command);
+  event.venue = String(event.venue ?? '').trim();
+  event.venueCost = String(event.venueCost ?? '').trim();
+  event.cateringVendor = String(event.cateringVendor ?? '').trim();
+  event.cateringCost = String(event.cateringCost ?? '').trim();
+  event.aarVenue = String(event.aarVenue ?? '').trim();
+  event.aarCateringVendor = String(event.aarCateringVendor ?? '').trim();
   event.facilitators = String(event.facilitators ?? '').trim();
   event.credoStaff = String(event.credoStaff ?? '').trim();
   event.time = String(event.time ?? '').trim();
@@ -2524,7 +2544,9 @@ function syncAarDraftFieldsToEvent(eventId, saved) {
 
   const patch = {
     aarCost: saved.aarCost,
+    aarVenue: saved.aarVenue,
     aarVenueCost: saved.aarVenueCost,
+    aarCateringVendor: saved.aarCateringVendor,
     aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
@@ -2540,7 +2562,9 @@ function syncAarFinalizeToEvent(eventId, saved) {
 
   applyAarEventPatch(eventId, {
     aarCost: saved.aarCost,
+    aarVenue: saved.aarVenue,
     aarVenueCost: saved.aarVenueCost,
+    aarCateringVendor: saved.aarCateringVendor,
     aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
@@ -2644,20 +2668,21 @@ function renderAarEditableCostCell(cell, event, fieldKey, emptyPlaceholder) {
   cell.appendChild(input);
 }
 
-function renderAarEditableCell(cell, event, fieldKey, emptyPlaceholder) {
+function renderAarEditableCell(cell, event, fieldKey, emptyPlaceholder, resolvedValue = null) {
   if (!cell) return;
   cell.textContent = '';
   cell.classList.remove('aar-report-placeholder');
 
+  const displayValue = resolvedValue == null ? event[fieldKey] : resolvedValue;
   if (!canEditAarDocumentFields(event)) {
-    setAarTextElement(cell, event[fieldKey], emptyPlaceholder);
+    setAarTextElement(cell, displayValue, emptyPlaceholder);
     return;
   }
 
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'aar-editable-field';
-  input.value = String(event[fieldKey] ?? '').trim();
+  input.value = String(displayValue ?? '').trim();
   input.placeholder = emptyPlaceholder;
   input.addEventListener('blur', () => saveAarEditableField(event, fieldKey, input));
   cell.appendChild(input);
@@ -2686,10 +2711,12 @@ function renderAarEditableFields(event, root) {
   const costRow = reportRoot?.querySelector('.aar-cost-table tbody tr:nth-child(2)');
   if (costRow) {
     const cells = costRow.querySelectorAll('td');
-    renderAarEditableCostCell(cells[0], event, 'aarVenueCost', 'Venue cost will appear here.');
-    renderAarEditableCostCell(cells[1], event, 'aarCateringCost', 'Catering cost will appear here.');
-    renderAarEditableCell(cells[2], event, 'aarAttire', 'Attire will appear here.');
-    renderAarEditableCell(cells[3], event, 'aarTravelTime', 'Travel time will appear here.');
+    renderAarEditableCell(cells[0], event, 'aarVenue', 'Venue will appear here.', resolveAarVenue(event));
+    renderAarEditableCostCell(cells[1], event, 'aarVenueCost', 'Venue cost will appear here.');
+    renderAarEditableCell(cells[2], event, 'aarCateringVendor', 'Catering service will appear here.', resolveAarCateringVendor(event));
+    renderAarEditableCostCell(cells[3], event, 'aarCateringCost', 'Catering cost will appear here.');
+    renderAarEditableCell(cells[4], event, 'aarAttire', 'Attire will appear here.');
+    renderAarEditableCell(cells[5], event, 'aarTravelTime', 'Travel time will appear here.');
   }
 
   const waitlistCell = reportRoot?.querySelector('.aar-waitlist-cell');
@@ -2704,10 +2731,12 @@ function renderAarReadOnlyFields(event, root) {
   const costRow = reportRoot?.querySelector('.aar-cost-table tbody tr:nth-child(2)');
   if (costRow) {
     const cells = costRow.querySelectorAll('td');
-    setAarCostTextElement(cells[0], resolveAarVenueCost(event), 'Venue cost will appear here.');
-    setAarCostTextElement(cells[1], resolveAarCateringCost(event), 'Catering cost will appear here.');
-    setAarTextElement(cells[2], event.aarAttire, 'Attire will appear here.');
-    setAarTextElement(cells[3], event.aarTravelTime, 'Travel time will appear here.');
+    setAarTextElement(cells[0], resolveAarVenue(event), 'Venue will appear here.');
+    setAarCostTextElement(cells[1], resolveAarVenueCost(event), 'Venue cost will appear here.');
+    setAarTextElement(cells[2], resolveAarCateringVendor(event), 'Catering service will appear here.');
+    setAarCostTextElement(cells[3], resolveAarCateringCost(event), 'Catering cost will appear here.');
+    setAarTextElement(cells[4], event.aarAttire, 'Attire will appear here.');
+    setAarTextElement(cells[5], event.aarTravelTime, 'Travel time will appear here.');
   }
 
   const waitlistCell = reportRoot?.querySelector('.aar-waitlist-cell');
@@ -2724,7 +2753,9 @@ function hasAarFieldData(value) {
 function getAarStatus(event) {
   if (isAarFinalized(event)) return 'Final';
   if (
-    hasAarFieldData(event.aarVenueCost)
+    hasAarFieldData(event.aarVenue)
+    || hasAarFieldData(event.aarVenueCost)
+    || hasAarFieldData(event.aarCateringVendor)
     || hasAarFieldData(event.aarCateringCost)
     || hasAarFieldData(event.aarCost)
     || hasAarFieldData(event.aarAttire)
@@ -2746,7 +2777,9 @@ function syncAarClearToEvent(eventId, saved) {
 
   applyAarEventPatch(eventId, {
     aarCost: saved.aarCost,
+    aarVenue: saved.aarVenue,
     aarVenueCost: saved.aarVenueCost,
+    aarCateringVendor: saved.aarCateringVendor,
     aarCateringCost: saved.aarCateringCost,
     aarAttire: saved.aarAttire,
     aarTravelTime: saved.aarTravelTime,
@@ -3010,14 +3043,16 @@ async function resetAarDraft() {
   if (!event || isAarFinalized(event)) return;
 
   const confirmed = confirm(
-    'Reset this draft? This will clear Venue Cost, Catering Cost, Attire, Travel Time, Waitlist, and Lessons Learned.'
+    'Reset this draft? This will clear Venue, Venue Cost, Catering, Catering Cost, Attire, Travel Time, Waitlist, and Lessons Learned.'
   );
   if (!confirmed) return;
 
   try {
     const saved = await updateEventAarFields(event.id, {
       aarCost: '',
+      aarVenue: '',
       aarVenueCost: '',
+      aarCateringVendor: '',
       aarCateringCost: '',
       aarAttire: '',
       aarTravelTime: '',
@@ -4383,15 +4418,22 @@ function renderTable() {
     row.appendChild(locationCell);
 
     [
-      createStatusPill(event.id, 'reservation', event.reservation),
-      createStatusPill(event.id, 'catering', event.catering),
-      createStatusPill(event.id, 'packout', event.packout),
-      createRosterPill(event.id, event.roster),
-    ].forEach((pill) => {
+      { pill: createStatusPill(event.id, 'reservation', event.reservation), detail: event.venue },
+      { pill: createStatusPill(event.id, 'catering', event.catering), detail: event.cateringVendor },
+      { pill: createStatusPill(event.id, 'packout', event.packout), detail: '' },
+      { pill: createRosterPill(event.id, event.roster), detail: '' },
+    ].forEach(({ pill, detail }) => {
       const statusCell = document.createElement('td');
       statusCell.className = 'col-status';
       statusCell.addEventListener('click', (e) => e.stopPropagation());
       statusCell.appendChild(pill);
+      if (detail) {
+        const detailEl = document.createElement('div');
+        detailEl.className = 'status-detail';
+        detailEl.textContent = detail;
+        detailEl.title = detail;
+        statusCell.appendChild(detailEl);
+      }
       row.appendChild(statusCell);
     });
 
@@ -4477,6 +4519,10 @@ function populateEventFormFromRecord(form, event) {
     isTbd(event.participants) ? '' : String(event.participants);
   form.querySelector('[name="location"]').value =
     isTbd(event.location) ? '' : event.location;
+  form.querySelector('[name="venue"]').value = event.venue || '';
+  form.querySelector('[name="venueCost"]').value = event.venueCost || '';
+  form.querySelector('[name="cateringVendor"]').value = event.cateringVendor || '';
+  form.querySelector('[name="cateringCost"]').value = event.cateringCost || '';
   form.querySelector('[name="facilitators"]').value = event.facilitators || '';
   form.querySelector('[name="credoStaff"]').value = event.credoStaff || '';
   form.querySelector('[name="time"]').value = event.time || '';
@@ -4509,6 +4555,10 @@ function readEventFieldsFromForm(form) {
     command: toFieldValue(String(data.get('command') || '').trim()),
     participants: toParticipantValue(data.get('participants')),
     location: toFieldValue(String(data.get('location') || '').trim()),
+    venue: String(data.get('venue') || '').trim(),
+    venueCost: String(data.get('venueCost') || '').trim(),
+    cateringVendor: String(data.get('cateringVendor') || '').trim(),
+    cateringCost: String(data.get('cateringCost') || '').trim(),
     facilitators: String(data.get('facilitators') || '').trim(),
     credoStaff: String(data.get('credoStaff') || '').trim(),
     time: String(data.get('time') || '').trim(),

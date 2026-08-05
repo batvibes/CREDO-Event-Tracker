@@ -28,6 +28,10 @@ export function eventFromRow(row) {
     command: row.command,
     participants: row.participants,
     location: row.location,
+    venue: row.venue || '',
+    venueCost: row.venue_cost || '',
+    cateringVendor: row.catering_vendor || '',
+    cateringCost: row.catering_cost || '',
     reservation: row.reservation,
     catering: row.catering,
     packout: row.packout,
@@ -37,7 +41,9 @@ export function eventFromRow(row) {
     time: row.time || '',
     poc: row.poc || '',
     aarCost: row.aar_cost || '',
+    aarVenue: row.aar_venue || '',
     aarVenueCost: row.aar_venue_cost || '',
+    aarCateringVendor: row.aar_catering_vendor || '',
     aarCateringCost: row.aar_catering_cost || '',
     aarAttire: row.aar_attire || '',
     aarTravelTime: row.aar_travel_time || '',
@@ -129,6 +135,10 @@ export function eventToRow(event) {
     command: event.command,
     participants: String(event.participants),
     location: event.location,
+    venue: event.venue ?? '',
+    venue_cost: event.venueCost ?? '',
+    catering_vendor: event.cateringVendor ?? '',
+    catering_cost: event.cateringCost ?? '',
     reservation: event.reservation,
     catering: event.catering,
     packout: event.packout,
@@ -226,7 +236,9 @@ export async function updateEventAarFields(id, fields) {
 
   const row = {};
   if (fields.aarCost !== undefined) row.aar_cost = fields.aarCost;
+  if (fields.aarVenue !== undefined) row.aar_venue = fields.aarVenue;
   if (fields.aarVenueCost !== undefined) row.aar_venue_cost = fields.aarVenueCost;
+  if (fields.aarCateringVendor !== undefined) row.aar_catering_vendor = fields.aarCateringVendor;
   if (fields.aarCateringCost !== undefined) row.aar_catering_cost = fields.aarCateringCost;
   if (fields.aarAttire !== undefined) row.aar_attire = fields.aarAttire;
   if (fields.aarTravelTime !== undefined) row.aar_travel_time = fields.aarTravelTime;
@@ -258,7 +270,9 @@ export async function clearEventAar(id) {
     .from('events')
     .update({
       aar_cost: '',
+      aar_venue: '',
       aar_venue_cost: '',
+      aar_catering_vendor: '',
       aar_catering_cost: '',
       aar_attire: '',
       aar_travel_time: '',

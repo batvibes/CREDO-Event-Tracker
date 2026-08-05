@@ -436,13 +436,17 @@
                   <table class="aar-cost-table">
                     <tbody>
                       <tr>
+                        <th scope="col">Venue</th>
                         <th scope="col">Venue Cost</th>
+                        <th scope="col">Catering</th>
                         <th scope="col">Catering Cost</th>
                         <th scope="col">Attire</th>
                         <th scope="col">Travel Time</th>
                       </tr>
                       <tr>
+                        <td class="aar-report-placeholder">Venue will appear here.</td>
                         <td class="aar-report-placeholder">Venue cost will appear here.</td>
+                        <td class="aar-report-placeholder">Catering service will appear here.</td>
                         <td class="aar-report-placeholder">Catering cost will appear here.</td>
                         <td class="aar-report-placeholder">Attire will appear here.</td>
                         <td class="aar-report-placeholder">Travel time will appear here.</td>
@@ -820,6 +824,26 @@
             Expected Participants
             <input type="number" name="participants" min="0">
           </label>
+          <div class="event-form-paired-fields">
+            <label>
+              Venue
+              <input type="text" name="venue" placeholder="e.g. Eagle's Landing">
+            </label>
+            <label>
+              Venue Cost
+              <input type="text" name="venueCost" inputmode="decimal" placeholder="e.g. 1250.00">
+            </label>
+          </div>
+          <div class="event-form-paired-fields">
+            <label>
+              Catering
+              <input type="text" name="cateringVendor" placeholder="e.g. ABC Catering">
+            </label>
+            <label>
+              Catering Cost
+              <input type="text" name="cateringCost" inputmode="decimal" placeholder="e.g. 850.00">
+            </label>
+          </div>
         </fieldset>
 
         <fieldset class="event-form-section">
