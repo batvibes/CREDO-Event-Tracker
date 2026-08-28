@@ -3111,6 +3111,77 @@ body:has(#new-event-modal[open]) {
   gap: 12px;
 }
 
+#new-event-modal .event-additional-costs {
+  margin: 0;
+  border: none;
+}
+
+#new-event-modal .event-additional-costs-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #00205b;
+}
+
+#new-event-modal .event-additional-costs-summary::-webkit-details-marker,
+#new-event-modal .event-additional-costs-summary::marker {
+  display: none;
+  content: '';
+}
+
+#new-event-modal .event-additional-costs-summary::after {
+  content: '';
+  width: 0.4em;
+  height: 0.4em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+#new-event-modal .event-additional-costs[open] .event-additional-costs-summary::after {
+  transform: rotate(45deg);
+}
+
+#new-event-modal .event-additional-costs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 12px;
+}
+
+#new-event-modal .event-total-recorded-cost {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+#new-event-modal .event-total-recorded-cost-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+#new-event-modal .event-total-recorded-cost-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
 #view-events .events-table td.col-status { vertical-align: middle; }
 #view-events .status-detail {
   margin-top: 5px; max-width: 110px; overflow: hidden; color: var(--text-muted);

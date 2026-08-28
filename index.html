@@ -844,6 +844,35 @@
               <input type="text" name="cateringCost" inputmode="decimal" placeholder="e.g. 850.00">
             </label>
           </div>
+          <details class="event-additional-costs" id="event-additional-costs">
+            <summary class="event-additional-costs-summary">Additional Event Costs</summary>
+            <div class="event-additional-costs-body">
+              <label>
+                Lodging
+                <input type="text" name="lodgingCost" inputmode="decimal" placeholder="e.g. 1250.00">
+              </label>
+              <label>
+                Transportation
+                <input type="text" name="transportationCost" inputmode="decimal" placeholder="e.g. 850.00">
+              </label>
+              <label>
+                Materials / Supplies
+                <input type="text" name="materialsCost" inputmode="decimal" placeholder="e.g. 1250.00">
+              </label>
+              <label>
+                Other
+                <input type="text" name="otherCost" inputmode="decimal" placeholder="e.g. 850.00">
+              </label>
+              <label>
+                Other Description
+                <input type="text" name="otherCostDescription" placeholder="e.g. Honorarium">
+              </label>
+              <div class="event-total-recorded-cost">
+                <span class="event-total-recorded-cost-label">Total Recorded Event Cost</span>
+                <output class="event-total-recorded-cost-value" id="event-total-recorded-cost" aria-live="polite">$0.00</output>
+              </div>
+            </div>
+          </details>
         </fieldset>
 
         <fieldset class="event-form-section">

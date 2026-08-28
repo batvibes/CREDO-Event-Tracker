@@ -367,6 +367,11 @@ function normalizeEvent(event) {
   event.venueCost = String(event.venueCost ?? '').trim();
   event.cateringVendor = String(event.cateringVendor ?? '').trim();
   event.cateringCost = String(event.cateringCost ?? '').trim();
+  event.lodgingCost = String(event.lodgingCost ?? '').trim();
+  event.transportationCost = String(event.transportationCost ?? '').trim();
+  event.materialsCost = String(event.materialsCost ?? '').trim();
+  event.otherCost = String(event.otherCost ?? '').trim();
+  event.otherCostDescription = String(event.otherCostDescription ?? '').trim();
   event.aarVenue = String(event.aarVenue ?? '').trim();
   event.aarCateringVendor = String(event.aarCateringVendor ?? '').trim();
   event.facilitators = String(event.facilitators ?? '').trim();
@@ -4484,6 +4489,55 @@ function updateEventDateFieldsVisibility(form) {
   document.getElementById('event-range-date-fields').hidden = dateType !== 'range';
 }
 
+const EVENT_COST_FIELD_NAMES = [
+  'venueCost',
+  'cateringCost',
+  'lodgingCost',
+  'transportationCost',
+  'materialsCost',
+  'otherCost',
+];
+
+function parseEventCostNumber(value) {
+  const raw = String(value ?? '').trim();
+  if (raw === '') return 0;
+  const num = parseFloat(raw.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(num) ? num : 0;
+}
+
+function formatTotalRecordedEventCost(total) {
+  return total.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function hasAdditionalEventCostData(event) {
+  return [
+    event.lodgingCost,
+    event.transportationCost,
+    event.materialsCost,
+    event.otherCost,
+    event.otherCostDescription,
+  ].some((value) => String(value ?? '').trim() !== '');
+}
+
+function updateEventTotalRecordedCost(form) {
+  const total = EVENT_COST_FIELD_NAMES.reduce((sum, name) => {
+    const input = form.querySelector(`[name="${name}"]`);
+    return sum + parseEventCostNumber(input?.value);
+  }, 0);
+  const output = document.getElementById('event-total-recorded-cost');
+  if (output) output.value = formatTotalRecordedEventCost(total);
+}
+
+function setAdditionalEventCostsExpanded(expanded) {
+  const section = document.getElementById('event-additional-costs');
+  if (section) section.open = Boolean(expanded);
+}
+
 function resetEventForm(form) {
   form.reset();
   form.querySelector('[name="dateType"][value="single"]').checked = true;
@@ -4491,7 +4545,9 @@ function resetEventForm(form) {
   document.getElementById('event-single-date').value = '';
   document.getElementById('event-range-start-date').value = '';
   document.getElementById('event-range-end-date').value = '';
+  setAdditionalEventCostsExpanded(false);
   updateEventDateFieldsVisibility(form);
+  updateEventTotalRecordedCost(form);
 }
 
 function populateEventFormFromRecord(form, event) {
@@ -4523,6 +4579,13 @@ function populateEventFormFromRecord(form, event) {
   form.querySelector('[name="venueCost"]').value = event.venueCost || '';
   form.querySelector('[name="cateringVendor"]').value = event.cateringVendor || '';
   form.querySelector('[name="cateringCost"]').value = event.cateringCost || '';
+  form.querySelector('[name="lodgingCost"]').value = event.lodgingCost || '';
+  form.querySelector('[name="transportationCost"]').value = event.transportationCost || '';
+  form.querySelector('[name="materialsCost"]').value = event.materialsCost || '';
+  form.querySelector('[name="otherCost"]').value = event.otherCost || '';
+  form.querySelector('[name="otherCostDescription"]').value = event.otherCostDescription || '';
+  setAdditionalEventCostsExpanded(hasAdditionalEventCostData(event));
+  updateEventTotalRecordedCost(form);
   form.querySelector('[name="facilitators"]').value = event.facilitators || '';
   form.querySelector('[name="credoStaff"]').value = event.credoStaff || '';
   form.querySelector('[name="time"]').value = event.time || '';
@@ -4559,6 +4622,11 @@ function readEventFieldsFromForm(form) {
     venueCost: String(data.get('venueCost') || '').trim(),
     cateringVendor: String(data.get('cateringVendor') || '').trim(),
     cateringCost: String(data.get('cateringCost') || '').trim(),
+    lodgingCost: String(data.get('lodgingCost') || '').trim(),
+    transportationCost: String(data.get('transportationCost') || '').trim(),
+    materialsCost: String(data.get('materialsCost') || '').trim(),
+    otherCost: String(data.get('otherCost') || '').trim(),
+    otherCostDescription: String(data.get('otherCostDescription') || '').trim(),
     facilitators: String(data.get('facilitators') || '').trim(),
     credoStaff: String(data.get('credoStaff') || '').trim(),
     time: String(data.get('time') || '').trim(),
@@ -4612,6 +4680,12 @@ function setupModal() {
 
   form.querySelectorAll('[name="dateType"]').forEach((input) => {
     input.addEventListener('change', () => updateEventDateFieldsVisibility(form));
+  });
+
+  form.addEventListener('input', (e) => {
+    if (EVENT_COST_FIELD_NAMES.includes(e.target?.name)) {
+      updateEventTotalRecordedCost(form);
+    }
   });
 
   function hideEventTypeError() {
