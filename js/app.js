@@ -4819,6 +4819,490 @@ function renderTrendsKpis(metrics, comparison) {
     .join('');
 }
 
+const TRENDS_CHART_METRICS = {
+  completedEvents: 'Completed Events',
+  participantReach: 'Participant Reach',
+  commandsReached: 'Commands Reached',
+  totalRecordedEventCost: 'Total Recorded Event Cost',
+  costPerParticipant: 'Cost per Participant',
+};
+
+let trendsChartDrawState = null;
+
+function getTrendsChartMetricKey() {
+  const value = document.getElementById('trends-chart-metric')?.value;
+  return TRENDS_CHART_METRICS[value] ? value : 'participantReach';
+}
+
+function getTrendsChartMetricLabel(metricKey = getTrendsChartMetricKey()) {
+  return TRENDS_CHART_METRICS[metricKey] || TRENDS_CHART_METRICS.participantReach;
+}
+
+function getTrendsChartBucketSize(period, range) {
+  if (period === '3m') return 'week';
+  if (period === '6m' || period === '12m' || period === 'this-fy' || period === 'last-fy') {
+    return 'month';
+  }
+  if (period === 'custom' && range) {
+    const days = inclusiveDayCount(range.start, range.end);
+    if (days <= 90) return 'week';
+    if (days <= 730) return 'month';
+    return 'quarter';
+  }
+  return 'month';
+}
+
+function getTrendsWeekStartMonday(isoDate) {
+  const date = parseLocalIsoDate(isoDate);
+  const day = date.getDay();
+  const offset = day === 0 ? 6 : day - 1;
+  date.setDate(date.getDate() - offset);
+  return formatLocalIsoDate(date);
+}
+
+function getTrendsQuarterStart(isoDate) {
+  const date = parseLocalIsoDate(isoDate);
+  const quarterMonth = Math.floor(date.getMonth() / 3) * 3;
+  return formatLocalIsoDate(new Date(date.getFullYear(), quarterMonth, 1));
+}
+
+function addCalendarMonthsToIso(isoDate, months) {
+  const date = parseLocalIsoDate(isoDate);
+  return formatLocalIsoDate(new Date(date.getFullYear(), date.getMonth() + months, 1));
+}
+
+function getTrendsChartBucketKey(isoDate, bucketSize) {
+  if (bucketSize === 'week') return getTrendsWeekStartMonday(isoDate);
+  if (bucketSize === 'quarter') return getTrendsQuarterStart(isoDate);
+  return isoDate.slice(0, 7);
+}
+
+function formatTrendsChartWeekLabel(weekStart, includeYear) {
+  const date = parseLocalIsoDate(weekStart);
+  const month = date.toLocaleString('en-US', { month: 'short' });
+  return includeYear
+    ? `${month} ${date.getDate()}, ${date.getFullYear()}`
+    : `${month} ${date.getDate()}`;
+}
+
+function formatTrendsChartMonthAxisLabel(monthStart, includeYear) {
+  const date = parseLocalIsoDate(monthStart);
+  const month = date.toLocaleString('en-US', { month: 'short' });
+  return includeYear ? `${month} ${date.getFullYear()}` : month;
+}
+
+function formatTrendsChartQuarterLabel(quarterStart) {
+  const date = parseLocalIsoDate(quarterStart);
+  const quarter = Math.floor(date.getMonth() / 3) + 1;
+  return `Q${quarter} ${date.getFullYear()}`;
+}
+
+function generateTrendsChartBuckets(range, bucketSize) {
+  if (!range) return [];
+
+  const spansYears = range.start.slice(0, 4) !== range.end.slice(0, 4);
+  const buckets = [];
+
+  if (bucketSize === 'week') {
+    let cursor = getTrendsWeekStartMonday(range.start);
+    while (cursor <= range.end) {
+      buckets.push({
+        key: cursor,
+        start: cursor,
+        axisLabel: formatTrendsChartWeekLabel(cursor, spansYears),
+        tooltipLabel: `Week of ${formatTrendsChartWeekLabel(cursor, spansYears)}`,
+        events: [],
+      });
+      cursor = addDaysToIsoDate(cursor, 7);
+    }
+    return buckets;
+  }
+
+  if (bucketSize === 'quarter') {
+    let cursor = getTrendsQuarterStart(range.start);
+    const endKey = getTrendsQuarterStart(range.end);
+    while (cursor <= endKey) {
+      buckets.push({
+        key: cursor,
+        start: cursor,
+        axisLabel: formatTrendsChartQuarterLabel(cursor),
+        tooltipLabel: formatTrendsChartQuarterLabel(cursor),
+        events: [],
+      });
+      cursor = addCalendarMonthsToIso(cursor, 3);
+    }
+    return buckets;
+  }
+
+  let cursor = `${range.start.slice(0, 7)}-01`;
+  const endMonth = range.end.slice(0, 7);
+  let previousYear = '';
+  while (cursor.slice(0, 7) <= endMonth) {
+    const year = cursor.slice(0, 4);
+    const showYear = spansYears && (previousYear === '' || year !== previousYear);
+    buckets.push({
+      key: cursor.slice(0, 7),
+      start: cursor,
+      axisLabel: formatTrendsChartMonthAxisLabel(cursor, showYear),
+      tooltipLabel: formatTrendsChartMonthAxisLabel(cursor, true),
+      events: [],
+    });
+    previousYear = year;
+    cursor = addCalendarMonthsToIso(cursor, 1);
+  }
+  return buckets;
+}
+
+function aggregateTrendsChartBuckets(buckets, eventsForRange, bucketSize) {
+  const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  eventsForRange.forEach((event) => {
+    const isoDate = getTrendsEventDate(event);
+    if (!isoDate) return;
+    const bucket = byKey.get(getTrendsChartBucketKey(isoDate, bucketSize));
+    if (bucket) bucket.events.push(event);
+  });
+
+  return buckets.map((bucket) => ({
+    key: bucket.key,
+    start: bucket.start,
+    axisLabel: bucket.axisLabel,
+    tooltipLabel: bucket.tooltipLabel,
+    metrics: calculateTrendsMetrics(bucket.events),
+  }));
+}
+
+function getTrendsChartSeriesValue(metrics, metricKey) {
+  if (metricKey === 'costPerParticipant') {
+    return metrics.costPerParticipant;
+  }
+  return Number(metrics[metricKey]) || 0;
+}
+
+function formatTrendsChartValue(metricKey, value) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  if (metricKey === 'totalRecordedEventCost' || metricKey === 'costPerParticipant') {
+    return formatTotalRecordedEventCost(value);
+  }
+  return String(Math.round(value));
+}
+
+function formatTrendsChartAxisValue(metricKey, value) {
+  if (!Number.isFinite(value)) return '';
+  const isCurrency = metricKey === 'totalRecordedEventCost' || metricKey === 'costPerParticipant';
+  if (isCurrency) {
+    if (value === 0) return '$0';
+    if (value >= 1000) {
+      const thousands = value / 1000;
+      const compact = thousands >= 10 || Number.isInteger(thousands)
+        ? String(Math.round(thousands))
+        : thousands.toFixed(1).replace(/\.0$/, '');
+      return `$${compact}k`;
+    }
+    return `$${Math.round(value)}`;
+  }
+  if (value >= 1000) {
+    const thousands = value / 1000;
+    const compact = thousands >= 10 || Number.isInteger(thousands)
+      ? String(Math.round(thousands))
+      : thousands.toFixed(1).replace(/\.0$/, '');
+    return `${compact}k`;
+  }
+  return String(Math.round(value));
+}
+
+function getTrendsChartScale(values) {
+  const numeric = values.filter((value) => value != null && Number.isFinite(value));
+  const maxValue = numeric.length > 0 ? Math.max(0, ...numeric) : 0;
+  if (!Number.isFinite(maxValue) || maxValue <= 0) {
+    return { max: 4, ticks: [0, 1, 2, 3, 4] };
+  }
+
+  const exponent = Math.floor(Math.log10(maxValue));
+  const magnitude = 10 ** exponent;
+  const fraction = maxValue / magnitude;
+  let niceFraction = 10;
+  if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 2.5) niceFraction = 2.5;
+  else if (fraction <= 5) niceFraction = 5;
+
+  const niceMax = niceFraction * magnitude;
+  const tickCount = 4;
+  const ticks = [];
+  for (let i = 0; i <= tickCount; i += 1) {
+    ticks.push((niceMax * i) / tickCount);
+  }
+  return { max: niceMax, ticks };
+}
+
+function getVisibleTrendsChartLabelIndexes(count, maxLabels) {
+  if (count <= maxLabels) {
+    return [...Array(count).keys()];
+  }
+  const step = Math.ceil(count / maxLabels);
+  const indexes = [];
+  for (let i = 0; i < count; i += step) indexes.push(i);
+  if (indexes[indexes.length - 1] !== count - 1) indexes.push(count - 1);
+  return indexes;
+}
+
+function hideTrendsChartTooltip() {
+  const tooltip = document.getElementById('trends-chart-tooltip');
+  if (tooltip) {
+    tooltip.hidden = true;
+    tooltip.textContent = '';
+  }
+}
+
+function showTrendsChartTooltip(anchor, tooltipLabel, metricLabel, formattedValue) {
+  const tooltip = document.getElementById('trends-chart-tooltip');
+  const body = document.querySelector('#view-trends .trends-chart-body');
+  if (!tooltip || !body) return;
+
+  tooltip.hidden = false;
+  tooltip.textContent = '';
+  const labelLine = document.createElement('div');
+  labelLine.textContent = tooltipLabel;
+  const valueLine = document.createElement('div');
+  valueLine.textContent = `${metricLabel}: ${formattedValue}`;
+  tooltip.append(labelLine, valueLine);
+
+  const bodyRect = body.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  let left = anchorRect.left - bodyRect.left + anchorRect.width / 2 - tooltipRect.width / 2;
+  let top = anchorRect.top - bodyRect.top - tooltipRect.height - 10;
+  left = Math.max(8, Math.min(left, bodyRect.width - tooltipRect.width - 8));
+  if (top < 4) {
+    top = anchorRect.bottom - bodyRect.top + 10;
+  }
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function createSvgElement(name, attributes = {}) {
+  const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+  Object.entries(attributes).forEach(([key, value]) => {
+    element.setAttribute(key, String(value));
+  });
+  return element;
+}
+
+function redrawTrendsChartSvg() {
+  if (!trendsChartDrawState) return;
+  drawTrendsChartSvg(trendsChartDrawState);
+}
+
+function drawTrendsChartSvg(state) {
+  const wrap = document.getElementById('trends-chart-svg-wrap');
+  if (!wrap) return;
+
+  hideTrendsChartTooltip();
+  wrap.innerHTML = '';
+
+  const { series, metricKey, metricLabel } = state;
+  const width = Math.max(wrap.clientWidth || 640, 280);
+  const height = wrap.clientWidth && wrap.clientWidth < 640 ? 240 : 280;
+  const pad = {
+    top: 16,
+    right: 12,
+    bottom: 36,
+    left: width < 480 ? 40 : 52,
+  };
+  const plotWidth = Math.max(width - pad.left - pad.right, 40);
+  const plotHeight = Math.max(height - pad.top - pad.bottom, 80);
+  const values = series.map((point) => point.value);
+  const scale = getTrendsChartScale(values);
+  const xAt = (index) => (
+    series.length === 1
+      ? pad.left + plotWidth / 2
+      : pad.left + (index / (series.length - 1)) * plotWidth
+  );
+  const yAt = (value) => pad.top + plotHeight - (value / scale.max) * plotHeight;
+
+  const svg = createSvgElement('svg', {
+    viewBox: `0 0 ${width} ${height}`,
+    role: 'img',
+    'aria-label': `Historical ${metricLabel} trend`,
+  });
+
+  scale.ticks.forEach((tick) => {
+    const y = yAt(tick);
+    svg.appendChild(createSvgElement('line', {
+      x1: pad.left,
+      y1: y,
+      x2: pad.left + plotWidth,
+      y2: y,
+      stroke: '#e5e7eb',
+      'stroke-width': 1,
+    }));
+    const label = createSvgElement('text', {
+      x: pad.left - 8,
+      y: y + 3,
+      'text-anchor': 'end',
+      fill: '#9ca3af',
+      'font-size': width < 480 ? 10 : 11,
+      'font-family': 'inherit',
+    });
+    label.textContent = formatTrendsChartAxisValue(metricKey, tick);
+    svg.appendChild(label);
+  });
+
+  svg.appendChild(createSvgElement('line', {
+    x1: pad.left,
+    y1: pad.top + plotHeight,
+    x2: pad.left + plotWidth,
+    y2: pad.top + plotHeight,
+    stroke: '#d1d5db',
+    'stroke-width': 1,
+  }));
+
+  const maxLabels = width < 640 ? 4 : width < 900 ? 6 : 8;
+  const visibleLabels = new Set(getVisibleTrendsChartLabelIndexes(series.length, maxLabels));
+  series.forEach((point, index) => {
+    if (!visibleLabels.has(index)) return;
+    const label = createSvgElement('text', {
+      x: xAt(index),
+      y: height - 12,
+      'text-anchor': 'middle',
+      fill: '#9ca3af',
+      'font-size': width < 480 ? 10 : 11,
+      'font-family': 'inherit',
+    });
+    label.textContent = point.axisLabel;
+    svg.appendChild(label);
+  });
+
+  const plotted = series
+    .map((point, index) => ({ point, index }))
+    .filter((entry) => entry.point.value != null && Number.isFinite(entry.point.value));
+
+  if (plotted.length > 1) {
+    let segment = [];
+    const flushSegment = () => {
+      if (segment.length > 1) {
+        svg.appendChild(createSvgElement('polyline', {
+          points: segment.map((entry) => `${xAt(entry.index)},${yAt(entry.point.value)}`).join(' '),
+          fill: 'none',
+          stroke: '#00205b',
+          'stroke-width': 2,
+          'stroke-linejoin': 'round',
+          'stroke-linecap': 'round',
+        }));
+      }
+      segment = [];
+    };
+
+    plotted.forEach((entry, plottedIndex) => {
+      const previous = plotted[plottedIndex - 1];
+      if (previous && entry.index !== previous.index + 1) flushSegment();
+      segment.push(entry);
+    });
+    flushSegment();
+  }
+
+  plotted.forEach((entry) => {
+    const x = xAt(entry.index);
+    const y = yAt(entry.point.value);
+    const hit = createSvgElement('circle', {
+      class: 'trends-chart-point',
+      cx: x,
+      cy: y,
+      r: 10,
+      fill: 'transparent',
+      tabindex: '0',
+      role: 'img',
+      'aria-label': `${entry.point.tooltipLabel}. ${metricLabel}: ${entry.point.formattedValue}`,
+    });
+    const marker = createSvgElement('circle', {
+      cx: x,
+      cy: y,
+      r: 3.5,
+      fill: '#00205b',
+      stroke: '#ffffff',
+      'stroke-width': 1.5,
+      'pointer-events': 'none',
+    });
+    const show = () => showTrendsChartTooltip(
+      hit,
+      entry.point.tooltipLabel,
+      metricLabel,
+      entry.point.formattedValue
+    );
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('focus', show);
+    hit.addEventListener('mouseleave', hideTrendsChartTooltip);
+    hit.addEventListener('blur', hideTrendsChartTooltip);
+    svg.appendChild(hit);
+    svg.appendChild(marker);
+  });
+
+  wrap.appendChild(svg);
+}
+
+function showTrendsChartEmpty(message) {
+  const empty = document.getElementById('trends-chart-empty');
+  const wrap = document.getElementById('trends-chart-svg-wrap');
+  hideTrendsChartTooltip();
+  trendsChartDrawState = null;
+  if (empty) {
+    empty.hidden = false;
+    empty.textContent = message;
+  }
+  if (wrap) {
+    wrap.hidden = true;
+    wrap.innerHTML = '';
+  }
+}
+
+function renderTrendsChartSection(currentRange, currentEvents, period) {
+  const empty = document.getElementById('trends-chart-empty');
+  const wrap = document.getElementById('trends-chart-svg-wrap');
+  if (!empty || !wrap) return;
+
+  if (!currentRange) {
+    showTrendsChartEmpty('Choose a valid custom date range to view the historical trend.');
+    return;
+  }
+
+  if (!currentEvents.length) {
+    showTrendsChartEmpty('No finalized AAR data is available for this trend.');
+    return;
+  }
+
+  const metricKey = getTrendsChartMetricKey();
+  const metricLabel = getTrendsChartMetricLabel(metricKey);
+  const bucketSize = getTrendsChartBucketSize(period, currentRange);
+  const buckets = aggregateTrendsChartBuckets(
+    generateTrendsChartBuckets(currentRange, bucketSize),
+    currentEvents,
+    bucketSize
+  );
+  const series = buckets.map((bucket) => {
+    const value = getTrendsChartSeriesValue(bucket.metrics, metricKey);
+    return {
+      axisLabel: bucket.axisLabel,
+      tooltipLabel: bucket.tooltipLabel,
+      value,
+      formattedValue: formatTrendsChartValue(metricKey, value),
+    };
+  });
+
+  if (metricKey === 'costPerParticipant' && series.every((point) => point.value == null)) {
+    showTrendsChartEmpty(
+      'No participant data is available to calculate Cost per Participant for this period.'
+    );
+    return;
+  }
+
+  empty.hidden = true;
+  empty.textContent = '';
+  wrap.hidden = false;
+  trendsChartDrawState = { series, metricKey, metricLabel };
+  drawTrendsChartSvg(trendsChartDrawState);
+}
+
 function renderTrends() {
   if (!document.getElementById('view-trends')) return;
 
@@ -4848,6 +5332,7 @@ function renderTrends() {
 
   renderTrendsComparisonExplainer(period, compareMode, currentRange, comparisonRanges);
   renderTrendsKpis(currentMetrics, comparison);
+  renderTrendsChartSection(currentRange, currentEvents, period);
 
   const emptyMessage = document.getElementById('trends-empty-message');
   if (emptyMessage) {
@@ -4873,6 +5358,24 @@ function setupTrends() {
   ].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', renderTrends);
   });
+
+  document.getElementById('trends-chart-metric')?.addEventListener('change', () => {
+    const currentRange = getTrendsCurrentRange();
+    const currentEvents = getTrendsEventsForRange(currentRange, getTrendsFilterState());
+    renderTrendsChartSection(currentRange, currentEvents, getTrendsPeriodValue());
+  });
+
+  const chartWrap = document.getElementById('trends-chart-svg-wrap');
+  if (chartWrap && typeof ResizeObserver !== 'undefined') {
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (currentView === 'trends') redrawTrendsChartSvg();
+      });
+    });
+    observer.observe(chartWrap);
+  }
 
   updateTrendsCustomDateFields();
 }

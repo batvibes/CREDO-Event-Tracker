@@ -747,6 +747,29 @@
           <div class="trends-results">
             <section class="kpi-grid trends-kpi-grid" id="trends-kpi-grid" aria-label="Trends summary metrics"></section>
             <p class="trends-empty-message" id="trends-empty-message" hidden>No finalized AAR events match the selected period and filters.</p>
+            <section class="trends-chart-section" id="trends-chart-section">
+              <div class="trends-chart-header">
+                <div class="trends-chart-heading">
+                  <h3 class="trends-chart-title">Historical Trend</h3>
+                  <p class="trends-chart-subtitle">See how activity changed throughout the selected period.</p>
+                </div>
+                <label class="trends-filter-field trends-chart-metric-field">
+                  <span class="trends-filter-label">Metric</span>
+                  <select id="trends-chart-metric" class="filter-select" aria-label="Chart metric">
+                    <option value="completedEvents">Completed Events</option>
+                    <option value="participantReach" selected>Participant Reach</option>
+                    <option value="commandsReached">Commands Reached</option>
+                    <option value="totalRecordedEventCost">Total Recorded Event Cost</option>
+                    <option value="costPerParticipant">Cost per Participant</option>
+                  </select>
+                </label>
+              </div>
+              <div class="trends-chart-body">
+                <p class="trends-chart-empty" id="trends-chart-empty" hidden></p>
+                <div class="trends-chart-svg-wrap" id="trends-chart-svg-wrap"></div>
+                <div class="trends-chart-tooltip" id="trends-chart-tooltip" hidden></div>
+              </div>
+            </section>
           </div>
         </section>
       </div>
