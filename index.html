@@ -750,34 +750,63 @@
             <section class="trends-chart-section" id="trends-chart-section">
               <div class="trends-chart-header">
                 <div class="trends-chart-heading">
-                  <h3 class="trends-chart-title">Historical Trend</h3>
-                  <p class="trends-chart-subtitle">See how activity changed throughout the selected period.</p>
+                  <h3 class="trends-chart-title">Trend &amp; Outlook</h3>
+                  <p class="trends-chart-subtitle">See how CREDO activity has changed over time, compare programs, and explore where recent trends may lead.</p>
                 </div>
-                <label class="trends-filter-field trends-chart-metric-field">
-                  <span class="trends-filter-label">Metric</span>
-                  <select id="trends-chart-metric" class="filter-select" aria-label="Chart metric">
-                    <option value="completedEvents">Completed Events</option>
-                    <option value="participantReach" selected>Participant Reach</option>
-                    <option value="commandsReached">Commands Reached</option>
-                    <option value="totalRecordedEventCost">Total Recorded Event Cost</option>
-                    <option value="costPerParticipant">Cost per Participant</option>
-                  </select>
-                </label>
+                <div class="trends-chart-controls">
+                  <label class="trends-filter-field trends-chart-metric-field">
+                    <span class="trends-filter-label">Metric</span>
+                    <select id="trends-chart-metric" class="filter-select" aria-label="Trend and outlook metric">
+                      <option value="completedEvents">Completed Events</option>
+                      <option value="participantReach" selected>Participant Reach</option>
+                    </select>
+                  </label>
+                  <div class="trends-filter-field trends-chart-program-field">
+                    <span class="trends-filter-label" id="trends-chart-program-label">Program</span>
+                    <button
+                      type="button"
+                      class="filter-select trends-chart-program-toggle"
+                      id="trends-chart-program-toggle"
+                      aria-labelledby="trends-chart-program-label"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      aria-controls="trends-chart-program-menu"
+                    >All Programs</button>
+                    <div class="trends-chart-program-menu" id="trends-chart-program-menu" hidden role="group" aria-label="Program selection">
+                      <label class="trends-chart-program-option">
+                        <input type="checkbox" id="trends-chart-program-all" checked />
+                        <span>All Programs</span>
+                      </label>
+                      <div class="trends-chart-program-divider" aria-hidden="true"></div>
+                      <div class="trends-chart-program-list" id="trends-chart-program-list"></div>
+                      <p class="trends-chart-program-limit" id="trends-chart-program-limit" hidden>Choose up to 4 programs for comparison.</p>
+                    </div>
+                  </div>
+                  <label class="trends-chart-switch" for="trends-chart-show-projection">
+                    <input type="checkbox" id="trends-chart-show-projection" />
+                    <span class="trends-chart-switch-ui" aria-hidden="true"></span>
+                    <span class="trends-chart-switch-label">Show Projection</span>
+                  </label>
+                  <label class="trends-filter-field trends-chart-horizon-field" id="trends-chart-horizon-field" hidden for="trends-chart-projection-horizon">
+                    <span class="trends-filter-label">Projection Horizon</span>
+                    <select id="trends-chart-projection-horizon" class="filter-select" aria-label="Projection horizon">
+                      <option value="3" selected>3 Months</option>
+                      <option value="6">6 Months</option>
+                      <option value="12">12 Months</option>
+                    </select>
+                  </label>
+                </div>
               </div>
-              <div class="trends-chart-legend" id="trends-chart-legend" hidden>
-                <span class="trends-chart-legend-item">
-                  <span class="trends-chart-legend-swatch trends-chart-legend-swatch-current" aria-hidden="true"></span>
-                  Current Period
-                </span>
-                <span class="trends-chart-legend-item" id="trends-chart-legend-compare" hidden>
-                  <span class="trends-chart-legend-swatch trends-chart-legend-swatch-compare" aria-hidden="true"></span>
-                  <span id="trends-chart-legend-compare-label"></span>
-                </span>
-              </div>
+              <div class="trends-chart-legend" id="trends-chart-legend" hidden></div>
+              <p class="trends-chart-legend-hint" id="trends-chart-legend-hint" hidden></p>
               <div class="trends-chart-body">
                 <p class="trends-chart-empty" id="trends-chart-empty" hidden></p>
                 <div class="trends-chart-svg-wrap" id="trends-chart-svg-wrap"></div>
                 <p class="trends-chart-note" id="trends-chart-note" hidden></p>
+                <div class="trends-chart-projection-summary" id="trends-chart-projection-summary" hidden>
+                  <div class="trends-chart-projection-result" id="trends-chart-projection-result"></div>
+                  <div class="trends-chart-projection-method" id="trends-chart-projection-method"></div>
+                </div>
                 <div class="trends-chart-tooltip" id="trends-chart-tooltip" hidden></div>
               </div>
             </section>
@@ -891,39 +920,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-            </section>
-            <section class="trends-resource-section" id="trends-projection-section">
-              <div class="trends-chart-header">
-                <div class="trends-chart-heading">
-                  <h3 class="trends-chart-title">Projected Activity</h3>
-                  <p class="trends-chart-subtitle">Estimate future activity based on recent finalized CREDO history.</p>
-                </div>
-                <label class="trends-filter-field trends-demand-metric-field" for="trends-projection-horizon">
-                  <span class="trends-filter-label">Project Next</span>
-                  <select id="trends-projection-horizon" class="filter-select" aria-label="Projection horizon">
-                    <option value="3" selected>3 Months</option>
-                    <option value="6">6 Months</option>
-                    <option value="12">12 Months</option>
-                  </select>
-                </label>
-              </div>
-              <p class="trends-breakdown-empty" id="trends-projection-empty" hidden></p>
-              <div class="trends-projection-body" id="trends-projection-body" hidden>
-                <div class="trends-projection-metrics" id="trends-projection-metrics"></div>
-                <div class="trends-projection-viz" id="trends-projection-viz" hidden>
-                  <label class="trends-filter-field trends-demand-metric-field" for="trends-projection-metric">
-                    <span class="trends-filter-label">View Projection By</span>
-                    <select id="trends-projection-metric" class="filter-select" aria-label="View projection by">
-                      <option value="participantReach" selected>Participant Reach</option>
-                      <option value="completedEvents">Completed Events</option>
-                      <option value="recordedCost">Recorded Event Cost</option>
-                    </select>
-                  </label>
-                  <div class="trends-projection-pace" id="trends-projection-pace"></div>
-                  <p class="trends-projection-pace-summary" id="trends-projection-pace-summary" hidden></p>
-                </div>
-                <div class="trends-projection-method" id="trends-projection-method"></div>
               </div>
             </section>
             <section class="trends-resource-section" id="trends-explorer-section">

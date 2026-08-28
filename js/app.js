@@ -2432,6 +2432,24 @@ function getEventTypeSeriesCode(eventTypeName) {
   return (record?.seriesCode ?? '').trim();
 }
 
+function hasValidEventTypeSeriesCode(seriesCode) {
+  return /^\d+$/.test(String(seriesCode || '').trim());
+}
+
+function compareEventTypeSeriesOrder(nameA, nameB) {
+  const codeA = getEventTypeSeriesCode(nameA);
+  const codeB = getEventTypeSeriesCode(nameB);
+  const validA = hasValidEventTypeSeriesCode(codeA);
+  const validB = hasValidEventTypeSeriesCode(codeB);
+  if (validA !== validB) return validA ? -1 : 1;
+  if (validA && validB) {
+    const numA = Number.parseInt(codeA, 10);
+    const numB = Number.parseInt(codeB, 10);
+    if (numA !== numB) return numA - numB;
+  }
+  return String(nameA || '').localeCompare(String(nameB || ''));
+}
+
 function getEventCalendarYear(event) {
   const start = event.startDate ?? event.date;
   if (isTbd(start)) return null;
@@ -4403,7 +4421,6 @@ let trendsDemandExpanded = false;
 let trendsReachExpanded = false;
 let trendsSpendingExpanded = false;
 let trendsCostDetailsExpanded = false;
-let trendsProjectionViewState = null;
 let trendsExplorerViewState = null;
 let trendsExplorerUserChange = null;
 let trendsExplorerSliderMax = 0;
@@ -4876,12 +4893,21 @@ function renderTrendsKpis(metrics, comparison) {
 const TRENDS_CHART_METRICS = {
   completedEvents: 'Completed Events',
   participantReach: 'Participant Reach',
-  commandsReached: 'Commands Reached',
-  totalRecordedEventCost: 'Total Recorded Event Cost',
-  costPerParticipant: 'Cost per Participant',
 };
 
+const TRENDS_OUTLOOK_MAX_PROGRAMS = 4;
+const TRENDS_OUTLOOK_MIN_BUCKETS = 4;
+const TRENDS_OUTLOOK_MIN_NONEMPTY = 3;
+const TRENDS_OUTLOOK_STABLE_RATIO = 0.10;
+const TRENDS_OUTLOOK_ALL_COLOR = '#00205b';
+const TRENDS_OUTLOOK_COMPARE_COLOR = '#4b5563';
+const TRENDS_OUTLOOK_PROJECTION_COLOR = '#6b5ca5';
+const TRENDS_OUTLOOK_PROGRAM_COLORS = ['#2f6f4e', '#1d4ed8', '#a16207', '#0f766e'];
+
 let trendsChartDrawState = null;
+let trendsOutlookSelectedKeys = [];
+let trendsOutlookMultiCompareEnabled = false;
+let trendsOutlookPrevProgramCount = 0;
 
 function getTrendsChartMetricKey() {
   const value = document.getElementById('trends-chart-metric')?.value;
@@ -4890,6 +4916,17 @@ function getTrendsChartMetricKey() {
 
 function getTrendsChartMetricLabel(metricKey = getTrendsChartMetricKey()) {
   return TRENDS_CHART_METRICS[metricKey] || TRENDS_CHART_METRICS.participantReach;
+}
+
+function isTrendsChartProjectionEnabled() {
+  return Boolean(document.getElementById('trends-chart-show-projection')?.checked);
+}
+
+function updateTrendsChartHorizonVisibility(enabled) {
+  const field = document.getElementById('trends-chart-horizon-field');
+  const select = document.getElementById('trends-chart-projection-horizon');
+  if (field) field.hidden = !enabled;
+  if (select) select.disabled = !enabled;
 }
 
 function getTrendsChartBucketSize(period, range) {
@@ -5008,7 +5045,7 @@ function generateTrendsChartBuckets(range, bucketSize) {
 }
 
 function aggregateTrendsChartBuckets(buckets, eventsForRange, bucketSize) {
-  const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+  const byKey = new Map(buckets.map((bucket) => [bucket.key, { ...bucket, events: [] }]));
 
   eventsForRange.forEach((event) => {
     const isoDate = getTrendsEventDate(event);
@@ -5017,7 +5054,7 @@ function aggregateTrendsChartBuckets(buckets, eventsForRange, bucketSize) {
     if (bucket) bucket.events.push(event);
   });
 
-  return buckets.map((bucket) => ({
+  return [...byKey.values()].map((bucket) => ({
     key: bucket.key,
     start: bucket.start,
     axisLabel: bucket.axisLabel,
@@ -5126,10 +5163,10 @@ function formatTrendsChartAverageLabel(bucket, bucketSize) {
   return `${date.toLocaleString('en-US', { month: 'short' })} equivalent`;
 }
 
-function buildTrendsChartComparisonSeries(currentBuckets, currentRange, period, compareMode, filters, bucketSize, metricKey) {
+function buildTrendsChartComparisonSeries(currentBuckets, currentRange, period, compareMode, filters, bucketSize, metricKey, seriesLabel) {
   if (compareMode === TRENDS_COMPARE_NONE) return [];
 
-  const compareLabel = getTrendsComparisonPhrase(compareMode);
+  const compareLabel = seriesLabel || getTrendsComparisonPhrase(compareMode);
   const isAverage = compareMode === TRENDS_COMPARE_AVG_2 || compareMode === TRENDS_COMPARE_AVG_3;
   const periodCount = compareMode === TRENDS_COMPARE_AVG_3 ? 3 : compareMode === TRENDS_COMPARE_AVG_2 ? 2 : 1;
 
@@ -5164,34 +5201,16 @@ function buildTrendsChartComparisonSeries(currentBuckets, currentRange, period, 
 }
 
 function getTrendsChartSeriesValue(metrics, metricKey) {
-  if (metricKey === 'costPerParticipant') {
-    return metrics.costPerParticipant;
-  }
   return Number(metrics[metricKey]) || 0;
 }
 
 function formatTrendsChartValue(metricKey, value) {
   if (value == null || !Number.isFinite(value)) return '—';
-  if (metricKey === 'totalRecordedEventCost' || metricKey === 'costPerParticipant') {
-    return formatTotalRecordedEventCost(value);
-  }
   return String(Math.round(value));
 }
 
 function formatTrendsChartAxisValue(metricKey, value) {
   if (!Number.isFinite(value)) return '';
-  const isCurrency = metricKey === 'totalRecordedEventCost' || metricKey === 'costPerParticipant';
-  if (isCurrency) {
-    if (value === 0) return '$0';
-    if (value >= 1000) {
-      const thousands = value / 1000;
-      const compact = thousands >= 10 || Number.isInteger(thousands)
-        ? String(Math.round(thousands))
-        : thousands.toFixed(1).replace(/\.0$/, '');
-      return `$${compact}k`;
-    }
-    return `$${Math.round(value)}`;
-  }
   if (value >= 1000) {
     const thousands = value / 1000;
     const compact = thousands >= 10 || Number.isInteger(thousands)
@@ -5290,6 +5309,447 @@ function createSvgElement(name, attributes = {}) {
   return element;
 }
 
+function getTrendsOutlookProgramOptions() {
+  const map = new Map();
+  (eventTypes || []).forEach((name) => {
+    const { key, label } = normalizeTrendsDemandEventType({ eventType: name });
+    map.set(key, label);
+  });
+  (events || []).forEach((event) => {
+    if (!isAarFinalized(event)) return;
+    const { key, label } = normalizeTrendsDemandEventType(event);
+    if (!map.has(key)) map.set(key, label);
+  });
+  return [...map.entries()]
+    .map(([key, label]) => ({ key, label }))
+    .sort((a, b) => compareEventTypeSeriesOrder(a.label, b.label));
+}
+
+function getTrendsOutlookSelection() {
+  if (!trendsOutlookSelectedKeys.length) {
+    return { mode: 'all', keys: [], programs: [] };
+  }
+  const options = getTrendsOutlookProgramOptions();
+  const byKey = new Map(options.map((entry) => [entry.key, entry]));
+  const programs = trendsOutlookSelectedKeys
+    .map((key) => byKey.get(key))
+    .filter(Boolean);
+  if (!programs.length) {
+    trendsOutlookSelectedKeys = [];
+    return { mode: 'all', keys: [], programs: [] };
+  }
+  return {
+    mode: programs.length === 1 ? 'single' : 'multi',
+    keys: programs.map((entry) => entry.key),
+    programs,
+  };
+}
+
+function getTrendsOutlookProgramColor(index) {
+  return TRENDS_OUTLOOK_PROGRAM_COLORS[index % TRENDS_OUTLOOK_PROGRAM_COLORS.length];
+}
+
+function lightenTrendsOutlookColor(hex, amount = 0.45) {
+  const normalized = String(hex || '').replace('#', '');
+  if (normalized.length !== 6) return TRENDS_OUTLOOK_COMPARE_COLOR;
+  const nums = [0, 2, 4].map((offset) => parseInt(normalized.slice(offset, offset + 2), 16));
+  const mixed = nums.map((value) => Math.round(value + (255 - value) * amount));
+  return `#${mixed.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function filterTrendsEventsByProgramKeys(eventList, programKeys) {
+  if (!programKeys?.length) return eventList;
+  const allowed = new Set(programKeys);
+  return eventList.filter((event) => allowed.has(normalizeTrendsDemandEventType(event).key));
+}
+
+function getTrendsOutlookBaseFilters() {
+  return {
+    eventType: '',
+    command: getTrendsFilterState().command || '',
+  };
+}
+
+function updateTrendsOutlookProgramToggleLabel() {
+  const toggle = document.getElementById('trends-chart-program-toggle');
+  if (!toggle) return;
+  const selection = getTrendsOutlookSelection();
+  if (selection.mode === 'all') {
+    toggle.textContent = 'All Programs';
+  } else if (selection.programs.length === 1) {
+    toggle.textContent = selection.programs[0].label;
+  } else {
+    toggle.textContent = `${selection.programs.length} Programs Selected`;
+  }
+}
+
+function setTrendsOutlookProgramLimitVisible(visible) {
+  const limit = document.getElementById('trends-chart-program-limit');
+  if (limit) limit.hidden = !visible;
+}
+
+function syncTrendsOutlookProgramInputs() {
+  const allInput = document.getElementById('trends-chart-program-all');
+  const list = document.getElementById('trends-chart-program-list');
+  const selection = getTrendsOutlookSelection();
+  if (allInput) allInput.checked = selection.mode === 'all';
+  if (!list) return;
+  list.querySelectorAll('input[data-outlook-program]').forEach((input) => {
+    input.checked = selection.keys.includes(input.dataset.outlookProgram);
+  });
+  updateTrendsOutlookProgramToggleLabel();
+}
+
+function populateTrendsOutlookProgramMenu() {
+  const list = document.getElementById('trends-chart-program-list');
+  if (!list) return;
+  const options = getTrendsOutlookProgramOptions();
+  const valid = new Set(options.map((entry) => entry.key));
+  trendsOutlookSelectedKeys = trendsOutlookSelectedKeys.filter((key) => valid.has(key));
+  const existingKeys = [...list.querySelectorAll('input[data-outlook-program]')]
+    .map((input) => input.dataset.outlookProgram);
+  const nextKeys = options.map((option) => option.key);
+  const sameOptions = existingKeys.length === nextKeys.length
+    && nextKeys.every((key, index) => existingKeys[index] === key);
+  if (!sameOptions) {
+    list.replaceChildren();
+    options.forEach((option) => {
+      const label = document.createElement('label');
+      label.className = 'trends-chart-program-option';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.dataset.outlookProgram = option.key;
+      const text = document.createElement('span');
+      text.textContent = option.label;
+      label.append(input, text);
+      list.append(label);
+    });
+  }
+  syncTrendsOutlookProgramInputs();
+}
+
+function setTrendsOutlookProgramMenuOpen(open) {
+  const menu = document.getElementById('trends-chart-program-menu');
+  const toggle = document.getElementById('trends-chart-program-toggle');
+  if (menu) menu.hidden = !open;
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function handleTrendsOutlookProgramChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.id === 'trends-chart-program-all') {
+    if (target.checked) {
+      trendsOutlookSelectedKeys = [];
+      setTrendsOutlookProgramLimitVisible(false);
+    } else if (!trendsOutlookSelectedKeys.length) {
+      target.checked = true;
+    }
+    syncTrendsOutlookProgramInputs();
+    renderTrendsChartSection(
+      getTrendsCurrentRange(),
+      getTrendsEventsForRange(getTrendsCurrentRange(), getTrendsFilterState()),
+      getTrendsPeriodValue()
+    );
+    return;
+  }
+
+  const key = target.dataset.outlookProgram;
+  if (!key) return;
+
+  if (target.checked) {
+    if (trendsOutlookSelectedKeys.length >= TRENDS_OUTLOOK_MAX_PROGRAMS) {
+      target.checked = false;
+      setTrendsOutlookProgramLimitVisible(true);
+      syncTrendsOutlookProgramInputs();
+      return;
+    }
+    setTrendsOutlookProgramLimitVisible(false);
+    if (!trendsOutlookSelectedKeys.includes(key)) {
+      trendsOutlookSelectedKeys = [...trendsOutlookSelectedKeys, key];
+    }
+  } else {
+    trendsOutlookSelectedKeys = trendsOutlookSelectedKeys.filter((entry) => entry !== key);
+    setTrendsOutlookProgramLimitVisible(false);
+  }
+
+  syncTrendsOutlookProgramInputs();
+  renderTrendsChartSection(
+    getTrendsCurrentRange(),
+    getTrendsEventsForRange(getTrendsCurrentRange(), getTrendsFilterState()),
+    getTrendsPeriodValue()
+  );
+}
+
+function setupTrendsOutlookProgramControl() {
+  const toggle = document.getElementById('trends-chart-program-toggle');
+  const menu = document.getElementById('trends-chart-program-menu');
+  if (!toggle || !menu || toggle.dataset.bound === '1') return;
+  toggle.dataset.bound = '1';
+
+  toggle.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setTrendsOutlookProgramMenuOpen(menu.hidden);
+  });
+  menu.addEventListener('click', (event) => event.stopPropagation());
+  menu.addEventListener('change', handleTrendsOutlookProgramChange);
+  document.addEventListener('click', () => setTrendsOutlookProgramMenuOpen(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setTrendsOutlookProgramMenuOpen(false);
+  });
+}
+
+function getTrendsOutlookCompareMode(selection) {
+  const globalMode = getTrendsCompareMode();
+  if (selection.mode !== 'multi') {
+    trendsOutlookMultiCompareEnabled = false;
+    return globalMode;
+  }
+  if (trendsOutlookPrevProgramCount < 2 && selection.keys.length >= 2) {
+    trendsOutlookMultiCompareEnabled = false;
+  }
+  if (!trendsOutlookMultiCompareEnabled) return TRENDS_COMPARE_NONE;
+  return globalMode;
+}
+
+function fitTrendsOutlookLinearTrend(values) {
+  const points = values
+    .map((value, index) => ({ x: index, y: Number(value) }))
+    .filter((point) => Number.isFinite(point.y));
+  const nonEmpty = points.filter((point) => point.y > 0);
+  if (
+    points.length < TRENDS_OUTLOOK_MIN_BUCKETS
+    || nonEmpty.length < TRENDS_OUTLOOK_MIN_NONEMPTY
+  ) {
+    return {
+      ok: false,
+      slope: 0,
+      intercept: 0,
+      direction: 'insufficient',
+      mean: 0,
+    };
+  }
+
+  const n = points.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  points.forEach((point) => {
+    sumX += point.x;
+    sumY += point.y;
+    sumXY += point.x * point.y;
+    sumXX += point.x * point.x;
+  });
+  const denominator = (n * sumXX) - (sumX * sumX);
+  const slope = denominator === 0 ? 0 : ((n * sumXY) - (sumX * sumY)) / denominator;
+  const intercept = (sumY - (slope * sumX)) / n;
+  const mean = sumY / n;
+  const relativeSpan = Math.abs(slope * (n - 1)) / Math.max(Math.abs(mean), 1);
+  let direction = 'stable';
+  if (relativeSpan >= TRENDS_OUTLOOK_STABLE_RATIO) {
+    direction = slope > 0 ? 'increasing' : 'decreasing';
+  }
+
+  return {
+    ok: true,
+    slope: Number.isFinite(slope) ? slope : 0,
+    intercept: Number.isFinite(intercept) ? intercept : 0,
+    direction,
+    mean: Number.isFinite(mean) ? mean : 0,
+    relativeSpan,
+    pointCount: n,
+    nonEmptyCount: nonEmpty.length,
+  };
+}
+
+function classifyTrendsOutlookDirectionLabel(direction) {
+  if (direction === 'increasing') return 'Increasing';
+  if (direction === 'decreasing') return 'Decreasing';
+  if (direction === 'stable') return 'Relatively Stable';
+  return 'Insufficient History';
+}
+
+function getTrendsOutlookDirectionSentence(direction, metricLabel) {
+  if (direction === 'increasing') {
+    return `Recent ${metricLabel.toLowerCase()} shows an upward trend. The projection extends that observed direction forward.`;
+  }
+  if (direction === 'decreasing') {
+    return `Recent ${metricLabel.toLowerCase()} shows a downward trend. The projection extends that observed direction forward.`;
+  }
+  if (direction === 'stable') {
+    return 'Recent activity has varied but does not show a strong sustained upward or downward trend.';
+  }
+  return 'Not enough historical activity to estimate an outlook for this selection.';
+}
+
+function roundTrendsOutlookValue(metricKey, value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value));
+}
+
+function buildTrendsOutlookActualSeries(buckets, metricKey, seriesLabel) {
+  return buckets.map((bucket) => {
+    const value = getTrendsChartSeriesValue(bucket.metrics, metricKey);
+    return {
+      axisLabel: bucket.axisLabel,
+      tooltipLabel: bucket.tooltipLabel,
+      seriesLabel,
+      extraLabel: '',
+      value,
+      formattedValue: formatTrendsChartValue(metricKey, value),
+    };
+  });
+}
+
+function buildTrendsOutlookDirectionalProjection({
+  currentBuckets,
+  actualSeries,
+  metricKey,
+  programKeys,
+  bucketSize,
+  seriesLabel,
+  color,
+  filters = null,
+}) {
+  const months = getTrendsProjectionHorizonMonths();
+  const windows = getTrendsProjectionWindows(new Date(), months);
+  const queryFilters = filters || getTrendsOutlookBaseFilters();
+  const basisEvents = filterTrendsEventsByProgramKeys(
+    getTrendsEventsForRange(windows.basis, queryFilters),
+    programKeys
+  );
+  const projectionLabel = seriesLabel
+    ? `${seriesLabel} · ${getTrendsOutlookProjectionHorizonLabel(months)}`
+    : getTrendsOutlookProjectionHorizonLabel(months);
+
+  if (!basisEvents.length) {
+    return {
+      months,
+      windows,
+      projectionLabel,
+      projectionSeries: null,
+      futureAxisLabels: [],
+      boundaryIndex: null,
+      projectedTotal: null,
+      direction: 'insufficient',
+      error: programKeys?.length
+        ? 'Not enough historical activity to estimate an outlook for this program.'
+        : 'No finalized historical data is available to estimate an outlook.',
+    };
+  }
+
+  const basisBuckets = aggregateTrendsChartBuckets(
+    generateTrendsChartBuckets(windows.basis, bucketSize),
+    basisEvents,
+    bucketSize
+  );
+  const basisValues = basisBuckets.map((bucket) => getTrendsChartSeriesValue(bucket.metrics, metricKey));
+  const trend = fitTrendsOutlookLinearTrend(basisValues);
+  if (!trend.ok) {
+    return {
+      months,
+      windows,
+      projectionLabel,
+      projectionSeries: null,
+      futureAxisLabels: [],
+      boundaryIndex: null,
+      projectedTotal: null,
+      direction: 'insufficient',
+      trend,
+      error: programKeys?.length
+        ? 'Not enough historical activity to estimate an outlook for this program.'
+        : 'Not enough historical activity to estimate an outlook.',
+    };
+  }
+
+  const lastHistoricalKey = currentBuckets[currentBuckets.length - 1]?.key;
+  const futureBuckets = generateTrendsChartBuckets(windows.projection, bucketSize)
+    .filter((bucket) => !lastHistoricalKey || bucket.key > lastHistoricalKey);
+  const lastSeriesPoint = actualSeries[actualSeries.length - 1];
+  const lastIndex = actualSeries.length - 1;
+  const projectionSeries = [];
+  const futureAxisLabels = [];
+
+  if (lastSeriesPoint && lastSeriesPoint.value != null && Number.isFinite(lastSeriesPoint.value)) {
+    projectionSeries.push({
+      ...lastSeriesPoint,
+      index: lastIndex,
+      seriesLabel: projectionLabel,
+      isAnchor: true,
+    });
+  }
+
+  let nextIndex = lastIndex + 1;
+  let projectedTotal = 0;
+  futureBuckets.forEach((bucket, offset) => {
+    const raw = Number(lastSeriesPoint?.value || 0) + (trend.slope * (offset + 1));
+    const value = roundTrendsOutlookValue(metricKey, raw);
+    projectedTotal += value;
+    futureAxisLabels.push(bucket.axisLabel);
+    projectionSeries.push({
+      index: nextIndex,
+      axisLabel: bucket.axisLabel,
+      tooltipLabel: bucket.tooltipLabel,
+      seriesLabel: projectionLabel,
+      extraLabel: 'Directional outlook from recent finalized history',
+      value,
+      formattedValue: formatTrendsChartValue(metricKey, value),
+      isAnchor: false,
+    });
+    nextIndex += 1;
+  });
+
+  if (projectionSeries.length < 2) {
+    return {
+      months,
+      windows,
+      projectionLabel,
+      projectionSeries: null,
+      futureAxisLabels: [],
+      boundaryIndex: null,
+      projectedTotal: null,
+      direction: trend.direction,
+      trend,
+      error: 'Not enough future time buckets are available to draw this projection.',
+      color,
+    };
+  }
+
+  return {
+    months,
+    windows,
+    projectionLabel,
+    projectionSeries,
+    futureAxisLabels,
+    boundaryIndex: lastIndex,
+    projectedTotal,
+    direction: trend.direction,
+    trend,
+    error: '',
+    color,
+  };
+}
+
+function getTrendsOutlookProjectionHorizonLabel(months) {
+  if (months === 6) return 'Projected Next 6 Months';
+  if (months === 12) return 'Projected Next 12 Months';
+  return 'Projected Next 3 Months';
+}
+
+function formatTrendsOutlookProjectedTotal(metricKey, months, projectedTotal) {
+  const horizon = months === 6 ? 'Next 6 Months' : months === 12 ? 'Next 12 Months' : 'Next 3 Months';
+  if (metricKey === 'completedEvents') {
+    const count = Math.round(projectedTotal || 0);
+    const unit = count === 1 ? 'event' : 'events';
+    return `Projected Completed Events — ${horizon}: ≈ ${count} ${unit}`;
+  }
+  const count = Math.round(projectedTotal || 0);
+  const unit = count === 1 ? 'participant engagement' : 'participant engagements';
+  return `Projected Participant Reach — ${horizon}: ≈ ${count.toLocaleString('en-US')} ${unit}`;
+}
+
 function redrawTrendsChartSvg() {
   if (!trendsChartDrawState) return;
   drawTrendsChartSvg(trendsChartDrawState);
@@ -5302,35 +5762,42 @@ function drawTrendsChartSvg(state) {
   hideTrendsChartTooltip();
   wrap.innerHTML = '';
 
-  const { series, compareSeries, metricKey, metricLabel } = state;
+  const {
+    seriesList = [],
+    axisLabels,
+    boundaryIndex,
+    boundaryLabel: boundaryCaption,
+    metricKey,
+    metricLabel,
+  } = state;
   const width = Math.max(wrap.clientWidth || 640, 280);
   const height = wrap.clientWidth && wrap.clientWidth < 640 ? 240 : 280;
+  const hasProjection = seriesList.some((entry) => entry.kind === 'projection');
   const pad = {
-    top: 16,
+    top: hasProjection ? 22 : 16,
     right: 12,
     bottom: 36,
     left: width < 480 ? 40 : 52,
   };
   const plotWidth = Math.max(width - pad.left - pad.right, 40);
   const plotHeight = Math.max(height - pad.top - pad.bottom, 80);
-  const values = [
-    ...series.map((point) => point.value),
-    ...(compareSeries || []).map((point) => point.value),
-  ];
+  const labels = axisLabels?.length
+    ? axisLabels
+    : (seriesList[0]?.points || []).map((point) => point.axisLabel);
+  const axisCount = Math.max(labels.length, 1);
+  const values = seriesList.flatMap((entry) => (entry.points || []).map((point) => point.value));
   const scale = getTrendsChartScale(values);
   const xAt = (index) => (
-    series.length === 1
+    axisCount === 1
       ? pad.left + plotWidth / 2
-      : pad.left + (index / (series.length - 1)) * plotWidth
+      : pad.left + (index / (axisCount - 1)) * plotWidth
   );
   const yAt = (value) => pad.top + plotHeight - (value / scale.max) * plotHeight;
 
   const svg = createSvgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': compareSeries?.length
-      ? `Historical ${metricLabel} trend with ${state.compareLabel} comparison`
-      : `Historical ${metricLabel} trend`,
+    'aria-label': state.ariaLabel || `${metricLabel} trend and outlook`,
   });
 
   scale.ticks.forEach((tick) => {
@@ -5364,9 +5831,32 @@ function drawTrendsChartSvg(state) {
     'stroke-width': 1,
   }));
 
+  if (boundaryIndex != null && Number.isFinite(boundaryIndex) && axisCount > 1) {
+    const x = xAt(boundaryIndex);
+    svg.appendChild(createSvgElement('line', {
+      x1: x,
+      y1: pad.top,
+      x2: x,
+      y2: pad.top + plotHeight,
+      stroke: '#9ca3af',
+      'stroke-width': 1,
+      'stroke-dasharray': '4 3',
+    }));
+    const boundaryText = createSvgElement('text', {
+      x: Math.min(x + 4, pad.left + plotWidth - (width < 480 ? 72 : 96)),
+      y: pad.top + 10,
+      fill: '#6b7280',
+      'font-size': 10,
+      'font-family': 'inherit',
+      'font-weight': 600,
+    });
+    boundaryText.textContent = boundaryCaption || 'Today';
+    svg.appendChild(boundaryText);
+  }
+
   const maxLabels = width < 640 ? 4 : width < 900 ? 6 : 8;
-  const visibleLabels = new Set(getVisibleTrendsChartLabelIndexes(series.length, maxLabels));
-  series.forEach((point, index) => {
+  const visibleLabels = new Set(getVisibleTrendsChartLabelIndexes(axisCount, maxLabels));
+  labels.forEach((axisLabel, index) => {
     if (!visibleLabels.has(index)) return;
     const label = createSvgElement('text', {
       x: xAt(index),
@@ -5376,13 +5866,16 @@ function drawTrendsChartSvg(state) {
       'font-size': width < 480 ? 10 : 11,
       'font-family': 'inherit',
     });
-    label.textContent = point.axisLabel;
+    label.textContent = axisLabel;
     svg.appendChild(label);
   });
 
   function appendSeriesPath(points, style) {
     const plotted = points
-      .map((point, index) => ({ point, index }))
+      .map((point, index) => ({
+        point,
+        index: point.index != null ? point.index : index,
+      }))
       .filter((entry) => entry.point.value != null && Number.isFinite(entry.point.value));
 
     if (plotted.length > 1) {
@@ -5412,6 +5905,7 @@ function drawTrendsChartSvg(state) {
     }
 
     plotted.forEach((entry) => {
+      if (style.skipAnchorMarker && entry.point.isAnchor) return;
       const x = xAt(entry.index);
       const y = yAt(entry.point.value);
       const hit = createSvgElement('circle', {
@@ -5428,9 +5922,9 @@ function drawTrendsChartSvg(state) {
         cx: x,
         cy: y,
         r: style.markerRadius,
-        fill: style.stroke,
-        stroke: '#ffffff',
-        'stroke-width': 1.5,
+        fill: style.markerFill || style.stroke,
+        stroke: style.markerStroke || '#ffffff',
+        'stroke-width': style.markerStrokeWidth || 1.5,
         'pointer-events': 'none',
       });
       const show = () => showTrendsChartTooltip(hit, entry.point, metricLabel);
@@ -5443,31 +5937,42 @@ function drawTrendsChartSvg(state) {
     });
   }
 
-  if (compareSeries?.length) {
-    appendSeriesPath(compareSeries, {
-      stroke: '#4b5563',
-      width: 2,
-      dash: '6 4',
-      markerRadius: 3,
-    });
-  }
-
-  appendSeriesPath(series, {
-    stroke: '#00205b',
-    width: 2.25,
-    markerRadius: 3.5,
+  seriesList.forEach((entry) => {
+    if (!entry.points?.length) return;
+    appendSeriesPath(entry.points, entry.style);
   });
 
   wrap.appendChild(svg);
 }
 
-function updateTrendsChartLegend(compareLabel) {
+function updateTrendsChartLegend(items, hint) {
   const legend = document.getElementById('trends-chart-legend');
-  const compareItem = document.getElementById('trends-chart-legend-compare');
-  const compareLabelEl = document.getElementById('trends-chart-legend-compare-label');
-  if (legend) legend.hidden = false;
-  if (compareItem) compareItem.hidden = !compareLabel;
-  if (compareLabelEl) compareLabelEl.textContent = compareLabel || '';
+  const hintEl = document.getElementById('trends-chart-legend-hint');
+  if (!legend) return;
+  legend.replaceChildren();
+  if (!items?.length) {
+    legend.hidden = true;
+  } else {
+    legend.hidden = false;
+    items.forEach((item) => {
+      const row = document.createElement('span');
+      row.className = 'trends-chart-legend-item';
+      const swatch = document.createElement('span');
+      swatch.className = `trends-chart-legend-swatch ${item.swatchClass || ''}`.trim();
+      swatch.setAttribute('aria-hidden', 'true');
+      if (item.color) swatch.style.borderTopColor = item.color;
+      if (item.dash) swatch.style.borderTopStyle = 'dashed';
+      if (item.dotted) swatch.style.borderTopStyle = 'dotted';
+      const text = document.createElement('span');
+      text.textContent = item.label;
+      row.append(swatch, text);
+      legend.append(row);
+    });
+  }
+  if (hintEl) {
+    hintEl.textContent = hint || '';
+    hintEl.hidden = !hint;
+  }
 }
 
 function updateTrendsChartNote(message) {
@@ -5482,10 +5987,67 @@ function updateTrendsChartNote(message) {
   note.textContent = message;
 }
 
+function updateTrendsChartProjectionSummary(summary) {
+  const wrap = document.getElementById('trends-chart-projection-summary');
+  const resultEl = document.getElementById('trends-chart-projection-result');
+  const methodEl = document.getElementById('trends-chart-projection-method');
+  if (!wrap || !resultEl || !methodEl) return;
+
+  if (!summary) {
+    wrap.hidden = true;
+    resultEl.replaceChildren();
+    methodEl.replaceChildren();
+    return;
+  }
+
+  wrap.hidden = false;
+  resultEl.replaceChildren();
+  (summary.resultBlocks || []).forEach((block) => {
+    const blockEl = document.createElement('div');
+    blockEl.className = 'trends-chart-projection-block';
+    if (block.title) {
+      const title = document.createElement('p');
+      title.className = 'trends-chart-projection-title';
+      title.textContent = block.title;
+      blockEl.append(title);
+    }
+    if (block.outlook) {
+      const outlook = document.createElement('p');
+      outlook.className = 'trends-chart-projection-outlook';
+      outlook.textContent = `Outlook: ${block.outlook}`;
+      blockEl.append(outlook);
+    }
+    if (block.sentence) {
+      const sentence = document.createElement('p');
+      sentence.className = 'trends-chart-projection-sentence';
+      sentence.textContent = block.sentence;
+      blockEl.append(sentence);
+    }
+    if (block.lines?.length) {
+      const list = document.createElement('ul');
+      list.className = 'trends-chart-projection-list';
+      block.lines.forEach((line) => {
+        const li = document.createElement('li');
+        li.textContent = line;
+        list.append(li);
+      });
+      blockEl.append(list);
+    }
+    resultEl.append(blockEl);
+  });
+
+  methodEl.replaceChildren();
+  (summary.methodLines || []).forEach((line) => {
+    const p = document.createElement('p');
+    p.textContent = line;
+    methodEl.append(p);
+  });
+}
+
 function hideTrendsChartChrome() {
-  const legend = document.getElementById('trends-chart-legend');
-  if (legend) legend.hidden = true;
+  updateTrendsChartLegend([], '');
   updateTrendsChartNote('');
+  updateTrendsChartProjectionSummary(null);
 }
 
 function showTrendsChartEmpty(message) {
@@ -5509,79 +6071,422 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
   const wrap = document.getElementById('trends-chart-svg-wrap');
   if (!empty || !wrap) return;
 
-  if (!currentRange) {
-    showTrendsChartEmpty('Choose a valid custom date range to view the historical trend.');
-    return;
-  }
+  populateTrendsOutlookProgramMenu();
+  setupTrendsOutlookProgramControl();
 
-  if (!currentEvents.length) {
-    showTrendsChartEmpty('No finalized AAR data is available for this trend.');
+  const showProjection = isTrendsChartProjectionEnabled();
+  updateTrendsChartHorizonVisibility(showProjection);
+  const selection = getTrendsOutlookSelection();
+  const globalCompareMode = getTrendsCompareMode();
+  const compareMode = getTrendsOutlookCompareMode(selection);
+  const multiComparePaused = selection.mode === 'multi'
+    && !trendsOutlookMultiCompareEnabled
+    && globalCompareMode !== TRENDS_COMPARE_NONE;
+  trendsOutlookPrevProgramCount = selection.keys.length;
+
+  if (!currentRange) {
+    showTrendsChartEmpty('Choose a valid custom date range to view Trend & Outlook.');
     return;
   }
 
   const metricKey = getTrendsChartMetricKey();
   const metricLabel = getTrendsChartMetricLabel(metricKey);
   const bucketSize = getTrendsChartBucketSize(period, currentRange);
-  const currentBuckets = aggregateTrendsChartBuckets(
-    generateTrendsChartBuckets(currentRange, bucketSize),
-    currentEvents,
-    bucketSize
-  );
-  const series = currentBuckets.map((bucket) => {
-    const value = getTrendsChartSeriesValue(bucket.metrics, metricKey);
-    return {
-      axisLabel: bucket.axisLabel,
-      tooltipLabel: bucket.tooltipLabel,
-      seriesLabel: 'Current Period',
-      extraLabel: '',
-      value,
-      formattedValue: formatTrendsChartValue(metricKey, value),
-    };
-  });
+  const baseFilters = getTrendsOutlookBaseFilters();
+  const scopedCurrentEvents = selection.mode === 'all'
+    ? currentEvents
+    : filterTrendsEventsByProgramKeys(currentEvents, selection.keys);
 
-  if (metricKey === 'costPerParticipant' && series.every((point) => point.value == null)) {
+  if (!scopedCurrentEvents.length) {
     showTrendsChartEmpty(
-      'No participant data is available to calculate Cost per Participant for this period.'
+      selection.mode === 'all'
+        ? 'No finalized AAR data is available for this trend.'
+        : 'No finalized AAR data is available for the selected program(s) in this period.'
     );
     return;
   }
 
-  const compareMode = getTrendsCompareMode();
-  const compareLabel = getTrendsComparisonPhrase(compareMode);
-  let compareSeries = null;
-  let compareNote = '';
+  const currentBuckets = aggregateTrendsChartBuckets(
+    generateTrendsChartBuckets(currentRange, bucketSize),
+    scopedCurrentEvents,
+    bucketSize
+  );
 
-  if (compareMode !== TRENDS_COMPARE_NONE) {
-    compareSeries = buildTrendsChartComparisonSeries(
-      currentBuckets,
-      currentRange,
-      period,
-      compareMode,
-      getTrendsFilterState(),
-      bucketSize,
-      metricKey
-    );
+  const seriesList = [];
+  const legendItems = [];
+  let axisLabels = currentBuckets.map((bucket) => bucket.axisLabel);
+  let boundaryIndex = null;
+  let boundaryLabel = '';
+  let projectionSummary = null;
+  let noteParts = [];
+  let futureAxisLabels = [];
+  const projectionResults = [];
 
-    if (
-      metricKey === 'costPerParticipant'
-      && compareSeries.every((point) => point.value == null)
-    ) {
-      compareSeries = null;
-      compareNote = 'No historical participant data is available for the selected Cost per Participant comparison.';
+  if (selection.mode === 'all' || selection.mode === 'single') {
+    const program = selection.mode === 'single' ? selection.programs[0] : null;
+    const color = selection.mode === 'single'
+      ? getTrendsOutlookProgramColor(0)
+      : TRENDS_OUTLOOK_ALL_COLOR;
+    const actualLabel = program ? program.label : 'Current Period';
+    const actualSeries = buildTrendsOutlookActualSeries(currentBuckets, metricKey, actualLabel);
+    seriesList.push({
+      kind: 'actual',
+      points: actualSeries,
+      style: {
+        stroke: color,
+        width: 2.25,
+        markerRadius: 3.5,
+      },
+    });
+    legendItems.push({
+      label: actualLabel,
+      color,
+      swatchClass: 'trends-chart-legend-swatch-current',
+    });
+
+    if (compareMode !== TRENDS_COMPARE_NONE) {
+      const compareFilters = program
+        ? { ...baseFilters }
+        : getTrendsFilterState();
+      const compareEventsFilter = program
+        ? (interval) => filterTrendsEventsByProgramKeys(
+          getTrendsEventsForRange(interval, compareFilters),
+          [program.key]
+        )
+        : null;
+
+      let compareSeries;
+      if (compareEventsFilter) {
+        const compareLabel = `${program.label} · ${getTrendsComparisonPhrase(compareMode)}`;
+        const isAverage = compareMode === TRENDS_COMPARE_AVG_2 || compareMode === TRENDS_COMPARE_AVG_3;
+        const periodCount = compareMode === TRENDS_COMPARE_AVG_3 ? 3 : compareMode === TRENDS_COMPARE_AVG_2 ? 2 : 1;
+        compareSeries = currentBuckets.map((bucket) => {
+          const effective = getTrendsChartEffectiveBucketRange(bucket, currentRange, bucketSize);
+          const historicalIntervals = getTrendsChartHistoricalIntervals(
+            effective,
+            period,
+            compareMode,
+            currentRange
+          );
+          const metricsList = historicalIntervals.map((interval) => (
+            calculateTrendsMetrics(compareEventsFilter(interval))
+          ));
+          const metrics = metricsList.length === 1
+            ? metricsList[0]
+            : averageTrendsMetrics(metricsList);
+          const value = getTrendsChartSeriesValue(metrics, metricKey);
+          const primaryInterval = historicalIntervals[0];
+          return {
+            axisLabel: bucket.axisLabel,
+            tooltipLabel: isAverage
+              ? formatTrendsChartAverageLabel(bucket, bucketSize)
+              : formatTrendsChartHistoricalLabel(primaryInterval, bucketSize),
+            seriesLabel: compareLabel,
+            extraLabel: isAverage ? `Average of ${periodCount} historical periods` : '',
+            value,
+            formattedValue: formatTrendsChartValue(metricKey, value),
+          };
+        });
+      } else {
+        compareSeries = buildTrendsChartComparisonSeries(
+          currentBuckets,
+          currentRange,
+          period,
+          compareMode,
+          getTrendsFilterState(),
+          bucketSize,
+          metricKey
+        );
+      }
+
+      const compareColor = selection.mode === 'single'
+        ? lightenTrendsOutlookColor(color, 0.5)
+        : TRENDS_OUTLOOK_COMPARE_COLOR;
+      seriesList.unshift({
+        kind: 'compare',
+        points: compareSeries,
+        style: {
+          stroke: compareColor,
+          width: 1.75,
+          dash: '6 4',
+          markerRadius: 2.75,
+          markerFill: compareColor,
+        },
+      });
+      legendItems.push({
+        label: getTrendsComparisonPhrase(compareMode),
+        color: compareColor,
+        dash: true,
+        swatchClass: 'trends-chart-legend-swatch-compare',
+      });
     }
+
+    if (showProjection) {
+      const projection = buildTrendsOutlookDirectionalProjection({
+        currentBuckets,
+        actualSeries,
+        metricKey,
+        programKeys: program ? [program.key] : null,
+        bucketSize,
+        seriesLabel: program ? program.label : '',
+        color: selection.mode === 'single' ? color : TRENDS_OUTLOOK_PROJECTION_COLOR,
+        filters: program ? getTrendsOutlookBaseFilters() : getTrendsFilterState(),
+      });
+      if (projection.projectionSeries?.length) {
+        futureAxisLabels = projection.futureAxisLabels;
+        boundaryIndex = projection.boundaryIndex;
+        const todayIso = formatLocalIsoDate(new Date());
+        boundaryLabel = currentRange.end >= todayIso ? 'Today' : 'Projection begins';
+        const projectionColor = selection.mode === 'single' ? color : TRENDS_OUTLOOK_PROJECTION_COLOR;
+        seriesList.push({
+          kind: 'projection',
+          points: projection.projectionSeries,
+          style: {
+            stroke: projectionColor,
+            width: 2,
+            dash: '5 4',
+            markerRadius: 3.25,
+            markerFill: '#ffffff',
+            markerStroke: projectionColor,
+            markerStrokeWidth: 1.75,
+            skipAnchorMarker: true,
+          },
+        });
+        legendItems.push({
+          label: getTrendsOutlookProjectionHorizonLabel(projection.months),
+          color: projectionColor,
+          dash: true,
+          swatchClass: 'trends-chart-legend-swatch-projection',
+        });
+        projectionResults.push(projection);
+        projectionSummary = {
+          resultBlocks: [{
+            title: formatTrendsOutlookProjectedTotal(metricKey, projection.months, projection.projectedTotal),
+            outlook: classifyTrendsOutlookDirectionLabel(projection.direction),
+            sentence: getTrendsOutlookDirectionSentence(projection.direction, metricLabel),
+          }],
+          methodLines: [
+            'Outlook extends the recent directional trend from finalized CREDO activity over the previous 12 months.',
+            `Trend basis: ${formatTrendsProjectionRange(projection.windows.basis)}`,
+            `Projection: ${formatTrendsProjectionRange(projection.windows.projection)}`,
+          ],
+        };
+      } else {
+        noteParts.push(projection.error || 'Not enough historical activity to estimate an outlook.');
+        projectionSummary = {
+          resultBlocks: [{
+            title: projection.error || 'Not enough historical activity to estimate an outlook.',
+            outlook: classifyTrendsOutlookDirectionLabel(projection.direction || 'insufficient'),
+            sentence: getTrendsOutlookDirectionSentence(projection.direction || 'insufficient', metricLabel),
+          }],
+          methodLines: projection.windows ? [
+            'Outlook requires enough recent finalized activity to establish direction.',
+            `Trend basis: ${formatTrendsProjectionRange(projection.windows.basis)}`,
+            `Projection: ${formatTrendsProjectionRange(projection.windows.projection)}`,
+          ] : [],
+        };
+      }
+    }
+  } else {
+    // Multi-program mode
+    const programSeries = selection.programs.map((program, index) => {
+      const color = getTrendsOutlookProgramColor(index);
+      const programEvents = filterTrendsEventsByProgramKeys(scopedCurrentEvents, [program.key]);
+      const programBuckets = aggregateTrendsChartBuckets(
+        generateTrendsChartBuckets(currentRange, bucketSize),
+        programEvents,
+        bucketSize
+      );
+      const actualSeries = buildTrendsOutlookActualSeries(programBuckets, metricKey, program.label);
+      return {
+        program,
+        color,
+        buckets: programBuckets,
+        actualSeries,
+      };
+    });
+
+    programSeries.forEach((entry) => {
+      seriesList.push({
+        kind: 'actual',
+        points: entry.actualSeries,
+        style: {
+          stroke: entry.color,
+          width: 2.15,
+          markerRadius: 3.25,
+        },
+      });
+      legendItems.push({
+        label: entry.program.label,
+        color: entry.color,
+        swatchClass: 'trends-chart-legend-swatch-current',
+      });
+    });
+
+    if (compareMode !== TRENDS_COMPARE_NONE) {
+      programSeries.forEach((entry) => {
+        const compareColor = lightenTrendsOutlookColor(entry.color, 0.55);
+        const compareLabel = `${entry.program.label} · ${getTrendsComparisonPhrase(compareMode)}`;
+        const isAverage = compareMode === TRENDS_COMPARE_AVG_2 || compareMode === TRENDS_COMPARE_AVG_3;
+        const periodCount = compareMode === TRENDS_COMPARE_AVG_3 ? 3 : compareMode === TRENDS_COMPARE_AVG_2 ? 2 : 1;
+        const compareSeries = entry.buckets.map((bucket) => {
+          const effective = getTrendsChartEffectiveBucketRange(bucket, currentRange, bucketSize);
+          const historicalIntervals = getTrendsChartHistoricalIntervals(
+            effective,
+            period,
+            compareMode,
+            currentRange
+          );
+          const metricsList = historicalIntervals.map((interval) => (
+            calculateTrendsMetrics(filterTrendsEventsByProgramKeys(
+              getTrendsEventsForRange(interval, baseFilters),
+              [entry.program.key]
+            ))
+          ));
+          const metrics = metricsList.length === 1
+            ? metricsList[0]
+            : averageTrendsMetrics(metricsList);
+          const value = getTrendsChartSeriesValue(metrics, metricKey);
+          const primaryInterval = historicalIntervals[0];
+          return {
+            axisLabel: bucket.axisLabel,
+            tooltipLabel: isAverage
+              ? formatTrendsChartAverageLabel(bucket, bucketSize)
+              : formatTrendsChartHistoricalLabel(primaryInterval, bucketSize),
+            seriesLabel: compareLabel,
+            extraLabel: isAverage ? `Average of ${periodCount} historical periods` : '',
+            value,
+            formattedValue: formatTrendsChartValue(metricKey, value),
+          };
+        });
+        seriesList.unshift({
+          kind: 'compare',
+          points: compareSeries,
+          style: {
+            stroke: compareColor,
+            width: 1.35,
+            dash: '2 4',
+            markerRadius: 2.25,
+            markerFill: '#ffffff',
+            markerStroke: compareColor,
+            markerStrokeWidth: 1.25,
+          },
+        });
+      });
+      noteParts.push('Historical comparison shown as lighter dotted lines for each program.');
+    }
+
+    if (showProjection) {
+      const todayIso = formatLocalIsoDate(new Date());
+      boundaryLabel = currentRange.end >= todayIso ? 'Today' : 'Projection begins';
+      const multiLines = [];
+      let sharedWindows = null;
+      let sharedMonths = getTrendsProjectionHorizonMonths();
+
+      programSeries.forEach((entry) => {
+        const projection = buildTrendsOutlookDirectionalProjection({
+          currentBuckets: entry.buckets,
+          actualSeries: entry.actualSeries,
+          metricKey,
+          programKeys: [entry.program.key],
+          bucketSize,
+          seriesLabel: entry.program.label,
+          color: entry.color,
+        });
+        sharedWindows = projection.windows || sharedWindows;
+        sharedMonths = projection.months || sharedMonths;
+        if (projection.futureAxisLabels?.length > futureAxisLabels.length) {
+          futureAxisLabels = projection.futureAxisLabels;
+        }
+        if (projection.boundaryIndex != null) boundaryIndex = projection.boundaryIndex;
+        if (projection.projectionSeries?.length) {
+          seriesList.push({
+            kind: 'projection',
+            points: projection.projectionSeries,
+            style: {
+              stroke: entry.color,
+              width: 1.9,
+              dash: '5 4',
+              markerRadius: 3,
+              markerFill: '#ffffff',
+              markerStroke: entry.color,
+              markerStrokeWidth: 1.6,
+              skipAnchorMarker: true,
+            },
+          });
+          const totalText = metricKey === 'completedEvents'
+            ? `≈ ${Math.round(projection.projectedTotal || 0)} events`
+            : `≈ ${Math.round(projection.projectedTotal || 0).toLocaleString('en-US')} participants`;
+          multiLines.push(
+            `${entry.program.label} — ${classifyTrendsOutlookDirectionLabel(projection.direction)} · ${totalText}`
+          );
+          projectionResults.push(projection);
+        } else {
+          multiLines.push(
+            `${entry.program.label} — ${classifyTrendsOutlookDirectionLabel('insufficient')}`
+          );
+          noteParts.push(
+            `${entry.program.label}: ${projection.error || 'Not enough historical activity to estimate an outlook.'}`
+          );
+        }
+      });
+
+      if (projectionResults.length) {
+        legendItems.push({
+          label: 'Dashed = Projection',
+          color: '#6b7280',
+          dash: true,
+          swatchClass: 'trends-chart-legend-swatch-projection',
+        });
+      }
+
+      projectionSummary = {
+        resultBlocks: [{
+          title: `Projected ${metricLabel} — ${getTrendsOutlookProjectionHorizonLabel(sharedMonths).replace('Projected ', '')}`,
+          lines: multiLines,
+        }],
+        methodLines: sharedWindows ? [
+          'Each program outlook extends that program’s own recent directional trend from finalized activity over the previous 12 months.',
+          `Trend basis: ${formatTrendsProjectionRange(sharedWindows.basis)}`,
+          `Projection: ${formatTrendsProjectionRange(sharedWindows.projection)}`,
+        ] : [],
+      };
+    }
+  }
+
+  if (futureAxisLabels.length) {
+    axisLabels = [
+      ...currentBuckets.map((bucket) => bucket.axisLabel),
+      ...futureAxisLabels,
+    ];
+  }
+
+  const legendHint = selection.mode === 'multi'
+    ? 'Solid = Actual · Dashed = Projection · Dotted = Historical Comparison'
+    : (showProjection
+      ? 'Solid = Actual · Dashed = Projection'
+      : '');
+
+  if (multiComparePaused) {
+    noteParts.unshift(
+      'Historical comparison is paused in multi-program view. Change Compare With to show it for each program.'
+    );
   }
 
   empty.hidden = true;
   empty.textContent = '';
   wrap.hidden = false;
-  updateTrendsChartLegend(compareSeries ? compareLabel : '');
-  updateTrendsChartNote(compareNote);
+  updateTrendsChartLegend(legendItems, legendHint);
+  updateTrendsChartNote(noteParts.filter(Boolean).join(' '));
+  updateTrendsChartProjectionSummary(projectionSummary);
   trendsChartDrawState = {
-    series,
-    compareSeries,
+    seriesList,
+    axisLabels,
+    boundaryIndex,
+    boundaryLabel,
     metricKey,
     metricLabel,
-    compareLabel,
+    ariaLabel: `Trend and outlook for ${metricLabel}`,
   };
   drawTrendsChartSvg(trendsChartDrawState);
 }
@@ -6570,7 +7475,7 @@ function renderTrendsCostDetails(currentMap) {
 }
 
 function getTrendsProjectionHorizonMonths() {
-  const value = Number(document.getElementById('trends-projection-horizon')?.value);
+  const value = Number(document.getElementById('trends-chart-projection-horizon')?.value);
   if (value === 6 || value === 12) return value;
   return 3;
 }
@@ -6602,297 +7507,6 @@ function projectTrendsMetric(historicalTotal, basisDays, horizonDays) {
   if (!(basisDays > 0) || !(horizonDays > 0)) return 0;
   const projected = (historicalTotal / basisDays) * horizonDays;
   return Number.isFinite(projected) ? projected : 0;
-}
-
-const TRENDS_PROJECTION_MONTH_DAYS = 30.4375;
-
-function getTrendsProjectionChartMetricKey() {
-  const value = document.getElementById('trends-projection-metric')?.value;
-  if (value === 'completedEvents' || value === 'recordedCost') return value;
-  return 'participantReach';
-}
-
-function getTrendsProjectionMonthEquivalent(days) {
-  if (!(days > 0)) return 0;
-  return days / TRENDS_PROJECTION_MONTH_DAYS;
-}
-
-function getTrendsProjectionMonthlyPace(total, days) {
-  const months = getTrendsProjectionMonthEquivalent(days);
-  if (!(months > 0)) return 0;
-  const pace = total / months;
-  return Number.isFinite(pace) ? pace : 0;
-}
-
-function getTrendsProjectionMetricTotal(metrics, metricKey) {
-  if (metricKey === 'completedEvents') return metrics.completedEvents;
-  if (metricKey === 'recordedCost') return metrics.totalRecordedEventCost;
-  return metrics.participantReach;
-}
-
-function getTrendsProjectionProjectedTotal(state, metricKey) {
-  if (metricKey === 'completedEvents') return state.projectedEvents;
-  if (metricKey === 'recordedCost') return state.projectedCost;
-  return state.projectedReach;
-}
-
-function formatTrendsProjectionHistoricalRaw(metricKey, value) {
-  if (metricKey === 'recordedCost') {
-    return `${formatTotalRecordedEventCost(value)} over 12 months`;
-  }
-  if (metricKey === 'completedEvents') {
-    const count = Math.round(value);
-    const unit = count === 1 ? 'completed event' : 'completed events';
-    return `${count} ${unit} over 12 months`;
-  }
-  const count = Math.round(value);
-  if (count === 0) return '0 participant reach';
-  const unit = count === 1 ? 'participant' : 'participants';
-  return `${count.toLocaleString('en-US')} ${unit} over 12 months`;
-}
-
-function formatTrendsProjectionProjectedRaw(metricKey, value) {
-  if (metricKey === 'recordedCost') return formatTotalRecordedEventCost(value);
-  if (metricKey === 'completedEvents') {
-    const count = Math.round(value);
-    const unit = count === 1 ? 'completed event' : 'completed events';
-    return `${count} ${unit}`;
-  }
-  const count = Math.round(value);
-  if (count === 0) return '0 projected participant reach';
-  const unit = count === 1 ? 'participant' : 'participants';
-  return `${count.toLocaleString('en-US')} ${unit}`;
-}
-
-function formatTrendsProjectionPace(metricKey, pace) {
-  if (metricKey === 'recordedCost') {
-    return `${formatTotalRecordedEventCost(pace)} / month`;
-  }
-  const amount = Number.isFinite(pace) ? pace.toFixed(1) : '0.0';
-  return `${amount} / month`;
-}
-
-function buildTrendsProjectionPaceSentence(metricKey, months, historicalPace) {
-  const horizon = months === 6 ? '6-month' : months === 12 ? '12-month' : '3-month';
-  if (metricKey === 'recordedCost') {
-    return `The ${horizon} projection continues the recent historical pace of approximately ${formatTotalRecordedEventCost(historicalPace)} in recorded event cost per month.`;
-  }
-  if (metricKey === 'completedEvents') {
-    const count = Math.round(historicalPace);
-    const unit = count === 1 ? 'completed event' : 'completed events';
-    return `The ${horizon} projection continues the recent historical pace of approximately ${count} ${unit} per month.`;
-  }
-  const count = Math.round(historicalPace);
-  const unit = count === 1 ? 'participant' : 'participants';
-  return `The ${horizon} projection continues the recent historical pace of approximately ${count} ${unit} per month.`;
-}
-
-function getTrendsProjectionMetricName(metricKey) {
-  if (metricKey === 'completedEvents') return 'Completed Events';
-  if (metricKey === 'recordedCost') return 'Recorded Event Cost';
-  return 'Participant Reach';
-}
-
-function renderTrendsProjectionPaceChart() {
-  const viz = document.getElementById('trends-projection-viz');
-  const paceEl = document.getElementById('trends-projection-pace');
-  const summary = document.getElementById('trends-projection-pace-summary');
-  if (!viz || !paceEl || !summary) return;
-
-  const state = trendsProjectionViewState;
-  if (!state) {
-    viz.hidden = true;
-    paceEl.replaceChildren();
-    summary.hidden = true;
-    summary.textContent = '';
-    return;
-  }
-
-  const metricKey = getTrendsProjectionChartMetricKey();
-  const historicalTotal = getTrendsProjectionMetricTotal(state.historicalMetrics, metricKey);
-  const projectedTotal = getTrendsProjectionProjectedTotal(state, metricKey);
-  const historicalPace = getTrendsProjectionMonthlyPace(historicalTotal, state.basisDays);
-  const projectedPace = getTrendsProjectionMonthlyPace(projectedTotal, state.horizonDays);
-  const scaleMax = Math.max(historicalPace, projectedPace);
-  const historicalWidth = scaleMax > 0 ? (historicalPace / scaleMax) * 100 : 0;
-  const projectedWidth = scaleMax > 0 ? (projectedPace / scaleMax) * 100 : 0;
-  const horizonLabel = `Projected ${state.months} Months`;
-  const historicalRange = formatTrendsProjectionRange(state.windows.basis);
-  const projectedRange = formatTrendsProjectionRange(state.windows.projection);
-  const historicalRaw = formatTrendsProjectionHistoricalRaw(metricKey, historicalTotal);
-  const projectedRaw = formatTrendsProjectionProjectedRaw(metricKey, projectedTotal);
-  const historicalPaceText = formatTrendsProjectionPace(metricKey, historicalPace);
-  const projectedPaceText = formatTrendsProjectionPace(metricKey, projectedPace);
-
-  viz.hidden = false;
-  paceEl.replaceChildren();
-
-  const grid = document.createElement('div');
-  grid.className = 'trends-projection-pace-grid';
-  grid.setAttribute('role', 'img');
-  grid.setAttribute(
-    'aria-label',
-    `${getTrendsProjectionMetricName(metricKey)}. Historical Basis ${historicalRange}: ${historicalRaw}, ${historicalPaceText}. ${horizonLabel} ${projectedRange}: ${projectedRaw}, ${projectedPaceText}.`
-  );
-
-  const historicalPanel = document.createElement('div');
-  historicalPanel.className = 'trends-projection-pace-panel';
-  const historicalTitle = document.createElement('div');
-  historicalTitle.className = 'trends-projection-pace-title';
-  historicalTitle.textContent = 'Historical Basis';
-  const historicalRawEl = document.createElement('div');
-  historicalRawEl.className = 'trends-projection-pace-raw';
-  historicalRawEl.textContent = historicalRaw;
-  const historicalTrack = document.createElement('div');
-  historicalTrack.className = 'trends-projection-pace-track';
-  const historicalBar = document.createElement('div');
-  historicalBar.className = 'trends-projection-pace-bar trends-projection-pace-bar-historical';
-  historicalBar.style.width = `${historicalWidth}%`;
-  historicalTrack.append(historicalBar);
-  const historicalRate = document.createElement('div');
-  historicalRate.className = 'trends-projection-pace-rate';
-  historicalRate.textContent = historicalPaceText;
-  const historicalDates = document.createElement('div');
-  historicalDates.className = 'trends-projection-pace-dates';
-  historicalDates.textContent = historicalRange;
-  historicalPanel.append(historicalTitle, historicalRawEl, historicalTrack, historicalRate, historicalDates);
-
-  const projectedPanel = document.createElement('div');
-  projectedPanel.className = 'trends-projection-pace-panel trends-projection-pace-panel-projected';
-  const projectedKicker = document.createElement('div');
-  projectedKicker.className = 'trends-projection-pace-kicker';
-  projectedKicker.textContent = 'Projected';
-  const projectedTitle = document.createElement('div');
-  projectedTitle.className = 'trends-projection-pace-title';
-  projectedTitle.textContent = horizonLabel;
-  const projectedRawEl = document.createElement('div');
-  projectedRawEl.className = 'trends-projection-pace-raw';
-  projectedRawEl.textContent = projectedRaw;
-  const projectedTrack = document.createElement('div');
-  projectedTrack.className = 'trends-projection-pace-track';
-  const projectedBar = document.createElement('div');
-  projectedBar.className = 'trends-projection-pace-bar trends-projection-pace-bar-projected';
-  projectedBar.style.width = `${projectedWidth}%`;
-  projectedTrack.append(projectedBar);
-  const projectedRate = document.createElement('div');
-  projectedRate.className = 'trends-projection-pace-rate';
-  projectedRate.textContent = projectedPaceText;
-  const projectedDates = document.createElement('div');
-  projectedDates.className = 'trends-projection-pace-dates';
-  projectedDates.textContent = projectedRange;
-  projectedPanel.append(
-    projectedKicker,
-    projectedTitle,
-    projectedRawEl,
-    projectedTrack,
-    projectedRate,
-    projectedDates
-  );
-
-  grid.append(historicalPanel, projectedPanel);
-  paceEl.append(grid);
-
-  summary.textContent = buildTrendsProjectionPaceSentence(metricKey, state.months, historicalPace);
-  summary.hidden = false;
-}
-
-function renderTrendsProjectionSection(filters) {
-  const empty = document.getElementById('trends-projection-empty');
-  const body = document.getElementById('trends-projection-body');
-  const metricsEl = document.getElementById('trends-projection-metrics');
-  const methodEl = document.getElementById('trends-projection-method');
-  if (!empty || !body || !metricsEl || !methodEl) return;
-
-  const months = getTrendsProjectionHorizonMonths();
-  const windows = getTrendsProjectionWindows(new Date(), months);
-  const basisEvents = getTrendsEventsForRange(windows.basis, filters);
-
-  if (!basisEvents.length) {
-    trendsProjectionViewState = null;
-    body.hidden = true;
-    metricsEl.replaceChildren();
-    methodEl.replaceChildren();
-    renderTrendsProjectionPaceChart();
-    empty.textContent = 'No finalized historical data is available to calculate a projection.';
-    empty.hidden = false;
-    return;
-  }
-
-  empty.hidden = true;
-  empty.textContent = '';
-  body.hidden = false;
-
-  const historicalMetrics = calculateTrendsMetrics(basisEvents);
-  const basisDays = inclusiveDayCount(windows.basis.start, windows.basis.end);
-  const horizonDays = inclusiveDayCount(windows.projection.start, windows.projection.end);
-  const projectedEvents = Math.round(
-    projectTrendsMetric(historicalMetrics.completedEvents, basisDays, horizonDays)
-  );
-  const projectedReach = Math.round(
-    projectTrendsMetric(historicalMetrics.participantReach, basisDays, horizonDays)
-  );
-  const projectedCost = projectTrendsMetric(
-    historicalMetrics.totalRecordedEventCost,
-    basisDays,
-    horizonDays
-  );
-
-  trendsProjectionViewState = {
-    months,
-    windows,
-    basisDays,
-    horizonDays,
-    historicalMetrics,
-    projectedEvents,
-    projectedReach,
-    projectedCost,
-  };
-
-  const cards = [
-    {
-      label: 'Projected Completed Events',
-      value: String(projectedEvents),
-    },
-    {
-      label: 'Projected Participant Reach',
-      value: projectedReach.toLocaleString('en-US'),
-    },
-    {
-      label: 'Projected Recorded Event Cost',
-      value: formatTotalRecordedEventCost(projectedCost),
-    },
-  ];
-
-  metricsEl.replaceChildren();
-  cards.forEach((card) => {
-    const item = document.createElement('div');
-    item.className = 'trends-projection-metric';
-
-    const badge = document.createElement('div');
-    badge.className = 'trends-projection-badge';
-    badge.textContent = 'Projected';
-
-    const label = document.createElement('div');
-    label.className = 'trends-projection-metric-label';
-    label.textContent = card.label;
-
-    const value = document.createElement('div');
-    value.className = 'trends-projection-metric-value';
-    value.textContent = card.value;
-
-    item.append(badge, label, value);
-    metricsEl.append(item);
-  });
-
-  methodEl.replaceChildren();
-  const intro = document.createElement('p');
-  intro.textContent = 'Projected from the average daily pace of finalized CREDO activity during the previous 12 months.';
-  const basis = document.createElement('p');
-  basis.textContent = `Historical basis: ${formatTrendsProjectionRange(windows.basis)}`;
-  const horizon = document.createElement('p');
-  horizon.textContent = `Projection: ${formatTrendsProjectionRange(windows.projection)}`;
-  methodEl.append(intro, basis, horizon);
-  renderTrendsProjectionPaceChart();
 }
 
 function getTrendsExplorerBasisRange(today = new Date()) {
@@ -7114,13 +7728,7 @@ function aggregateTrendsExplorerPrograms(basisEvents) {
         basisEventCount: entry.events.length,
       };
     })
-    .sort((a, b) => {
-      if (Number(b.estimable) !== Number(a.estimable)) return Number(b.estimable) - Number(a.estimable);
-      if (b.assumptions.recordedCost !== a.assumptions.recordedCost) {
-        return b.assumptions.recordedCost - a.assumptions.recordedCost;
-      }
-      return a.label.localeCompare(b.label);
-    });
+    .sort((a, b) => compareEventTypeSeriesOrder(a.label, b.label));
 }
 
 function getTrendsExplorerEstimablePrograms(programs) {
@@ -7898,7 +8506,6 @@ function renderTrends() {
     filters,
     historicalMetrics
   );
-  renderTrendsProjectionSection(filters);
   renderTrendsExplorerSection(filters);
 
   const emptyMessage = document.getElementById('trends-empty-message');
@@ -7917,7 +8524,6 @@ function setupTrends() {
   });
 
   [
-    'trends-compare',
     'trends-event-type',
     'trends-command',
     'trends-start-date',
@@ -7926,11 +8532,23 @@ function setupTrends() {
     document.getElementById(id)?.addEventListener('change', renderTrends);
   });
 
-  document.getElementById('trends-chart-metric')?.addEventListener('change', () => {
+  document.getElementById('trends-compare')?.addEventListener('change', () => {
+    const selection = getTrendsOutlookSelection();
+    if (selection.mode === 'multi') {
+      trendsOutlookMultiCompareEnabled = getTrendsCompareMode() !== TRENDS_COMPARE_NONE;
+    }
+    renderTrends();
+  });
+
+  const rerenderTrendsChart = () => {
     const currentRange = getTrendsCurrentRange();
     const currentEvents = getTrendsEventsForRange(currentRange, getTrendsFilterState());
     renderTrendsChartSection(currentRange, currentEvents, getTrendsPeriodValue());
-  });
+  };
+
+  document.getElementById('trends-chart-metric')?.addEventListener('change', rerenderTrendsChart);
+  document.getElementById('trends-chart-show-projection')?.addEventListener('change', rerenderTrendsChart);
+  document.getElementById('trends-chart-projection-horizon')?.addEventListener('change', rerenderTrendsChart);
 
   document.getElementById('trends-demand-metric')?.addEventListener('change', () => {
     const { currentEvents, compareMode, comparisonRanges, filters } = getTrendsBreakdownRenderArgs();
@@ -7975,14 +8593,6 @@ function setupTrends() {
     trendsCostDetailsExpanded = !trendsCostDetailsExpanded;
     const { currentEvents } = getTrendsBreakdownRenderArgs();
     renderTrendsCostDetails(aggregateTrendsSpendingByEventType(currentEvents));
-  });
-
-  document.getElementById('trends-projection-horizon')?.addEventListener('change', () => {
-    renderTrendsProjectionSection(getTrendsFilterState());
-  });
-
-  document.getElementById('trends-projection-metric')?.addEventListener('change', () => {
-    renderTrendsProjectionPaceChart();
   });
 
   document.getElementById('trends-explorer-funding-slider')?.addEventListener('input', () => {
