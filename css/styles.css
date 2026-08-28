@@ -3874,6 +3874,101 @@ body:has(#new-event-modal[open]) {
   color: var(--text-primary);
 }
 
+#view-trends .trends-projection-viz {
+  margin: 4px 0 14px;
+}
+
+#view-trends .trends-projection-viz[hidden],
+#view-trends .trends-projection-pace-summary[hidden] {
+  display: none;
+}
+
+#view-trends .trends-projection-viz .trends-filter-field {
+  margin-bottom: 12px;
+}
+
+#view-trends .trends-projection-pace-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+
+#view-trends .trends-projection-pace-panel {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+#view-trends .trends-projection-pace-panel-projected {
+  background: #f8f9f6;
+}
+
+#view-trends .trends-projection-pace-kicker {
+  margin-bottom: 4px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-projection-pace-title {
+  margin: 0 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-projection-pace-raw,
+#view-trends .trends-projection-pace-rate,
+#view-trends .trends-projection-pace-dates {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-projection-pace-rate {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-projection-pace-track {
+  height: 12px;
+  margin: 10px 0 8px;
+  background: #eef1f4;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#view-trends .trends-projection-pace-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+}
+
+#view-trends .trends-projection-pace-bar-historical {
+  background: #00205b;
+}
+
+#view-trends .trends-projection-pace-bar-projected {
+  background: repeating-linear-gradient(
+    -45deg,
+    #00205b 0 3px,
+    #dbe3f0 3px 7px
+  );
+  box-shadow: inset 0 0 0 1px #00205b;
+}
+
+#view-trends .trends-projection-pace-summary {
+  margin: 10px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 #view-trends .trends-projection-method {
   font-size: 0.8125rem;
   line-height: 1.45;
@@ -3891,6 +3986,10 @@ body:has(#new-event-modal[open]) {
 @media (max-width: 900px) {
   #view-trends .trends-projection-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-trends .trends-projection-pace-grid {
+    grid-template-columns: 1fr;
   }
 }
 

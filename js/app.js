@@ -4359,6 +4359,7 @@ let trendsDemandExpanded = false;
 let trendsReachExpanded = false;
 let trendsSpendingExpanded = false;
 let trendsCostDetailsExpanded = false;
+let trendsProjectionViewState = null;
 
 function getTrendsPeriodValue() {
   return document.getElementById('trends-period')?.value || 'this-fy';
@@ -6555,6 +6556,198 @@ function projectTrendsMetric(historicalTotal, basisDays, horizonDays) {
   return Number.isFinite(projected) ? projected : 0;
 }
 
+const TRENDS_PROJECTION_MONTH_DAYS = 30.4375;
+
+function getTrendsProjectionChartMetricKey() {
+  const value = document.getElementById('trends-projection-metric')?.value;
+  if (value === 'completedEvents' || value === 'recordedCost') return value;
+  return 'participantReach';
+}
+
+function getTrendsProjectionMonthEquivalent(days) {
+  if (!(days > 0)) return 0;
+  return days / TRENDS_PROJECTION_MONTH_DAYS;
+}
+
+function getTrendsProjectionMonthlyPace(total, days) {
+  const months = getTrendsProjectionMonthEquivalent(days);
+  if (!(months > 0)) return 0;
+  const pace = total / months;
+  return Number.isFinite(pace) ? pace : 0;
+}
+
+function getTrendsProjectionMetricTotal(metrics, metricKey) {
+  if (metricKey === 'completedEvents') return metrics.completedEvents;
+  if (metricKey === 'recordedCost') return metrics.totalRecordedEventCost;
+  return metrics.participantReach;
+}
+
+function getTrendsProjectionProjectedTotal(state, metricKey) {
+  if (metricKey === 'completedEvents') return state.projectedEvents;
+  if (metricKey === 'recordedCost') return state.projectedCost;
+  return state.projectedReach;
+}
+
+function formatTrendsProjectionHistoricalRaw(metricKey, value) {
+  if (metricKey === 'recordedCost') {
+    return `${formatTotalRecordedEventCost(value)} over 12 months`;
+  }
+  if (metricKey === 'completedEvents') {
+    const count = Math.round(value);
+    const unit = count === 1 ? 'completed event' : 'completed events';
+    return `${count} ${unit} over 12 months`;
+  }
+  const count = Math.round(value);
+  if (count === 0) return '0 participant reach';
+  const unit = count === 1 ? 'participant' : 'participants';
+  return `${count.toLocaleString('en-US')} ${unit} over 12 months`;
+}
+
+function formatTrendsProjectionProjectedRaw(metricKey, value) {
+  if (metricKey === 'recordedCost') return formatTotalRecordedEventCost(value);
+  if (metricKey === 'completedEvents') {
+    const count = Math.round(value);
+    const unit = count === 1 ? 'completed event' : 'completed events';
+    return `${count} ${unit}`;
+  }
+  const count = Math.round(value);
+  if (count === 0) return '0 projected participant reach';
+  const unit = count === 1 ? 'participant' : 'participants';
+  return `${count.toLocaleString('en-US')} ${unit}`;
+}
+
+function formatTrendsProjectionPace(metricKey, pace) {
+  if (metricKey === 'recordedCost') {
+    return `${formatTotalRecordedEventCost(pace)} / month`;
+  }
+  const amount = Number.isFinite(pace) ? pace.toFixed(1) : '0.0';
+  return `${amount} / month`;
+}
+
+function buildTrendsProjectionPaceSentence(metricKey, months, historicalPace) {
+  const horizon = months === 6 ? '6-month' : months === 12 ? '12-month' : '3-month';
+  if (metricKey === 'recordedCost') {
+    return `The ${horizon} projection continues the recent historical pace of approximately ${formatTotalRecordedEventCost(historicalPace)} in recorded event cost per month.`;
+  }
+  if (metricKey === 'completedEvents') {
+    const count = Math.round(historicalPace);
+    const unit = count === 1 ? 'completed event' : 'completed events';
+    return `The ${horizon} projection continues the recent historical pace of approximately ${count} ${unit} per month.`;
+  }
+  const count = Math.round(historicalPace);
+  const unit = count === 1 ? 'participant' : 'participants';
+  return `The ${horizon} projection continues the recent historical pace of approximately ${count} ${unit} per month.`;
+}
+
+function getTrendsProjectionMetricName(metricKey) {
+  if (metricKey === 'completedEvents') return 'Completed Events';
+  if (metricKey === 'recordedCost') return 'Recorded Event Cost';
+  return 'Participant Reach';
+}
+
+function renderTrendsProjectionPaceChart() {
+  const viz = document.getElementById('trends-projection-viz');
+  const paceEl = document.getElementById('trends-projection-pace');
+  const summary = document.getElementById('trends-projection-pace-summary');
+  if (!viz || !paceEl || !summary) return;
+
+  const state = trendsProjectionViewState;
+  if (!state) {
+    viz.hidden = true;
+    paceEl.replaceChildren();
+    summary.hidden = true;
+    summary.textContent = '';
+    return;
+  }
+
+  const metricKey = getTrendsProjectionChartMetricKey();
+  const historicalTotal = getTrendsProjectionMetricTotal(state.historicalMetrics, metricKey);
+  const projectedTotal = getTrendsProjectionProjectedTotal(state, metricKey);
+  const historicalPace = getTrendsProjectionMonthlyPace(historicalTotal, state.basisDays);
+  const projectedPace = getTrendsProjectionMonthlyPace(projectedTotal, state.horizonDays);
+  const scaleMax = Math.max(historicalPace, projectedPace);
+  const historicalWidth = scaleMax > 0 ? (historicalPace / scaleMax) * 100 : 0;
+  const projectedWidth = scaleMax > 0 ? (projectedPace / scaleMax) * 100 : 0;
+  const horizonLabel = `Projected ${state.months} Months`;
+  const historicalRange = formatTrendsProjectionRange(state.windows.basis);
+  const projectedRange = formatTrendsProjectionRange(state.windows.projection);
+  const historicalRaw = formatTrendsProjectionHistoricalRaw(metricKey, historicalTotal);
+  const projectedRaw = formatTrendsProjectionProjectedRaw(metricKey, projectedTotal);
+  const historicalPaceText = formatTrendsProjectionPace(metricKey, historicalPace);
+  const projectedPaceText = formatTrendsProjectionPace(metricKey, projectedPace);
+
+  viz.hidden = false;
+  paceEl.replaceChildren();
+
+  const grid = document.createElement('div');
+  grid.className = 'trends-projection-pace-grid';
+  grid.setAttribute('role', 'img');
+  grid.setAttribute(
+    'aria-label',
+    `${getTrendsProjectionMetricName(metricKey)}. Historical Basis ${historicalRange}: ${historicalRaw}, ${historicalPaceText}. ${horizonLabel} ${projectedRange}: ${projectedRaw}, ${projectedPaceText}.`
+  );
+
+  const historicalPanel = document.createElement('div');
+  historicalPanel.className = 'trends-projection-pace-panel';
+  const historicalTitle = document.createElement('div');
+  historicalTitle.className = 'trends-projection-pace-title';
+  historicalTitle.textContent = 'Historical Basis';
+  const historicalRawEl = document.createElement('div');
+  historicalRawEl.className = 'trends-projection-pace-raw';
+  historicalRawEl.textContent = historicalRaw;
+  const historicalTrack = document.createElement('div');
+  historicalTrack.className = 'trends-projection-pace-track';
+  const historicalBar = document.createElement('div');
+  historicalBar.className = 'trends-projection-pace-bar trends-projection-pace-bar-historical';
+  historicalBar.style.width = `${historicalWidth}%`;
+  historicalTrack.append(historicalBar);
+  const historicalRate = document.createElement('div');
+  historicalRate.className = 'trends-projection-pace-rate';
+  historicalRate.textContent = historicalPaceText;
+  const historicalDates = document.createElement('div');
+  historicalDates.className = 'trends-projection-pace-dates';
+  historicalDates.textContent = historicalRange;
+  historicalPanel.append(historicalTitle, historicalRawEl, historicalTrack, historicalRate, historicalDates);
+
+  const projectedPanel = document.createElement('div');
+  projectedPanel.className = 'trends-projection-pace-panel trends-projection-pace-panel-projected';
+  const projectedKicker = document.createElement('div');
+  projectedKicker.className = 'trends-projection-pace-kicker';
+  projectedKicker.textContent = 'Projected';
+  const projectedTitle = document.createElement('div');
+  projectedTitle.className = 'trends-projection-pace-title';
+  projectedTitle.textContent = horizonLabel;
+  const projectedRawEl = document.createElement('div');
+  projectedRawEl.className = 'trends-projection-pace-raw';
+  projectedRawEl.textContent = projectedRaw;
+  const projectedTrack = document.createElement('div');
+  projectedTrack.className = 'trends-projection-pace-track';
+  const projectedBar = document.createElement('div');
+  projectedBar.className = 'trends-projection-pace-bar trends-projection-pace-bar-projected';
+  projectedBar.style.width = `${projectedWidth}%`;
+  projectedTrack.append(projectedBar);
+  const projectedRate = document.createElement('div');
+  projectedRate.className = 'trends-projection-pace-rate';
+  projectedRate.textContent = projectedPaceText;
+  const projectedDates = document.createElement('div');
+  projectedDates.className = 'trends-projection-pace-dates';
+  projectedDates.textContent = projectedRange;
+  projectedPanel.append(
+    projectedKicker,
+    projectedTitle,
+    projectedRawEl,
+    projectedTrack,
+    projectedRate,
+    projectedDates
+  );
+
+  grid.append(historicalPanel, projectedPanel);
+  paceEl.append(grid);
+
+  summary.textContent = buildTrendsProjectionPaceSentence(metricKey, state.months, historicalPace);
+  summary.hidden = false;
+}
+
 function renderTrendsProjectionSection(filters) {
   const empty = document.getElementById('trends-projection-empty');
   const body = document.getElementById('trends-projection-body');
@@ -6567,9 +6760,11 @@ function renderTrendsProjectionSection(filters) {
   const basisEvents = getTrendsEventsForRange(windows.basis, filters);
 
   if (!basisEvents.length) {
+    trendsProjectionViewState = null;
     body.hidden = true;
     metricsEl.replaceChildren();
     methodEl.replaceChildren();
+    renderTrendsProjectionPaceChart();
     empty.textContent = 'No finalized historical data is available to calculate a projection.';
     empty.hidden = false;
     return;
@@ -6593,6 +6788,17 @@ function renderTrendsProjectionSection(filters) {
     basisDays,
     horizonDays
   );
+
+  trendsProjectionViewState = {
+    months,
+    windows,
+    basisDays,
+    horizonDays,
+    historicalMetrics,
+    projectedEvents,
+    projectedReach,
+    projectedCost,
+  };
 
   const cards = [
     {
@@ -6638,6 +6844,7 @@ function renderTrendsProjectionSection(filters) {
   const horizon = document.createElement('p');
   horizon.textContent = `Projection: ${formatTrendsProjectionRange(windows.projection)}`;
   methodEl.append(intro, basis, horizon);
+  renderTrendsProjectionPaceChart();
 }
 
 function renderTrends() {
@@ -6761,6 +6968,10 @@ function setupTrends() {
 
   document.getElementById('trends-projection-horizon')?.addEventListener('change', () => {
     renderTrendsProjectionSection(getTrendsFilterState());
+  });
+
+  document.getElementById('trends-projection-metric')?.addEventListener('change', () => {
+    renderTrendsProjectionPaceChart();
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');

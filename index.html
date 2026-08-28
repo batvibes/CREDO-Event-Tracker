@@ -911,6 +911,18 @@
               <p class="trends-breakdown-empty" id="trends-projection-empty" hidden></p>
               <div class="trends-projection-body" id="trends-projection-body" hidden>
                 <div class="trends-projection-metrics" id="trends-projection-metrics"></div>
+                <div class="trends-projection-viz" id="trends-projection-viz" hidden>
+                  <label class="trends-filter-field trends-demand-metric-field" for="trends-projection-metric">
+                    <span class="trends-filter-label">View Projection By</span>
+                    <select id="trends-projection-metric" class="filter-select" aria-label="View projection by">
+                      <option value="participantReach" selected>Participant Reach</option>
+                      <option value="completedEvents">Completed Events</option>
+                      <option value="recordedCost">Recorded Event Cost</option>
+                    </select>
+                  </label>
+                  <div class="trends-projection-pace" id="trends-projection-pace"></div>
+                  <p class="trends-projection-pace-summary" id="trends-projection-pace-summary" hidden></p>
+                </div>
                 <div class="trends-projection-method" id="trends-projection-method"></div>
               </div>
             </section>
