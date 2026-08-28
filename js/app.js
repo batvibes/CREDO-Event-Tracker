@@ -4357,6 +4357,7 @@ const TRENDS_COMPARE_NONE = 'none';
 const TRENDS_BREAKDOWN_DEFAULT_ROWS = 8;
 let trendsDemandExpanded = false;
 let trendsReachExpanded = false;
+let trendsSpendingExpanded = false;
 
 function getTrendsPeriodValue() {
   return document.getElementById('trends-period')?.value || 'this-fy';
@@ -5599,7 +5600,9 @@ function averageTrendsDemandMaps(maps) {
 
 function getTrendsDemandMetricValue(entry, metricKey) {
   if (!entry) return 0;
-  return metricKey === 'completedEvents' ? entry.completedEvents : entry.participantReach;
+  if (metricKey === 'completedEvents') return entry.completedEvents;
+  if (metricKey === 'recordedCost') return entry.recordedCost ?? 0;
+  return entry.participantReach;
 }
 
 function formatTrendsDemandValue(value) {
@@ -5702,6 +5705,11 @@ function buildTrendsReachBreadthSentence(eventsForRange) {
   return `${count} commands reached`;
 }
 
+function formatTrendsBreakdownValue(metricKey, value) {
+  if (metricKey === 'recordedCost') return formatTotalRecordedEventCost(value);
+  return formatTrendsDemandValue(value);
+}
+
 function getTrendsBreakdownSpokenChange(comparison, compareMode) {
   if (!comparison) return '';
   const phrase = getTrendsComparisonPhrase(compareMode);
@@ -5723,6 +5731,16 @@ function getTrendsBreakdownSpokenChange(comparison, compareMode) {
 }
 
 function getTrendsBreakdownAriaLabel(row, metricKey, compareMode, comparison) {
+  if (metricKey === 'recordedCost') {
+    let label = `${row.label}. Current Period recorded event cost: ${formatTotalRecordedEventCost(row.currentValue)}.`;
+    if (compareMode === TRENDS_COMPARE_NONE) return label;
+    const phrase = getTrendsComparisonPhrase(compareMode);
+    label += ` ${phrase}: ${formatTotalRecordedEventCost(row.baselineValue)}.`;
+    const spoken = getTrendsBreakdownSpokenChange(comparison, compareMode);
+    if (spoken) label += ` ${spoken}`;
+    return label;
+  }
+
   const unit = getTrendsBreakdownUnit(metricKey, 2);
   let label = `${row.label}. Current Period: ${formatTrendsDemandValue(row.currentValue)} ${unit}.`;
   if (compareMode === TRENDS_COMPARE_NONE) return label;
@@ -5734,6 +5752,18 @@ function getTrendsBreakdownAriaLabel(row, metricKey, compareMode, comparison) {
 }
 
 function getTrendsBreakdownTooltip(row, metricKey, compareMode, comparison) {
+  if (metricKey === 'recordedCost') {
+    const lines = [
+      row.label,
+      `Current Period: ${formatTotalRecordedEventCost(row.currentValue)}`,
+    ];
+    if (compareMode !== TRENDS_COMPARE_NONE) {
+      lines.push(`${getTrendsComparisonPhrase(compareMode)}: ${formatTotalRecordedEventCost(row.baselineValue)}`);
+      if (comparison?.text) lines.push(comparison.text);
+    }
+    return lines.join('\n');
+  }
+
   const unit = getTrendsBreakdownUnit(metricKey, 2);
   const lines = [
     row.label,
@@ -5855,7 +5885,7 @@ function createTrendsBreakdownRow(row, metricKey, compareMode, scaleMax) {
   stats.className = 'trends-breakdown-stats';
   const value = document.createElement('span');
   value.className = 'trends-breakdown-value';
-  value.textContent = formatTrendsDemandValue(row.currentValue);
+  value.textContent = formatTrendsBreakdownValue(metricKey, row.currentValue);
   stats.append(value);
   if (comparison) {
     const change = document.createElement('span');
@@ -6078,6 +6108,335 @@ function renderTrendsReachSection(
   );
 }
 
+function getTrendsCostPerCompletedEvent(metrics) {
+  if (!metrics || !(metrics.completedEvents > 0)) return null;
+  const value = metrics.totalRecordedEventCost / metrics.completedEvents;
+  return Number.isFinite(value) ? value : null;
+}
+
+function getTrendsParticipantsPer10k(metrics) {
+  if (!metrics || !(metrics.totalRecordedEventCost > 0)) return null;
+  const value = (metrics.participantReach / metrics.totalRecordedEventCost) * 10000;
+  return Number.isFinite(value) ? value : null;
+}
+
+function averageValidTrendsDerivedValues(values) {
+  const valid = values.filter((value) => value != null && Number.isFinite(value));
+  if (!valid.length) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function formatTrendsResourceMetricValue(key, metrics) {
+  if (key === 'totalRecordedEventCost') {
+    return formatTotalRecordedEventCost(metrics.totalRecordedEventCost);
+  }
+  if (key === 'costPerParticipant') {
+    return metrics.costPerParticipant == null
+      ? '—'
+      : formatTotalRecordedEventCost(metrics.costPerParticipant);
+  }
+  if (key === 'costPerCompletedEvent') {
+    const value = getTrendsCostPerCompletedEvent(metrics);
+    return value == null ? '—' : formatTotalRecordedEventCost(value);
+  }
+  const per10k = getTrendsParticipantsPer10k(metrics);
+  return per10k == null ? '—' : per10k.toFixed(1);
+}
+
+function describeTrendsResourceChange(currentValue, baselineValue) {
+  if (!(baselineValue > 0)) return null;
+  const percent = ((currentValue - baselineValue) / baselineValue) * 100;
+  if (!Number.isFinite(percent)) return null;
+  const rounded = Number(percent.toFixed(1));
+  const magnitude = Math.abs(rounded).toFixed(1);
+  if (rounded > 0) return `increased ${magnitude}%`;
+  if (rounded < 0) return `decreased ${magnitude}%`;
+  return 'was unchanged';
+}
+
+function buildTrendsResourceRelationship(currentMetrics, baselineMetrics, compareMode) {
+  if (compareMode === TRENDS_COMPARE_NONE || !baselineMetrics) return '';
+
+  const phrase = getTrendsComparisonPhrase(compareMode);
+  const reachChange = describeTrendsResourceChange(
+    currentMetrics.participantReach,
+    baselineMetrics.participantReach
+  );
+  const costChange = describeTrendsResourceChange(
+    currentMetrics.totalRecordedEventCost,
+    baselineMetrics.totalRecordedEventCost
+  );
+  const reachNew = baselineMetrics.participantReach === 0 && currentMetrics.participantReach > 0;
+  const costNew = baselineMetrics.totalRecordedEventCost === 0 && currentMetrics.totalRecordedEventCost > 0;
+
+  if (reachChange && costChange) {
+    return `Participant reach ${reachChange} while recorded event costs ${costChange} versus ${phrase}.`;
+  }
+  if (reachNew && costNew) {
+    return `Participant activity and recorded event costs are new relative to ${phrase}.`;
+  }
+  if (reachNew && costChange) {
+    return `Participant activity is new relative to ${phrase}, while recorded event costs ${costChange}.`;
+  }
+  if (costNew && reachChange) {
+    return `Recorded event costs are new relative to ${phrase}, while participant reach ${reachChange}.`;
+  }
+  if (reachNew) {
+    return `Participant activity is new relative to ${phrase}.`;
+  }
+  if (costNew) {
+    return `Recorded event costs are new relative to ${phrase}.`;
+  }
+  if (reachChange) {
+    return `Participant reach ${reachChange} versus ${phrase}.`;
+  }
+  if (costChange) {
+    return `Recorded event costs ${costChange} versus ${phrase}.`;
+  }
+  return '';
+}
+
+function buildTrendsResourceComparison(currentMetrics, historicalMetrics, compareMode) {
+  if (compareMode === TRENDS_COMPARE_NONE || !historicalMetrics.length) {
+    return { comparison: null, baselineMetrics: null };
+  }
+
+  const baselineMetrics = historicalMetrics.length === 1
+    ? historicalMetrics[0]
+    : averageTrendsMetrics(historicalMetrics);
+  const currentCpe = getTrendsCostPerCompletedEvent(currentMetrics);
+  const baselineCpe = averageValidTrendsDerivedValues(
+    historicalMetrics.map(getTrendsCostPerCompletedEvent)
+  );
+  const currentPer10k = getTrendsParticipantsPer10k(currentMetrics);
+  const baselinePer10k = averageValidTrendsDerivedValues(
+    historicalMetrics.map(getTrendsParticipantsPer10k)
+  );
+  const currentCppUnavailable = currentMetrics.costPerParticipant == null;
+  const baselineCppUnavailable = baselineMetrics.costPerParticipant == null;
+
+  return {
+    baselineMetrics,
+    comparison: {
+      totalRecordedEventCost: buildTrendsMetricComparison(
+        currentMetrics.totalRecordedEventCost,
+        baselineMetrics.totalRecordedEventCost,
+        compareMode
+      ),
+      costPerParticipant: buildTrendsMetricComparison(
+        currentMetrics.costPerParticipant ?? 0,
+        baselineMetrics.costPerParticipant ?? 0,
+        compareMode,
+        { unavailable: currentCppUnavailable || baselineCppUnavailable }
+      ),
+      costPerCompletedEvent: buildTrendsMetricComparison(
+        currentCpe ?? 0,
+        baselineCpe ?? 0,
+        compareMode,
+        { unavailable: currentCpe == null || baselineCpe == null }
+      ),
+      participantsPer10k: buildTrendsMetricComparison(
+        currentPer10k ?? 0,
+        baselinePer10k ?? 0,
+        compareMode,
+        { unavailable: currentPer10k == null || baselinePer10k == null }
+      ),
+    },
+  };
+}
+
+function aggregateTrendsSpendingByEventType(eventsForRange) {
+  const map = new Map();
+  eventsForRange.forEach((event) => {
+    const { key, label } = normalizeTrendsDemandEventType(event);
+    const existing = map.get(key) || {
+      key,
+      label,
+      recordedCost: 0,
+    };
+    existing.recordedCost += getTrendsEventRecordedCost(event);
+    map.set(key, existing);
+  });
+  return map;
+}
+
+function averageTrendsSpendingMaps(maps) {
+  const result = new Map();
+  if (!maps.length) return result;
+
+  const keys = new Set();
+  maps.forEach((map) => {
+    map.forEach((_, key) => keys.add(key));
+  });
+
+  keys.forEach((key) => {
+    let label = 'Unspecified';
+    let recordedCost = 0;
+    maps.forEach((map) => {
+      const entry = map.get(key);
+      if (!entry) return;
+      label = entry.label;
+      recordedCost += entry.recordedCost;
+    });
+    result.set(key, {
+      key,
+      label,
+      recordedCost: recordedCost / maps.length,
+    });
+  });
+
+  return result;
+}
+
+function renderTrendsResourceMetrics(currentMetrics, comparison, compareMode) {
+  const grid = document.getElementById('trends-resource-metrics');
+  if (!grid) return;
+
+  const cards = [
+    { key: 'totalRecordedEventCost', label: 'Total Recorded Event Cost' },
+    { key: 'costPerParticipant', label: 'Cost per Participant' },
+    { key: 'costPerCompletedEvent', label: 'Cost per Completed Event' },
+    { key: 'participantsPer10k', label: 'Participants per $10,000' },
+  ];
+
+  grid.replaceChildren();
+  cards.forEach((card) => {
+    const item = document.createElement('div');
+    item.className = 'trends-resource-metric';
+
+    const label = document.createElement('div');
+    label.className = 'trends-resource-metric-label';
+    label.textContent = card.label;
+
+    const value = document.createElement('div');
+    value.className = 'trends-resource-metric-value';
+    value.textContent = formatTrendsResourceMetricValue(card.key, currentMetrics);
+
+    item.append(label, value);
+
+    const comparisonInfo = comparison?.[card.key];
+    if (
+      compareMode !== TRENDS_COMPARE_NONE
+      && comparisonInfo
+      && comparisonInfo.text !== 'No comparison'
+    ) {
+      const change = document.createElement('div');
+      change.className = `trends-resource-metric-comparison trends-kpi-comparison-${comparisonInfo.direction}`;
+      change.textContent = comparisonInfo.text;
+      item.append(change);
+    }
+
+    grid.append(item);
+  });
+}
+
+function renderTrendsResourceSection(
+  currentEvents,
+  currentMetrics,
+  compareMode,
+  comparisonRanges,
+  filters,
+  historicalMetrics
+) {
+  const empty = document.getElementById('trends-resource-empty');
+  const body = document.getElementById('trends-resource-body');
+  const relationship = document.getElementById('trends-resource-relationship');
+  const spendingSummary = document.getElementById('trends-spending-summary');
+  const spendingList = document.getElementById('trends-spending-list');
+  if (!empty || !body || !relationship || !spendingSummary || !spendingList) return;
+
+  if (!currentEvents.length) {
+    body.hidden = true;
+    relationship.hidden = true;
+    relationship.textContent = '';
+    spendingSummary.hidden = true;
+    spendingSummary.replaceChildren();
+    spendingList.hidden = true;
+    spendingList.replaceChildren();
+    updateTrendsBreakdownLegend(
+      'trends-spending-legend',
+      'trends-spending-legend-compare',
+      'trends-spending-legend-compare-label',
+      TRENDS_COMPARE_NONE
+    );
+    const spendingLegend = document.getElementById('trends-spending-legend');
+    if (spendingLegend) spendingLegend.hidden = true;
+    updateTrendsBreakdownToggle(
+      document.getElementById('trends-spending-toggle'),
+      false,
+      0,
+      'program',
+      'programs'
+    );
+    empty.textContent = 'No finalized AAR data is available for Resource Impact.';
+    empty.hidden = false;
+    return;
+  }
+
+  empty.hidden = true;
+  empty.textContent = '';
+  body.hidden = false;
+
+  const { comparison, baselineMetrics } = buildTrendsResourceComparison(
+    currentMetrics,
+    historicalMetrics,
+    compareMode
+  );
+  renderTrendsResourceMetrics(currentMetrics, comparison, compareMode);
+
+  const relationshipText = buildTrendsResourceRelationship(
+    currentMetrics,
+    baselineMetrics,
+    compareMode
+  );
+  relationship.textContent = relationshipText;
+  relationship.hidden = !relationshipText;
+
+  const currentMap = aggregateTrendsSpendingByEventType(currentEvents);
+  let baselineMap = new Map();
+  if (compareMode !== TRENDS_COMPARE_NONE) {
+    const historicalMaps = comparisonRanges.map((range) => (
+      aggregateTrendsSpendingByEventType(getTrendsEventsForRange(range, filters))
+    ));
+    baselineMap = historicalMaps.length === 1
+      ? historicalMaps[0]
+      : averageTrendsSpendingMaps(historicalMaps);
+  }
+
+  const rows = buildTrendsDemandRows(currentMap, baselineMap, 'recordedCost', compareMode);
+  const currentTotal = rows.reduce((sum, row) => sum + row.currentValue, 0);
+  updateTrendsBreakdownSummary(spendingSummary, [
+    `${formatTotalRecordedEventCost(currentTotal)} recorded across ${currentMap.size} ${currentMap.size === 1 ? 'program' : 'programs'}`,
+    buildTrendsConcentrationSentence(
+      rows,
+      currentTotal,
+      3,
+      'program',
+      'programs',
+      'recorded event costs'
+    ),
+  ]);
+  updateTrendsBreakdownLegend(
+    'trends-spending-legend',
+    'trends-spending-legend-compare',
+    'trends-spending-legend-compare-label',
+    compareMode
+  );
+  renderTrendsBreakdownRows(
+    spendingList,
+    getTrendsBreakdownVisibleRows(rows, trendsSpendingExpanded),
+    'recordedCost',
+    compareMode
+  );
+  updateTrendsBreakdownToggle(
+    document.getElementById('trends-spending-toggle'),
+    trendsSpendingExpanded,
+    rows.length,
+    'program',
+    'programs'
+  );
+}
+
 function renderTrends() {
   if (!document.getElementById('view-trends')) return;
 
@@ -6095,8 +6454,9 @@ function renderTrends() {
     : [];
 
   let comparison = null;
+  let historicalMetrics = [];
   if (compareMode !== TRENDS_COMPARE_NONE && currentRange) {
-    const historicalMetrics = comparisonRanges.map((range) => (
+    historicalMetrics = comparisonRanges.map((range) => (
       calculateTrendsMetrics(getTrendsEventsForRange(range, filters))
     ));
     const baselineMetrics = historicalMetrics.length === 1
@@ -6110,6 +6470,14 @@ function renderTrends() {
   renderTrendsChartSection(currentRange, currentEvents, period);
   renderTrendsDemandSection(currentEvents, compareMode, comparisonRanges, filters);
   renderTrendsReachSection(currentEvents, compareMode, comparisonRanges, filters);
+  renderTrendsResourceSection(
+    currentEvents,
+    currentMetrics,
+    compareMode,
+    comparisonRanges,
+    filters,
+    historicalMetrics
+  );
 
   const emptyMessage = document.getElementById('trends-empty-message');
   if (emptyMessage) {
@@ -6162,6 +6530,23 @@ function setupTrends() {
     trendsReachExpanded = !trendsReachExpanded;
     const { currentEvents, compareMode, comparisonRanges, filters } = getTrendsBreakdownRenderArgs();
     renderTrendsReachSection(currentEvents, compareMode, comparisonRanges, filters);
+  });
+
+  document.getElementById('trends-spending-toggle')?.addEventListener('click', () => {
+    trendsSpendingExpanded = !trendsSpendingExpanded;
+    const { currentEvents, compareMode, comparisonRanges, filters } = getTrendsBreakdownRenderArgs();
+    const currentMetrics = calculateTrendsMetrics(currentEvents);
+    const historicalMetrics = (compareMode !== TRENDS_COMPARE_NONE)
+      ? comparisonRanges.map((range) => calculateTrendsMetrics(getTrendsEventsForRange(range, filters)))
+      : [];
+    renderTrendsResourceSection(
+      currentEvents,
+      currentMetrics,
+      compareMode,
+      comparisonRanges,
+      filters,
+      historicalMetrics
+    );
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');

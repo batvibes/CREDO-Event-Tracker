@@ -3663,6 +3663,88 @@ body:has(#new-event-modal[open]) {
   border-radius: 4px;
 }
 
+#view-trends .trends-resource-section {
+  margin-top: 16px;
+  padding: 16px 18px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+#view-trends .trends-resource-section .trends-chart-header {
+  margin-bottom: 12px;
+}
+
+#view-trends .trends-resource-body[hidden],
+#view-trends .trends-resource-relationship[hidden] {
+  display: none;
+}
+
+#view-trends .trends-resource-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#view-trends .trends-resource-metric {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+#view-trends .trends-resource-metric-label {
+  margin-bottom: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-resource-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-resource-metric-comparison {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+#view-trends .trends-resource-relationship {
+  margin: 0 0 16px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-resource-spending .trends-chart-header {
+  margin-bottom: 10px;
+  padding-top: 4px;
+}
+
+#view-trends .trends-resource-spending .trends-breakdown-row {
+  grid-template-columns: minmax(92px, 32%) minmax(72px, 1fr) minmax(118px, 32%);
+}
+
+@media (max-width: 1100px) {
+  #view-trends .trends-resource-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 #view-trends .trends-chart-tooltip {
   position: absolute;
   z-index: 2;
@@ -3705,6 +3787,10 @@ body:has(#new-event-modal[open]) {
 
   #view-trends .trends-breakdown-plot {
     grid-column: 1 / -1;
+  }
+
+  #view-trends .trends-resource-metrics {
+    grid-template-columns: 1fr;
   }
 }
 

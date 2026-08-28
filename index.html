@@ -841,6 +841,40 @@
               <button type="button" class="trends-breakdown-toggle" id="trends-reach-toggle" hidden aria-expanded="false"></button>
             </section>
             </div>
+            <section class="trends-resource-section" id="trends-resource-section">
+              <div class="trends-chart-header">
+                <div class="trends-chart-heading">
+                  <h3 class="trends-chart-title">Resource Impact</h3>
+                  <p class="trends-chart-subtitle">See how recorded event costs relate to CREDO activity during the selected period.</p>
+                </div>
+              </div>
+              <p class="trends-breakdown-empty" id="trends-resource-empty" hidden></p>
+              <div class="trends-resource-body" id="trends-resource-body" hidden>
+                <div class="trends-resource-metrics" id="trends-resource-metrics"></div>
+                <p class="trends-resource-relationship" id="trends-resource-relationship" hidden></p>
+                <div class="trends-resource-spending">
+                  <div class="trends-chart-header">
+                    <div class="trends-chart-heading">
+                      <h3 class="trends-chart-title">Recorded Spending by Program</h3>
+                      <p class="trends-chart-subtitle">See how recorded event costs were distributed across Event Types.</p>
+                    </div>
+                  </div>
+                  <div class="trends-breakdown-summary" id="trends-spending-summary" hidden></div>
+                  <div class="trends-breakdown-legend" id="trends-spending-legend" hidden>
+                    <span class="trends-breakdown-legend-item">
+                      <span class="trends-breakdown-legend-swatch trends-breakdown-legend-current" aria-hidden="true"></span>
+                      Current Period
+                    </span>
+                    <span class="trends-breakdown-legend-item" id="trends-spending-legend-compare" hidden>
+                      <span class="trends-breakdown-legend-swatch trends-breakdown-legend-compare" aria-hidden="true"></span>
+                      <span id="trends-spending-legend-compare-label"></span>
+                    </span>
+                  </div>
+                  <div class="trends-breakdown-list" id="trends-spending-list" hidden></div>
+                  <button type="button" class="trends-breakdown-toggle" id="trends-spending-toggle" hidden aria-expanded="false"></button>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
       </div>
