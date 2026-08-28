@@ -4201,6 +4201,241 @@ function createEventTypeRow(index, editable) {
   return li;
 }
 
+function formatLocalIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentFiscalYearNumber(date = new Date()) {
+  return date.getMonth() >= 9 ? date.getFullYear() + 1 : date.getFullYear();
+}
+
+function shiftLocalDateByMonths(date, months) {
+  const shifted = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+  shifted.setDate(Math.min(date.getDate(), lastDay));
+  return shifted;
+}
+
+function getTrendsEventDate(event) {
+  const raw = event?.startDate ?? event?.date;
+  if (isTbd(raw)) return null;
+  const isoDate = String(raw).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  const parsed = new Date(`${isoDate}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (formatLocalIsoDate(parsed) !== isoDate) return null;
+  return isoDate;
+}
+
+function getTrendsParticipantCount(value) {
+  if (isTbd(value)) return 0;
+  const num = typeof value === 'number' ? value : parseInt(String(value).trim(), 10);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  return num;
+}
+
+function resolveTrendsVenueCost(event) {
+  const aarValue = parseAarCostNumber(event.aarVenueCost);
+  if (aarValue != null) return aarValue;
+  return parseEventCostNumber(event.venueCost);
+}
+
+function resolveTrendsCateringCost(event) {
+  const aarValue = parseAarCostNumber(event.aarCateringCost);
+  if (aarValue != null) return aarValue;
+  return parseEventCostNumber(event.cateringCost);
+}
+
+function getTrendsEventRecordedCost(event) {
+  return (
+    resolveTrendsVenueCost(event)
+    + resolveTrendsCateringCost(event)
+    + parseEventCostNumber(event.lodgingCost)
+    + parseEventCostNumber(event.transportationCost)
+    + parseEventCostNumber(event.materialsCost)
+    + parseEventCostNumber(event.otherCost)
+  );
+}
+
+function getTrendsCommandKey(event) {
+  const command = String(event?.command ?? '').trim();
+  if (!command || isTbd(command)) return '';
+  return command;
+}
+
+function getTrendsCommandOptions() {
+  const commands = new Set();
+  events.forEach((event) => {
+    if (!isAarFinalized(event)) return;
+    const command = getTrendsCommandKey(event);
+    if (command) commands.add(command);
+  });
+  return [...commands].sort((a, b) => a.localeCompare(b));
+}
+
+function populateTrendsSelect(select, placeholderHtml, values) {
+  if (!select) return;
+  const selected = select.value;
+  select.innerHTML = [
+    placeholderHtml,
+    ...values.map((value) => `<option value="${value}">${value}</option>`),
+  ].join('');
+  if ([...select.options].some((option) => option.value === selected)) {
+    select.value = selected;
+  }
+}
+
+function populateTrendsFilterOptions() {
+  populateTrendsSelect(
+    document.getElementById('trends-event-type'),
+    '<option value="">All Event Types</option>',
+    eventTypes
+  );
+  populateTrendsSelect(
+    document.getElementById('trends-command'),
+    '<option value="">All Commands</option>',
+    getTrendsCommandOptions()
+  );
+}
+
+function updateTrendsCustomDateFields() {
+  const isCustom = document.getElementById('trends-period')?.value === 'custom';
+  const startField = document.getElementById('trends-start-field');
+  const endField = document.getElementById('trends-end-field');
+  const startInput = document.getElementById('trends-start-date');
+  const endInput = document.getElementById('trends-end-date');
+  if (startField) startField.hidden = !isCustom;
+  if (endField) endField.hidden = !isCustom;
+  if (startInput) startInput.disabled = !isCustom;
+  if (endInput) endInput.disabled = !isCustom;
+}
+
+function getTrendsDateRange() {
+  const period = document.getElementById('trends-period')?.value || 'this-fy';
+  const today = new Date();
+  const todayIso = formatLocalIsoDate(today);
+
+  if (period === '3m' || period === '6m' || period === '12m') {
+    const months = period === '3m' ? 3 : period === '6m' ? 6 : 12;
+    return {
+      start: formatLocalIsoDate(shiftLocalDateByMonths(today, -months)),
+      end: todayIso,
+    };
+  }
+
+  if (period === 'last-fy') {
+    return getFiscalYearRange(getCurrentFiscalYearNumber(today) - 1);
+  }
+
+  if (period === 'custom') {
+    const start = document.getElementById('trends-start-date')?.value || '';
+    const end = document.getElementById('trends-end-date')?.value || '';
+    if (!start || !end) return null;
+    return { start, end };
+  }
+
+  return getFiscalYearRange(getCurrentFiscalYearNumber(today));
+}
+
+function getFilteredTrendsEvents() {
+  const range = getTrendsDateRange();
+  if (!range) return [];
+
+  const todayIso = formatLocalIsoDate(new Date());
+  const eventType = document.getElementById('trends-event-type')?.value || '';
+  const command = document.getElementById('trends-command')?.value || '';
+
+  return events.filter((event) => {
+    if (!isAarFinalized(event)) return false;
+
+    const isoDate = getTrendsEventDate(event);
+    if (!isoDate || isoDate > todayIso) return false;
+    if (!isDateInRange(isoDate, range.start, range.end)) return false;
+    if (eventType && event.eventType !== eventType) return false;
+    if (command && getTrendsCommandKey(event) !== command) return false;
+    return true;
+  });
+}
+
+function getTrendsSummaryMetrics(filteredEvents) {
+  const commands = new Set();
+  let participantReach = 0;
+  let totalCost = 0;
+
+  filteredEvents.forEach((event) => {
+    participantReach += getTrendsParticipantCount(event.participants);
+    totalCost += getTrendsEventRecordedCost(event);
+    const command = getTrendsCommandKey(event);
+    if (command) commands.add(command);
+  });
+
+  return {
+    completedEvents: filteredEvents.length,
+    participantReach,
+    commandsReached: commands.size,
+    totalRecordedEventCost: totalCost,
+  };
+}
+
+function renderTrendsKpis(metrics) {
+  const grid = document.getElementById('trends-kpi-grid');
+  if (!grid) return;
+
+  const cards = [
+    { label: 'Completed Events', value: String(metrics.completedEvents) },
+    { label: 'Participant Reach', value: metrics.participantReach.toLocaleString('en-US') },
+    { label: 'Commands Reached', value: String(metrics.commandsReached) },
+    {
+      label: 'Total Recorded Event Cost',
+      value: formatTotalRecordedEventCost(metrics.totalRecordedEventCost),
+    },
+  ];
+
+  grid.innerHTML = cards
+    .map(
+      (kpi) => `
+      <div class="kpi-card">
+        <div class="kpi-label">${kpi.label}</div>
+        <div class="kpi-value">${kpi.value}</div>
+      </div>`
+    )
+    .join('');
+}
+
+function renderTrends() {
+  if (!document.getElementById('view-trends')) return;
+
+  populateTrendsFilterOptions();
+  updateTrendsCustomDateFields();
+
+  const filtered = getFilteredTrendsEvents();
+  renderTrendsKpis(getTrendsSummaryMetrics(filtered));
+
+  const emptyMessage = document.getElementById('trends-empty-message');
+  if (emptyMessage) {
+    emptyMessage.hidden = filtered.length > 0;
+  }
+}
+
+function setupTrends() {
+  const period = document.getElementById('trends-period');
+  if (!period) return;
+
+  period.addEventListener('change', () => {
+    updateTrendsCustomDateFields();
+    renderTrends();
+  });
+
+  ['trends-event-type', 'trends-command', 'trends-start-date', 'trends-end-date'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', renderTrends);
+  });
+
+  updateTrendsCustomDateFields();
+}
+
 function switchView(viewName) {
   if (currentView === 'reports' && reportsTab === 'aar') {
     captureAarFilterState();
@@ -4220,6 +4455,7 @@ function switchView(viewName) {
     events: 'view-events',
     calendar: 'view-calendar',
     reports: 'view-reports',
+    trends: 'view-trends',
     team: 'view-team',
     settings: 'view-settings',
   };
@@ -4232,6 +4468,8 @@ function switchView(viewName) {
     renderCalendar();
   } else if (viewName === 'reports') {
     switchReportsTab(reportsTab);
+  } else if (viewName === 'trends') {
+    renderTrends();
   } else if (viewName === 'team') {
     renderTeam();
   } else if (viewName === 'settings') {
@@ -4459,6 +4697,8 @@ function render() {
     } else if (reportsTab === 'mir') {
       renderMirReport();
     }
+  } else if (currentView === 'trends') {
+    renderTrends();
   } else if (currentView === 'team') {
     renderTeam();
   } else if (currentView === 'settings') {
@@ -4785,6 +5025,7 @@ export async function initApp() {
   document.getElementById('today-date').textContent = formatToday();
   setupNavigation();
   setupDateFilter();
+  setupTrends();
   setupReports();
   setupReportsSubnav();
   setupAarSearch();

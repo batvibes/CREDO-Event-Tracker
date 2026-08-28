@@ -3194,3 +3194,80 @@ body:has(#new-event-modal[open]) {
 @media (max-width: 640px) {
   #new-event-modal .event-form-paired-fields { grid-template-columns: 1fr; }
 }
+
+/* Trends foundation */
+#view-trends .trends-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+#view-trends .trends-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+#view-trends .trends-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 128px;
+}
+
+#view-trends .trends-filter-field[hidden] {
+  display: none;
+}
+
+#view-trends .trends-filter-field .filter-select,
+#view-trends .trends-filter-field .reports-input {
+  width: 100%;
+  min-width: 128px;
+}
+
+#view-trends .trends-filter-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-results {
+  padding: 24px;
+}
+
+#view-trends .trends-kpi-grid {
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 0;
+}
+
+#view-trends .trends-kpi-grid .kpi-value {
+  font-variant-numeric: tabular-nums;
+}
+
+#view-trends .trends-empty-message {
+  margin-top: 16px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  #view-trends .trends-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  #view-trends .trends-filter-field {
+    min-width: calc(50% - 6px);
+    flex: 1 1 calc(50% - 6px);
+  }
+}
+
+@media (max-width: 560px) {
+  #view-trends .trends-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

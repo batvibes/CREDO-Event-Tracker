@@ -96,6 +96,10 @@
           <span class="nav-icon">▥</span>
           Reports
         </a>
+        <a href="#" class="nav-item" data-view="trends">
+          <span class="nav-icon">▤</span>
+          Trends
+        </a>
         <a href="#" class="nav-item" data-view="team">
           <span class="nav-icon">☷</span>
           Team
@@ -679,6 +683,55 @@
               <div class="mir-photo-grid mir-open-photo-grid" id="mir-open-photo-grid"></div>
             </section>
             <div class="mir-preview-canvas" id="mir-preview-canvas" aria-live="polite"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="view-trends" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Trends</h1>
+            <h2>CREDO Impact Analysis</h2>
+            <p class="tagline">Historical metrics are based on finalized After Action Reports.</p>
+          </div>
+        </header>
+        <section class="content-section trends-section">
+          <div class="trends-filter-bar">
+            <label class="trends-filter-field">
+              <span class="trends-filter-label">Time Period</span>
+              <select id="trends-period" class="filter-select">
+                <option value="3m">3 Months</option>
+                <option value="6m">6 Months</option>
+                <option value="12m">12 Months</option>
+                <option value="this-fy" selected>This FY</option>
+                <option value="last-fy">Last FY</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label class="trends-filter-field">
+              <span class="trends-filter-label">Event Type</span>
+              <select id="trends-event-type" class="filter-select">
+                <option value="">All Event Types</option>
+              </select>
+            </label>
+            <label class="trends-filter-field">
+              <span class="trends-filter-label">Command</span>
+              <select id="trends-command" class="filter-select">
+                <option value="">All Commands</option>
+              </select>
+            </label>
+            <label class="trends-filter-field" id="trends-start-field" hidden>
+              <span class="trends-filter-label">Custom Start Date</span>
+              <input type="date" id="trends-start-date" class="reports-input" disabled>
+            </label>
+            <label class="trends-filter-field" id="trends-end-field" hidden>
+              <span class="trends-filter-label">Custom End Date</span>
+              <input type="date" id="trends-end-date" class="reports-input" disabled>
+            </label>
+          </div>
+          <div class="trends-results">
+            <section class="kpi-grid trends-kpi-grid" id="trends-kpi-grid" aria-label="Trends summary metrics"></section>
+            <p class="trends-empty-message" id="trends-empty-message" hidden>No finalized AAR events match the selected period and filters.</p>
           </div>
         </section>
       </div>
