@@ -781,7 +781,8 @@
                 <div class="trends-chart-tooltip" id="trends-chart-tooltip" hidden></div>
               </div>
             </section>
-            <section class="trends-demand-section" id="trends-demand-section">
+            <div class="trends-breakdown-grid" id="trends-breakdown-grid">
+            <section class="trends-breakdown-panel" id="trends-demand-section">
               <div class="trends-chart-header">
                 <div class="trends-chart-heading">
                   <h3 class="trends-chart-title">Program Demand</h3>
@@ -795,10 +796,51 @@
                   </select>
                 </label>
               </div>
-              <p class="trends-demand-summary" id="trends-demand-summary" hidden></p>
-              <p class="trends-demand-empty" id="trends-demand-empty" hidden></p>
-              <div class="trends-demand-list" id="trends-demand-list" hidden></div>
+              <div class="trends-breakdown-summary" id="trends-demand-summary" hidden></div>
+              <div class="trends-breakdown-legend" id="trends-demand-legend" hidden>
+                <span class="trends-breakdown-legend-item">
+                  <span class="trends-breakdown-legend-swatch trends-breakdown-legend-current" aria-hidden="true"></span>
+                  Current Period
+                </span>
+                <span class="trends-breakdown-legend-item" id="trends-demand-legend-compare" hidden>
+                  <span class="trends-breakdown-legend-swatch trends-breakdown-legend-compare" aria-hidden="true"></span>
+                  <span id="trends-demand-legend-compare-label"></span>
+                </span>
+              </div>
+              <p class="trends-breakdown-empty" id="trends-demand-empty" hidden></p>
+              <div class="trends-breakdown-list" id="trends-demand-list" hidden></div>
+              <button type="button" class="trends-breakdown-toggle" id="trends-demand-toggle" hidden aria-expanded="false"></button>
             </section>
+            <section class="trends-breakdown-panel" id="trends-reach-section">
+              <div class="trends-chart-header">
+                <div class="trends-chart-heading">
+                  <h3 class="trends-chart-title">Command Reach</h3>
+                  <p class="trends-chart-subtitle">See which commands CREDO served during the selected period and how that reach compares over time.</p>
+                </div>
+                <label class="trends-filter-field trends-demand-metric-field">
+                  <span class="trends-filter-label">Measure By</span>
+                  <select id="trends-reach-metric" class="filter-select" aria-label="Command reach measure">
+                    <option value="participantReach" selected>Participant Reach</option>
+                    <option value="completedEvents">Completed Events</option>
+                  </select>
+                </label>
+              </div>
+              <div class="trends-breakdown-summary" id="trends-reach-summary" hidden></div>
+              <div class="trends-breakdown-legend" id="trends-reach-legend" hidden>
+                <span class="trends-breakdown-legend-item">
+                  <span class="trends-breakdown-legend-swatch trends-breakdown-legend-current" aria-hidden="true"></span>
+                  Current Period
+                </span>
+                <span class="trends-breakdown-legend-item" id="trends-reach-legend-compare" hidden>
+                  <span class="trends-breakdown-legend-swatch trends-breakdown-legend-compare" aria-hidden="true"></span>
+                  <span id="trends-reach-legend-compare-label"></span>
+                </span>
+              </div>
+              <p class="trends-breakdown-empty" id="trends-reach-empty" hidden></p>
+              <div class="trends-breakdown-list" id="trends-reach-list" hidden></div>
+              <button type="button" class="trends-breakdown-toggle" id="trends-reach-toggle" hidden aria-expanded="false"></button>
+            </section>
+            </div>
           </div>
         </section>
       </div>
