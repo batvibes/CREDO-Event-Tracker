@@ -4358,6 +4358,7 @@ const TRENDS_BREAKDOWN_DEFAULT_ROWS = 8;
 let trendsDemandExpanded = false;
 let trendsReachExpanded = false;
 let trendsSpendingExpanded = false;
+let trendsCostDetailsExpanded = false;
 
 function getTrendsPeriodValue() {
   return document.getElementById('trends-period')?.value || 'this-fy';
@@ -6253,8 +6254,10 @@ function aggregateTrendsSpendingByEventType(eventsForRange) {
       key,
       label,
       recordedCost: 0,
+      completedEvents: 0,
     };
     existing.recordedCost += getTrendsEventRecordedCost(event);
+    existing.completedEvents += 1;
     map.set(key, existing);
   });
   return map;
@@ -6370,6 +6373,7 @@ function renderTrendsResourceSection(
     );
     empty.textContent = 'No finalized AAR data is available for Resource Impact.';
     empty.hidden = false;
+    renderTrendsCostDetails(new Map());
     return;
   }
 
@@ -6435,6 +6439,205 @@ function renderTrendsResourceSection(
     'program',
     'programs'
   );
+  renderTrendsCostDetails(currentMap);
+}
+
+function buildTrendsCostDetailRows(currentMap) {
+  return [...currentMap.values()]
+    .map((entry) => ({
+      label: entry.label,
+      recordedCost: entry.recordedCost,
+      completedEvents: entry.completedEvents || 0,
+    }))
+    .sort((a, b) => {
+      if (b.recordedCost !== a.recordedCost) return b.recordedCost - a.recordedCost;
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function formatTrendsAvgCostPerEvent(recordedCost, completedEvents) {
+  if (!(completedEvents > 0)) return '—';
+  const value = recordedCost / completedEvents;
+  if (!Number.isFinite(value)) return '—';
+  return formatTotalRecordedEventCost(value);
+}
+
+function renderTrendsCostDetails(currentMap) {
+  const details = document.getElementById('trends-cost-details');
+  const toggle = document.getElementById('trends-cost-details-toggle');
+  const empty = document.getElementById('trends-cost-details-empty');
+  const wrap = document.getElementById('trends-cost-details-table-wrap');
+  const body = document.getElementById('trends-cost-details-body');
+  if (!details || !toggle || !empty || !wrap || !body) return;
+
+  toggle.hidden = false;
+  toggle.setAttribute('aria-expanded', trendsCostDetailsExpanded ? 'true' : 'false');
+  toggle.textContent = trendsCostDetailsExpanded
+    ? 'Hide program cost details'
+    : 'View program cost details';
+
+  if (!trendsCostDetailsExpanded) {
+    details.hidden = true;
+    empty.hidden = true;
+    empty.textContent = '';
+    wrap.hidden = true;
+    body.replaceChildren();
+    return;
+  }
+
+  details.hidden = false;
+  const rows = buildTrendsCostDetailRows(currentMap);
+  if (!rows.length) {
+    wrap.hidden = true;
+    body.replaceChildren();
+    empty.textContent = 'No program cost details are available for the selected period.';
+    empty.hidden = false;
+    return;
+  }
+
+  empty.hidden = true;
+  empty.textContent = '';
+  body.replaceChildren();
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    const program = document.createElement('th');
+    program.scope = 'row';
+    program.className = 'trends-cost-details-program';
+    program.textContent = row.label;
+
+    const cost = document.createElement('td');
+    cost.textContent = formatTotalRecordedEventCost(row.recordedCost);
+
+    const events = document.createElement('td');
+    events.textContent = String(row.completedEvents);
+
+    const average = document.createElement('td');
+    average.textContent = formatTrendsAvgCostPerEvent(row.recordedCost, row.completedEvents);
+
+    tr.append(program, cost, events, average);
+    body.append(tr);
+  });
+  wrap.hidden = false;
+}
+
+function getTrendsProjectionHorizonMonths() {
+  const value = Number(document.getElementById('trends-projection-horizon')?.value);
+  if (value === 6 || value === 12) return value;
+  return 3;
+}
+
+function formatTrendsProjectionRange(range) {
+  const start = parseLocalIsoDate(range.start);
+  const end = parseLocalIsoDate(range.end);
+  const formatDate = (date) => (
+    `${date.toLocaleString('en-US', { month: 'short' })} ${date.getDate()}, ${date.getFullYear()}`
+  );
+  return `${formatDate(start)} – ${formatDate(end)}`;
+}
+
+function getTrendsProjectionWindows(today, months) {
+  const todayIso = formatLocalIsoDate(today);
+  return {
+    basis: {
+      start: addDaysToIsoDate(formatLocalIsoDate(shiftLocalDateByMonths(today, -12)), 1),
+      end: todayIso,
+    },
+    projection: {
+      start: addDaysToIsoDate(todayIso, 1),
+      end: formatLocalIsoDate(shiftLocalDateByMonths(today, months)),
+    },
+  };
+}
+
+function projectTrendsMetric(historicalTotal, basisDays, horizonDays) {
+  if (!(basisDays > 0) || !(horizonDays > 0)) return 0;
+  const projected = (historicalTotal / basisDays) * horizonDays;
+  return Number.isFinite(projected) ? projected : 0;
+}
+
+function renderTrendsProjectionSection(filters) {
+  const empty = document.getElementById('trends-projection-empty');
+  const body = document.getElementById('trends-projection-body');
+  const metricsEl = document.getElementById('trends-projection-metrics');
+  const methodEl = document.getElementById('trends-projection-method');
+  if (!empty || !body || !metricsEl || !methodEl) return;
+
+  const months = getTrendsProjectionHorizonMonths();
+  const windows = getTrendsProjectionWindows(new Date(), months);
+  const basisEvents = getTrendsEventsForRange(windows.basis, filters);
+
+  if (!basisEvents.length) {
+    body.hidden = true;
+    metricsEl.replaceChildren();
+    methodEl.replaceChildren();
+    empty.textContent = 'No finalized historical data is available to calculate a projection.';
+    empty.hidden = false;
+    return;
+  }
+
+  empty.hidden = true;
+  empty.textContent = '';
+  body.hidden = false;
+
+  const historicalMetrics = calculateTrendsMetrics(basisEvents);
+  const basisDays = inclusiveDayCount(windows.basis.start, windows.basis.end);
+  const horizonDays = inclusiveDayCount(windows.projection.start, windows.projection.end);
+  const projectedEvents = Math.round(
+    projectTrendsMetric(historicalMetrics.completedEvents, basisDays, horizonDays)
+  );
+  const projectedReach = Math.round(
+    projectTrendsMetric(historicalMetrics.participantReach, basisDays, horizonDays)
+  );
+  const projectedCost = projectTrendsMetric(
+    historicalMetrics.totalRecordedEventCost,
+    basisDays,
+    horizonDays
+  );
+
+  const cards = [
+    {
+      label: 'Projected Completed Events',
+      value: String(projectedEvents),
+    },
+    {
+      label: 'Projected Participant Reach',
+      value: projectedReach.toLocaleString('en-US'),
+    },
+    {
+      label: 'Projected Recorded Event Cost',
+      value: formatTotalRecordedEventCost(projectedCost),
+    },
+  ];
+
+  metricsEl.replaceChildren();
+  cards.forEach((card) => {
+    const item = document.createElement('div');
+    item.className = 'trends-projection-metric';
+
+    const badge = document.createElement('div');
+    badge.className = 'trends-projection-badge';
+    badge.textContent = 'Projected';
+
+    const label = document.createElement('div');
+    label.className = 'trends-projection-metric-label';
+    label.textContent = card.label;
+
+    const value = document.createElement('div');
+    value.className = 'trends-projection-metric-value';
+    value.textContent = card.value;
+
+    item.append(badge, label, value);
+    metricsEl.append(item);
+  });
+
+  methodEl.replaceChildren();
+  const intro = document.createElement('p');
+  intro.textContent = 'Projected from the average daily pace of finalized CREDO activity during the previous 12 months.';
+  const basis = document.createElement('p');
+  basis.textContent = `Historical basis: ${formatTrendsProjectionRange(windows.basis)}`;
+  const horizon = document.createElement('p');
+  horizon.textContent = `Projection: ${formatTrendsProjectionRange(windows.projection)}`;
+  methodEl.append(intro, basis, horizon);
 }
 
 function renderTrends() {
@@ -6478,6 +6681,7 @@ function renderTrends() {
     filters,
     historicalMetrics
   );
+  renderTrendsProjectionSection(filters);
 
   const emptyMessage = document.getElementById('trends-empty-message');
   if (emptyMessage) {
@@ -6547,6 +6751,16 @@ function setupTrends() {
       filters,
       historicalMetrics
     );
+  });
+
+  document.getElementById('trends-cost-details-toggle')?.addEventListener('click', () => {
+    trendsCostDetailsExpanded = !trendsCostDetailsExpanded;
+    const { currentEvents } = getTrendsBreakdownRenderArgs();
+    renderTrendsCostDetails(aggregateTrendsSpendingByEventType(currentEvents));
+  });
+
+  document.getElementById('trends-projection-horizon')?.addEventListener('change', () => {
+    renderTrendsProjectionSection(getTrendsFilterState());
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');

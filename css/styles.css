@@ -45,6 +45,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .app {
   display: flex;
   min-height: 100vh;
@@ -3739,6 +3751,149 @@ body:has(#new-event-modal[open]) {
   grid-template-columns: minmax(92px, 32%) minmax(72px, 1fr) minmax(118px, 32%);
 }
 
+#view-trends #trends-cost-details-toggle {
+  display: inline-block;
+  margin-top: 8px;
+}
+
+#view-trends #trends-cost-details-toggle[hidden] {
+  display: none;
+}
+
+#view-trends .trends-cost-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+#view-trends .trends-cost-details[hidden],
+#view-trends .trends-cost-details-empty[hidden],
+#view-trends .trends-cost-details-table-wrap[hidden],
+#view-trends .trends-projection-body[hidden] {
+  display: none;
+}
+
+#view-trends .trends-cost-details-empty {
+  margin: 0;
+  padding: 12px 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-cost-details-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+#view-trends .trends-cost-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+#view-trends .trends-cost-details-table th,
+#view-trends .trends-cost-details-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+#view-trends .trends-cost-details-table th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+#view-trends .trends-cost-details-table th[scope="row"] {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-primary);
+  white-space: normal;
+}
+
+#view-trends .trends-cost-details-table td {
+  color: var(--text-primary);
+}
+
+#view-trends .trends-cost-details-table td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#view-trends .trends-cost-details-program {
+  overflow-wrap: break-word;
+}
+
+#view-trends .trends-projection-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#view-trends .trends-projection-metric {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #f8f9f6;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+#view-trends .trends-projection-badge {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-projection-metric-label {
+  margin-bottom: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-projection-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-projection-method {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-projection-method p {
+  margin: 0 0 4px;
+}
+
+#view-trends .trends-projection-method p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  #view-trends .trends-projection-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1100px) {
   #view-trends .trends-resource-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3791,6 +3946,15 @@ body:has(#new-event-modal[open]) {
 
   #view-trends .trends-resource-metrics {
     grid-template-columns: 1fr;
+  }
+
+  #view-trends .trends-projection-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  #view-trends .trends-cost-details-table th,
+  #view-trends .trends-cost-details-table td {
+    padding: 8px 6px;
   }
 }
 

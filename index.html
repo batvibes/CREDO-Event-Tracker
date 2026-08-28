@@ -872,7 +872,46 @@
                   </div>
                   <div class="trends-breakdown-list" id="trends-spending-list" hidden></div>
                   <button type="button" class="trends-breakdown-toggle" id="trends-spending-toggle" hidden aria-expanded="false"></button>
+                  <button type="button" class="trends-breakdown-toggle" id="trends-cost-details-toggle" aria-expanded="false">View program cost details</button>
+                  <div class="trends-cost-details" id="trends-cost-details" hidden>
+                    <p class="trends-cost-details-empty" id="trends-cost-details-empty" hidden></p>
+                    <div class="table-wrap trends-cost-details-table-wrap" id="trends-cost-details-table-wrap" hidden>
+                      <table class="trends-cost-details-table" id="trends-cost-details-table">
+                        <caption class="visually-hidden">Current-period recorded cost details by program</caption>
+                        <thead>
+                          <tr>
+                            <th scope="col">Program</th>
+                            <th scope="col">Total Recorded Cost</th>
+                            <th scope="col">Completed Events</th>
+                            <th scope="col">Avg Cost per Event</th>
+                          </tr>
+                        </thead>
+                        <tbody id="trends-cost-details-body"></tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
+              </div>
+            </section>
+            <section class="trends-resource-section" id="trends-projection-section">
+              <div class="trends-chart-header">
+                <div class="trends-chart-heading">
+                  <h3 class="trends-chart-title">Projected Activity</h3>
+                  <p class="trends-chart-subtitle">Estimate future activity based on recent finalized CREDO history.</p>
+                </div>
+                <label class="trends-filter-field trends-demand-metric-field" for="trends-projection-horizon">
+                  <span class="trends-filter-label">Project Next</span>
+                  <select id="trends-projection-horizon" class="filter-select" aria-label="Projection horizon">
+                    <option value="3" selected>3 Months</option>
+                    <option value="6">6 Months</option>
+                    <option value="12">12 Months</option>
+                  </select>
+                </label>
+              </div>
+              <p class="trends-breakdown-empty" id="trends-projection-empty" hidden></p>
+              <div class="trends-projection-body" id="trends-projection-body" hidden>
+                <div class="trends-projection-metrics" id="trends-projection-metrics"></div>
+                <div class="trends-projection-method" id="trends-projection-method"></div>
               </div>
             </section>
           </div>
