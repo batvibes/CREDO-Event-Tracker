@@ -3221,6 +3221,11 @@ body:has(#new-event-modal[open]) {
   display: none;
 }
 
+#view-trends .trends-filter-field-compare,
+#view-trends .trends-filter-field-compare .filter-select {
+  min-width: 220px;
+}
+
 #view-trends .trends-filter-field .filter-select,
 #view-trends .trends-filter-field .reports-input {
   width: 100%;
@@ -3233,12 +3238,45 @@ body:has(#new-event-modal[open]) {
   color: var(--text-secondary);
 }
 
+#view-trends .trends-comparison-explainer {
+  padding: 12px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+#view-trends .trends-comparison-explainer-label {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-comparison-explainer-text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-comparison-explainer-dates {
+  margin: 6px 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  white-space: pre-line;
+}
+
+#view-trends .trends-comparison-explainer-dates[hidden] {
+  display: none;
+}
+
 #view-trends .trends-results {
   padding: 24px;
 }
 
 #view-trends .trends-kpi-grid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   margin-bottom: 0;
 }
 
@@ -3246,11 +3284,37 @@ body:has(#new-event-modal[open]) {
   font-variant-numeric: tabular-nums;
 }
 
+#view-trends .trends-kpi-comparison {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-kpi-comparison-up {
+  color: #345c3a;
+}
+
+#view-trends .trends-kpi-comparison-down {
+  color: #6b5344;
+}
+
+#view-trends .trends-kpi-comparison-neutral {
+  color: var(--text-secondary);
+}
+
 #view-trends .trends-empty-message {
   margin-top: 16px;
   font-size: 0.875rem;
   color: var(--text-secondary);
   text-align: center;
+}
+
+@media (min-width: 1400px) {
+  #view-trends .trends-kpi-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
 }
 
 @media (max-width: 900px) {

@@ -708,6 +708,16 @@
                 <option value="custom">Custom</option>
               </select>
             </label>
+            <label class="trends-filter-field trends-filter-field-compare">
+              <span class="trends-filter-label">Compare With</span>
+              <select id="trends-compare" class="filter-select">
+                <option value="previous" selected>Previous Period</option>
+                <option value="last-year">Last Year</option>
+                <option value="avg-2">2-Year Average</option>
+                <option value="avg-3">3-Year Average</option>
+                <option value="none">None</option>
+              </select>
+            </label>
             <label class="trends-filter-field">
               <span class="trends-filter-label">Event Type</span>
               <select id="trends-event-type" class="filter-select">
@@ -728,6 +738,11 @@
               <span class="trends-filter-label">Custom End Date</span>
               <input type="date" id="trends-end-date" class="reports-input" disabled>
             </label>
+          </div>
+          <div class="trends-comparison-explainer" id="trends-comparison-explainer">
+            <p class="trends-comparison-explainer-label">What this means:</p>
+            <p class="trends-comparison-explainer-text" id="trends-comparison-explainer-text"></p>
+            <p class="trends-comparison-explainer-dates" id="trends-comparison-explainer-dates" hidden></p>
           </div>
           <div class="trends-results">
             <section class="kpi-grid trends-kpi-grid" id="trends-kpi-grid" aria-label="Trends summary metrics"></section>

@@ -4219,6 +4219,42 @@ function shiftLocalDateByMonths(date, months) {
   return shifted;
 }
 
+function parseLocalIsoDate(isoDate) {
+  return new Date(`${isoDate}T12:00:00`);
+}
+
+function shiftLocalDateByYears(date, years) {
+  const year = date.getFullYear() + years;
+  const month = date.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(date.getDate(), lastDay));
+}
+
+function shiftIsoDateByYears(isoDate, years) {
+  return formatLocalIsoDate(shiftLocalDateByYears(parseLocalIsoDate(isoDate), years));
+}
+
+function shiftTrendsRangeByYears(range, years) {
+  return {
+    start: shiftIsoDateByYears(range.start, years),
+    end: shiftIsoDateByYears(range.end, years),
+  };
+}
+
+function addDaysToIsoDate(isoDate, days) {
+  const date = parseLocalIsoDate(isoDate);
+  date.setDate(date.getDate() + days);
+  return formatLocalIsoDate(date);
+}
+
+function inclusiveDayCount(startIso, endIso) {
+  const start = parseLocalIsoDate(startIso);
+  const end = parseLocalIsoDate(endIso);
+  const utcStart = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const utcEnd = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.round((utcEnd - utcStart) / 86400000) + 1;
+}
+
 function getTrendsEventDate(event) {
   const raw = event?.startDate ?? event?.date;
   if (isTbd(raw)) return null;
@@ -4313,8 +4349,29 @@ function updateTrendsCustomDateFields() {
   if (endInput) endInput.disabled = !isCustom;
 }
 
-function getTrendsDateRange() {
-  const period = document.getElementById('trends-period')?.value || 'this-fy';
+const TRENDS_COMPARE_PREVIOUS = 'previous';
+const TRENDS_COMPARE_LAST_YEAR = 'last-year';
+const TRENDS_COMPARE_AVG_2 = 'avg-2';
+const TRENDS_COMPARE_AVG_3 = 'avg-3';
+const TRENDS_COMPARE_NONE = 'none';
+
+function getTrendsPeriodValue() {
+  return document.getElementById('trends-period')?.value || 'this-fy';
+}
+
+function getTrendsCompareMode() {
+  return document.getElementById('trends-compare')?.value || TRENDS_COMPARE_PREVIOUS;
+}
+
+function getTrendsFilterState() {
+  return {
+    eventType: document.getElementById('trends-event-type')?.value || '',
+    command: document.getElementById('trends-command')?.value || '',
+  };
+}
+
+function getTrendsCurrentRange() {
+  const period = getTrendsPeriodValue();
   const today = new Date();
   const todayIso = formatLocalIsoDate(today);
 
@@ -4333,20 +4390,59 @@ function getTrendsDateRange() {
   if (period === 'custom') {
     const start = document.getElementById('trends-start-date')?.value || '';
     const end = document.getElementById('trends-end-date')?.value || '';
-    if (!start || !end) return null;
+    if (!start || !end || start > end) return null;
     return { start, end };
   }
 
-  return getFiscalYearRange(getCurrentFiscalYearNumber(today));
+  const fyRange = getFiscalYearRange(getCurrentFiscalYearNumber(today));
+  return {
+    start: fyRange.start,
+    end: todayIso < fyRange.end ? todayIso : fyRange.end,
+  };
 }
 
-function getFilteredTrendsEvents() {
-  const range = getTrendsDateRange();
+function getPreviousEquivalentRange(currentRange, period) {
+  if (period === 'this-fy' || period === 'last-fy') {
+    return shiftTrendsRangeByYears(currentRange, -1);
+  }
+
+  const days = inclusiveDayCount(currentRange.start, currentRange.end);
+  const end = addDaysToIsoDate(currentRange.start, -1);
+  const start = addDaysToIsoDate(end, -(days - 1));
+  return { start, end };
+}
+
+function getTrendsComparisonRanges(currentRange, period, compareMode) {
+  if (!currentRange || compareMode === TRENDS_COMPARE_NONE) return [];
+
+  if (compareMode === TRENDS_COMPARE_PREVIOUS) {
+    return [getPreviousEquivalentRange(currentRange, period)];
+  }
+  if (compareMode === TRENDS_COMPARE_LAST_YEAR) {
+    return [shiftTrendsRangeByYears(currentRange, -1)];
+  }
+  if (compareMode === TRENDS_COMPARE_AVG_2) {
+    return [
+      shiftTrendsRangeByYears(currentRange, -1),
+      shiftTrendsRangeByYears(currentRange, -2),
+    ];
+  }
+  if (compareMode === TRENDS_COMPARE_AVG_3) {
+    return [
+      shiftTrendsRangeByYears(currentRange, -1),
+      shiftTrendsRangeByYears(currentRange, -2),
+      shiftTrendsRangeByYears(currentRange, -3),
+    ];
+  }
+  return [];
+}
+
+function getTrendsEventsForRange(range, filters) {
   if (!range) return [];
 
   const todayIso = formatLocalIsoDate(new Date());
-  const eventType = document.getElementById('trends-event-type')?.value || '';
-  const command = document.getElementById('trends-command')?.value || '';
+  const eventType = filters?.eventType || '';
+  const command = filters?.command || '';
 
   return events.filter((event) => {
     if (!isAarFinalized(event)) return false;
@@ -4360,48 +4456,366 @@ function getFilteredTrendsEvents() {
   });
 }
 
-function getTrendsSummaryMetrics(filteredEvents) {
+function calculateTrendsMetrics(eventsForRange) {
   const commands = new Set();
   let participantReach = 0;
-  let totalCost = 0;
+  let totalRecordedEventCost = 0;
 
-  filteredEvents.forEach((event) => {
+  eventsForRange.forEach((event) => {
     participantReach += getTrendsParticipantCount(event.participants);
-    totalCost += getTrendsEventRecordedCost(event);
+    totalRecordedEventCost += getTrendsEventRecordedCost(event);
     const command = getTrendsCommandKey(event);
     if (command) commands.add(command);
   });
 
   return {
-    completedEvents: filteredEvents.length,
+    completedEvents: eventsForRange.length,
     participantReach,
     commandsReached: commands.size,
-    totalRecordedEventCost: totalCost,
+    totalRecordedEventCost,
+    costPerParticipant: participantReach > 0 ? totalRecordedEventCost / participantReach : null,
   };
 }
 
-function renderTrendsKpis(metrics) {
+function averageTrendsMetrics(metricsList) {
+  const count = metricsList.length;
+  if (count === 0) {
+    return {
+      completedEvents: 0,
+      participantReach: 0,
+      commandsReached: 0,
+      totalRecordedEventCost: 0,
+      costPerParticipant: null,
+    };
+  }
+
+  const totals = metricsList.reduce(
+    (sum, metrics) => ({
+      completedEvents: sum.completedEvents + metrics.completedEvents,
+      participantReach: sum.participantReach + metrics.participantReach,
+      commandsReached: sum.commandsReached + metrics.commandsReached,
+      totalRecordedEventCost: sum.totalRecordedEventCost + metrics.totalRecordedEventCost,
+    }),
+    {
+      completedEvents: 0,
+      participantReach: 0,
+      commandsReached: 0,
+      totalRecordedEventCost: 0,
+    }
+  );
+
+  const cppValues = metricsList
+    .map((metrics) => metrics.costPerParticipant)
+    .filter((value) => value != null && Number.isFinite(value));
+
+  return {
+    completedEvents: totals.completedEvents / count,
+    participantReach: totals.participantReach / count,
+    commandsReached: totals.commandsReached / count,
+    totalRecordedEventCost: totals.totalRecordedEventCost / count,
+    costPerParticipant: cppValues.length > 0
+      ? cppValues.reduce((sum, value) => sum + value, 0) / cppValues.length
+      : null,
+  };
+}
+
+function getTrendsComparisonPhrase(compareMode) {
+  if (compareMode === TRENDS_COMPARE_PREVIOUS) return 'Previous Period';
+  if (compareMode === TRENDS_COMPARE_LAST_YEAR) return 'Last Year';
+  if (compareMode === TRENDS_COMPARE_AVG_2) return '2-Year Average';
+  if (compareMode === TRENDS_COMPARE_AVG_3) return '3-Year Average';
+  return '';
+}
+
+function buildTrendsMetricComparison(currentValue, baselineValue, compareMode, options = {}) {
+  if (options.unavailable) {
+    return {
+      text: 'No comparison',
+      direction: 'neutral',
+    };
+  }
+
+  const phrase = getTrendsComparisonPhrase(compareMode);
+
+  if (baselineValue > 0) {
+    const percent = ((currentValue - baselineValue) / baselineValue) * 100;
+    if (!Number.isFinite(percent)) {
+      return { text: 'No comparison', direction: 'neutral' };
+    }
+    const rounded = Number(percent.toFixed(1));
+    const direction = rounded > 0 ? 'up' : rounded < 0 ? 'down' : 'neutral';
+    const arrow = rounded > 0 ? '↑ ' : rounded < 0 ? '↓ ' : '';
+    const magnitude = Math.abs(rounded).toFixed(1);
+    return {
+      text: `${arrow}${magnitude}% vs ${phrase}`,
+      direction,
+    };
+  }
+
+  if (baselineValue === 0 && currentValue === 0) {
+    return {
+      text: `No change vs ${phrase}`,
+      direction: 'neutral',
+    };
+  }
+
+  if (baselineValue === 0 && currentValue > 0) {
+    return {
+      text: `New activity vs ${phrase}`,
+      direction: 'neutral',
+    };
+  }
+
+  return {
+    text: 'No comparison',
+    direction: 'neutral',
+  };
+}
+
+function buildTrendsComparison(currentMetrics, baselineMetrics, compareMode) {
+  const currentCppUnavailable = currentMetrics.costPerParticipant == null;
+  const baselineCppUnavailable = baselineMetrics.costPerParticipant == null;
+
+  return {
+    completedEvents: buildTrendsMetricComparison(
+      currentMetrics.completedEvents,
+      baselineMetrics.completedEvents,
+      compareMode
+    ),
+    participantReach: buildTrendsMetricComparison(
+      currentMetrics.participantReach,
+      baselineMetrics.participantReach,
+      compareMode
+    ),
+    commandsReached: buildTrendsMetricComparison(
+      currentMetrics.commandsReached,
+      baselineMetrics.commandsReached,
+      compareMode
+    ),
+    totalRecordedEventCost: buildTrendsMetricComparison(
+      currentMetrics.totalRecordedEventCost,
+      baselineMetrics.totalRecordedEventCost,
+      compareMode
+    ),
+    costPerParticipant: buildTrendsMetricComparison(
+      currentMetrics.costPerParticipant ?? 0,
+      baselineMetrics.costPerParticipant ?? 0,
+      compareMode,
+      { unavailable: currentCppUnavailable || baselineCppUnavailable }
+    ),
+  };
+}
+
+function formatTrendsKpiValue(key, metrics) {
+  if (key === 'completedEvents' || key === 'commandsReached') {
+    return String(metrics[key]);
+  }
+  if (key === 'participantReach') {
+    return metrics.participantReach.toLocaleString('en-US');
+  }
+  if (key === 'totalRecordedEventCost') {
+    return formatTotalRecordedEventCost(metrics.totalRecordedEventCost);
+  }
+  if (metrics.costPerParticipant == null) return '—';
+  return formatTotalRecordedEventCost(metrics.costPerParticipant);
+}
+
+function formatTrendsExplainerRange(range) {
+  const start = parseLocalIsoDate(range.start);
+  const end = parseLocalIsoDate(range.end);
+  const startMonth = start.toLocaleString('en-US', { month: 'short' });
+  const endMonth = end.toLocaleString('en-US', { month: 'short' });
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${startMonth} ${start.getDate()}–${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${startMonth} ${start.getDate()}, ${start.getFullYear()}–${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
+}
+
+function formatTrendsYearList(items) {
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  if (items.length === 3) return `${items[0]}, ${items[1]}, and ${items[2]}`;
+  return items.join(', ');
+}
+
+function getTrendsRollingMonthCount(period) {
+  if (period === '3m') return 3;
+  if (period === '6m') return 6;
+  if (period === '12m') return 12;
+  return null;
+}
+
+function getTrendsFiscalYearShortLabel(range) {
+  const startYear = parseInt(range.start.slice(0, 4), 10);
+  return `FY${String(startYear + 1).slice(-2)}`;
+}
+
+function getTrendsExplainerQuestion(period, compareMode) {
+  if (compareMode === TRENDS_COMPARE_NONE) {
+    return 'Showing results for the selected time period without a historical comparison.';
+  }
+
+  const months = getTrendsRollingMonthCount(period);
+  if (months != null) {
+    if (compareMode === TRENDS_COMPARE_PREVIOUS) {
+      return `How did we do in these ${months} months compared with the ${months} months immediately before?`;
+    }
+    if (compareMode === TRENDS_COMPARE_LAST_YEAR) {
+      return `How did we do in these ${months} months compared with the same ${months}-month period last year?`;
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_2) {
+      return `How did we do in these ${months} months compared with the average for the same ${months}-month period over the previous 2 years?`;
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_3) {
+      return `How did we do in these ${months} months compared with the average for the same ${months}-month period over the previous 3 years?`;
+    }
+  }
+
+  if (period === 'this-fy') {
+    if (compareMode === TRENDS_COMPARE_PREVIOUS || compareMode === TRENDS_COMPARE_LAST_YEAR) {
+      return 'How are we doing this fiscal year so far compared with the same point last fiscal year?';
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_2) {
+      return 'How are we doing this fiscal year so far compared with the average for this same period over the previous 2 years?';
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_3) {
+      return 'How are we doing this fiscal year so far compared with the average for this same period over the previous 3 years?';
+    }
+  }
+
+  if (period === 'last-fy') {
+    if (compareMode === TRENDS_COMPARE_PREVIOUS) {
+      return 'How did we do last fiscal year compared with the fiscal year immediately before it?';
+    }
+    if (compareMode === TRENDS_COMPARE_LAST_YEAR) {
+      return 'How did we do last fiscal year compared with the fiscal year before it?';
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_2) {
+      return 'How did we do last fiscal year compared with the average of the previous 2 fiscal years?';
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_3) {
+      return 'How did we do last fiscal year compared with the average of the previous 3 fiscal years?';
+    }
+  }
+
+  if (period === 'custom') {
+    if (compareMode === TRENDS_COMPARE_PREVIOUS) {
+      return 'How did we do during this selected time compared with the same amount of time immediately before it?';
+    }
+    if (compareMode === TRENDS_COMPARE_LAST_YEAR) {
+      return 'How did we do during this selected time compared with the same dates last year?';
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_2) {
+      return 'How did we do during this selected time compared with the average for these same dates over the previous 2 years?';
+    }
+    if (compareMode === TRENDS_COMPARE_AVG_3) {
+      return 'How did we do during this selected time compared with the average for these same dates over the previous 3 years?';
+    }
+  }
+
+  return '';
+}
+
+function formatTrendsExplainerDates(period, compareMode, currentRange, comparisonRanges) {
+  const currentText = formatTrendsExplainerRange(currentRange);
+
+  if (compareMode === TRENDS_COMPARE_AVG_2 || compareMode === TRENDS_COMPARE_AVG_3) {
+    if (period === 'last-fy') {
+      const labels = comparisonRanges.map((range) => getTrendsFiscalYearShortLabel(range));
+      return `Current: ${currentText}\nBaseline: Average of ${formatTrendsYearList(labels)}`;
+    }
+
+    const years = comparisonRanges.map((range) => {
+      if (period === 'this-fy') {
+        return String(parseInt(range.start.slice(0, 4), 10) + 1);
+      }
+      return String(parseLocalIsoDate(range.end).getFullYear());
+    });
+
+    if (period === 'this-fy') {
+      return `Current: ${currentText}\nBaseline: Same FY-to-date period in ${formatTrendsYearList(years)}`;
+    }
+    if (period === 'custom') {
+      return `Current: ${currentText}\nBaseline: Same dates in ${formatTrendsYearList(years)}`;
+    }
+    return `Current: ${currentText}\nBaseline: Same period in ${formatTrendsYearList(years)}`;
+  }
+
+  const baselineRange = comparisonRanges[0];
+  if (!baselineRange) return currentText;
+  return `${currentText} vs ${formatTrendsExplainerRange(baselineRange)}`;
+}
+
+function renderTrendsComparisonExplainer(period, compareMode, currentRange, comparisonRanges) {
+  const textEl = document.getElementById('trends-comparison-explainer-text');
+  const datesEl = document.getElementById('trends-comparison-explainer-dates');
+  if (!textEl || !datesEl) return;
+
+  if (period === 'custom') {
+    const start = document.getElementById('trends-start-date')?.value || '';
+    const end = document.getElementById('trends-end-date')?.value || '';
+    if (!start || !end) {
+      textEl.textContent = 'Choose a Custom Start Date and Custom End Date to define the period.';
+      datesEl.hidden = true;
+      datesEl.textContent = '';
+      return;
+    }
+    if (start > end) {
+      textEl.textContent = 'Custom Start Date must be on or before Custom End Date.';
+      datesEl.hidden = true;
+      datesEl.textContent = '';
+      return;
+    }
+  }
+
+  textEl.textContent = getTrendsExplainerQuestion(period, compareMode);
+
+  if (compareMode === TRENDS_COMPARE_NONE || !currentRange) {
+    datesEl.hidden = true;
+    datesEl.textContent = '';
+    return;
+  }
+
+  const datesText = formatTrendsExplainerDates(
+    period,
+    compareMode,
+    currentRange,
+    comparisonRanges
+  );
+  if (!datesText) {
+    datesEl.hidden = true;
+    datesEl.textContent = '';
+    return;
+  }
+
+  datesEl.hidden = false;
+  datesEl.textContent = datesText;
+}
+
+function renderTrendsKpis(metrics, comparison) {
   const grid = document.getElementById('trends-kpi-grid');
   if (!grid) return;
 
   const cards = [
-    { label: 'Completed Events', value: String(metrics.completedEvents) },
-    { label: 'Participant Reach', value: metrics.participantReach.toLocaleString('en-US') },
-    { label: 'Commands Reached', value: String(metrics.commandsReached) },
-    {
-      label: 'Total Recorded Event Cost',
-      value: formatTotalRecordedEventCost(metrics.totalRecordedEventCost),
-    },
+    { key: 'completedEvents', label: 'Completed Events' },
+    { key: 'participantReach', label: 'Participant Reach' },
+    { key: 'commandsReached', label: 'Commands Reached' },
+    { key: 'totalRecordedEventCost', label: 'Total Recorded Event Cost' },
+    { key: 'costPerParticipant', label: 'Cost per Participant' },
   ];
 
   grid.innerHTML = cards
-    .map(
-      (kpi) => `
+    .map((card) => {
+      const comparisonInfo = comparison?.[card.key];
+      const comparisonHtml = comparisonInfo
+        ? `<div class="trends-kpi-comparison trends-kpi-comparison-${comparisonInfo.direction}">${comparisonInfo.text}</div>`
+        : '';
+      return `
       <div class="kpi-card">
-        <div class="kpi-label">${kpi.label}</div>
-        <div class="kpi-value">${kpi.value}</div>
-      </div>`
-    )
+        <div class="kpi-label">${card.label}</div>
+        <div class="kpi-value">${formatTrendsKpiValue(card.key, metrics)}</div>
+        ${comparisonHtml}
+      </div>`;
+    })
     .join('');
 }
 
@@ -4411,12 +4825,33 @@ function renderTrends() {
   populateTrendsFilterOptions();
   updateTrendsCustomDateFields();
 
-  const filtered = getFilteredTrendsEvents();
-  renderTrendsKpis(getTrendsSummaryMetrics(filtered));
+  const currentRange = getTrendsCurrentRange();
+  const filters = getTrendsFilterState();
+  const compareMode = getTrendsCompareMode();
+  const period = getTrendsPeriodValue();
+  const currentEvents = getTrendsEventsForRange(currentRange, filters);
+  const currentMetrics = calculateTrendsMetrics(currentEvents);
+  const comparisonRanges = (compareMode !== TRENDS_COMPARE_NONE && currentRange)
+    ? getTrendsComparisonRanges(currentRange, period, compareMode)
+    : [];
+
+  let comparison = null;
+  if (compareMode !== TRENDS_COMPARE_NONE && currentRange) {
+    const historicalMetrics = comparisonRanges.map((range) => (
+      calculateTrendsMetrics(getTrendsEventsForRange(range, filters))
+    ));
+    const baselineMetrics = historicalMetrics.length === 1
+      ? historicalMetrics[0]
+      : averageTrendsMetrics(historicalMetrics);
+    comparison = buildTrendsComparison(currentMetrics, baselineMetrics, compareMode);
+  }
+
+  renderTrendsComparisonExplainer(period, compareMode, currentRange, comparisonRanges);
+  renderTrendsKpis(currentMetrics, comparison);
 
   const emptyMessage = document.getElementById('trends-empty-message');
   if (emptyMessage) {
-    emptyMessage.hidden = filtered.length > 0;
+    emptyMessage.hidden = currentEvents.length > 0;
   }
 }
 
@@ -4429,7 +4864,13 @@ function setupTrends() {
     renderTrends();
   });
 
-  ['trends-event-type', 'trends-command', 'trends-start-date', 'trends-end-date'].forEach((id) => {
+  [
+    'trends-compare',
+    'trends-event-type',
+    'trends-command',
+    'trends-start-date',
+    'trends-end-date',
+  ].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', renderTrends);
   });
 
