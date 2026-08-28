@@ -4363,6 +4363,7 @@ let trendsProjectionViewState = null;
 let trendsExplorerViewState = null;
 let trendsExplorerUserFunding = null;
 let trendsExplorerSliderMax = 0;
+let trendsExplorerAllocations = null;
 
 function getTrendsPeriodValue() {
   return document.getElementById('trends-period')?.value || 'this-fy';
@@ -6974,6 +6975,239 @@ function calculateTrendsExplorerScenario(funding, assumptions) {
   };
 }
 
+function calculateTrendsExplorerProgramScenario(allocatedAmount, assumptions) {
+  const amount = Number.isFinite(allocatedAmount) && allocatedAmount > 0 ? allocatedAmount : 0;
+  const avgCostPerEvent = assumptions?.avgCostPerEvent;
+  if (!(avgCostPerEvent > 0) || !Number.isFinite(avgCostPerEvent)) {
+    return {
+      funding: amount,
+      estimatedEvents: 0,
+      estimatedReach: null,
+      modeledSpend: 0,
+      remaining: amount,
+    };
+  }
+
+  const estimatedEvents = Math.max(0, Math.floor(amount / avgCostPerEvent));
+  const modeledSpend = estimatedEvents * avgCostPerEvent;
+  const remaining = Math.max(0, amount - modeledSpend);
+  const canEstimateReach = assumptions.participantReach > 0
+    && assumptions.avgParticipantsPerEvent != null
+    && Number.isFinite(assumptions.avgParticipantsPerEvent);
+  const estimatedReach = canEstimateReach
+    ? Math.round(estimatedEvents * assumptions.avgParticipantsPerEvent)
+    : null;
+
+  return {
+    funding: amount,
+    estimatedEvents: Number.isFinite(estimatedEvents) ? estimatedEvents : 0,
+    estimatedReach: canEstimateReach && Number.isFinite(estimatedReach) ? estimatedReach : null,
+    modeledSpend: Number.isFinite(modeledSpend) ? modeledSpend : 0,
+    remaining: Number.isFinite(remaining) ? remaining : 0,
+  };
+}
+
+function aggregateTrendsExplorerPrograms(eligibleEvents) {
+  const map = new Map();
+  eligibleEvents.forEach((event) => {
+    const { key, label } = normalizeTrendsDemandEventType(event);
+    const existing = map.get(key) || { key, label, events: [] };
+    existing.events.push(event);
+    map.set(key, existing);
+  });
+
+  return [...map.values()]
+    .map((entry) => {
+      const assumptions = calculateTrendsExplorerAssumptions(entry.events);
+      return {
+        key: entry.key,
+        label: entry.label,
+        assumptions,
+      };
+    })
+    .filter((program) => (
+      program.assumptions.completedEvents > 0
+      && program.assumptions.avgCostPerEvent > 0
+      && Number.isFinite(program.assumptions.avgCostPerEvent)
+    ))
+    .sort((a, b) => {
+      if (b.assumptions.recordedCost !== a.assumptions.recordedCost) {
+        return b.assumptions.recordedCost - a.assumptions.recordedCost;
+      }
+      return a.label.localeCompare(b.label);
+    });
+}
+
+function allocateTrendsExplorerIntegerPercents(items, totalPoints) {
+  const safeTotal = Number.isFinite(totalPoints) ? Math.max(0, Math.round(totalPoints)) : 0;
+  if (!items.length) return {};
+  if (safeTotal <= 0) {
+    return Object.fromEntries(items.map((item) => [item.key, 0]));
+  }
+
+  const shareSum = items.reduce((sum, item) => sum + (Number(item.share) > 0 ? Number(item.share) : 0), 0);
+  const exactItems = items.map((item) => {
+    const share = Number(item.share) > 0 ? Number(item.share) : 0;
+    const exact = shareSum > 0 ? (share / shareSum) * safeTotal : safeTotal / items.length;
+    const floored = Math.floor(exact);
+    return {
+      key: item.key,
+      label: item.label || item.key,
+      percent: floored,
+      remainder: exact - floored,
+    };
+  });
+
+  let leftover = safeTotal - exactItems.reduce((sum, item) => sum + item.percent, 0);
+  if (leftover < 0) leftover = 0;
+  const ranked = [...exactItems].sort((a, b) => {
+    if (b.remainder !== a.remainder) return b.remainder - a.remainder;
+    return a.label.localeCompare(b.label);
+  });
+  for (let index = 0; index < leftover; index += 1) {
+    ranked[index % ranked.length].percent += 1;
+  }
+
+  return Object.fromEntries(exactItems.map((item) => [item.key, item.percent]));
+}
+
+function getTrendsExplorerHistoricalAllocationPercents(programs) {
+  if (!programs.length) return {};
+  if (programs.length === 1) return { [programs[0].key]: 100 };
+  return allocateTrendsExplorerIntegerPercents(
+    programs.map((program) => ({
+      key: program.key,
+      label: program.label,
+      share: program.assumptions.recordedCost,
+    })),
+    100
+  );
+}
+
+function resolveTrendsExplorerAllocations(programs, storedAllocations) {
+  const historical = getTrendsExplorerHistoricalAllocationPercents(programs);
+  if (!programs.length) return {};
+  if (!storedAllocations) return historical;
+
+  const currentKeys = programs.map((program) => program.key);
+  const preservedKeys = currentKeys.filter((key) => storedAllocations[key] != null);
+  const addedKeys = currentKeys.filter((key) => storedAllocations[key] == null);
+
+  if (preservedKeys.length === 0) return historical;
+
+  if (addedKeys.length === 0) {
+    if (preservedKeys.length === 1) return { [preservedKeys[0]]: 100 };
+    const preservedItems = programs
+      .filter((program) => preservedKeys.includes(program.key))
+      .map((program) => ({
+        key: program.key,
+        label: program.label,
+        share: storedAllocations[program.key] || 0,
+      }));
+    if (preservedItems.every((item) => !(item.share > 0))) return historical;
+    return allocateTrendsExplorerIntegerPercents(preservedItems, 100);
+  }
+
+  const totalCost = programs.reduce((sum, program) => sum + program.assumptions.recordedCost, 0);
+  const addedCost = programs
+    .filter((program) => addedKeys.includes(program.key))
+    .reduce((sum, program) => sum + program.assumptions.recordedCost, 0);
+  if (!(totalCost > 0)) return historical;
+  const addedShare = addedCost / totalCost;
+  if (!(addedShare > 0) || addedShare >= 1) return historical;
+
+  const addedTarget = Math.round(addedShare * 100);
+  if (addedTarget >= 100) return historical;
+
+  const addedItems = programs
+    .filter((program) => addedKeys.includes(program.key))
+    .map((program) => ({
+      key: program.key,
+      label: program.label,
+      share: program.assumptions.recordedCost,
+    }));
+  const addedPercents = addedTarget > 0
+    ? allocateTrendsExplorerIntegerPercents(addedItems, addedTarget)
+    : Object.fromEntries(addedItems.map((item) => [item.key, 0]));
+  const addedTotal = Object.values(addedPercents).reduce((sum, percent) => sum + percent, 0);
+  const preservedTarget = Math.max(0, 100 - addedTotal);
+  const preservedItems = programs
+    .filter((program) => preservedKeys.includes(program.key))
+    .map((program) => ({
+      key: program.key,
+      label: program.label,
+      share: storedAllocations[program.key] || 0,
+    }));
+  if (preservedItems.every((item) => !(item.share > 0))) {
+    preservedItems.forEach((item) => {
+      item.share = 1;
+    });
+  }
+  const preservedPercents = allocateTrendsExplorerIntegerPercents(preservedItems, preservedTarget);
+  return { ...addedPercents, ...preservedPercents };
+}
+
+function redistributeTrendsExplorerAllocations(programs, currentPercents, editedKey, editedPercent) {
+  if (programs.length === 1) return { [programs[0].key]: 100 };
+
+  const nextPercent = Math.max(0, Math.min(100, Math.round(editedPercent)));
+  const others = programs.filter((program) => program.key !== editedKey);
+  const remaining = 100 - nextPercent;
+
+  const positiveOthers = others.filter((program) => (currentPercents[program.key] || 0) > 0);
+  const otherItems = others.map((program) => {
+    let share = 0;
+    if (remaining <= 0) share = 0;
+    else if (positiveOthers.length > 0) share = currentPercents[program.key] || 0;
+    else share = 1;
+    return {
+      key: program.key,
+      label: program.label,
+      share,
+    };
+  });
+  const otherPercents = allocateTrendsExplorerIntegerPercents(otherItems, remaining);
+  return {
+    [editedKey]: nextPercent,
+    ...otherPercents,
+  };
+}
+
+function calculateTrendsExplorerAllocatedTotals(funding, programs, percents) {
+  const scenarioFunding = normalizeTrendsExplorerFunding(funding);
+  const rows = programs.map((program) => {
+    const percent = percents[program.key] || 0;
+    const allocated = scenarioFunding * percent / 100;
+    const scenario = calculateTrendsExplorerProgramScenario(allocated, program.assumptions);
+    return {
+      program,
+      percent,
+      allocated,
+      scenario,
+    };
+  });
+
+  const estimatedEvents = rows.reduce((sum, row) => sum + (row.scenario.estimatedEvents || 0), 0);
+  const allocatedRows = rows.filter((row) => row.percent > 0);
+  const reachRows = allocatedRows.filter((row) => row.scenario.estimatedReach != null);
+  const missingReachRows = allocatedRows.filter((row) => row.scenario.estimatedReach == null);
+  const estimatedReach = reachRows.length
+    ? reachRows.reduce((sum, row) => sum + row.scenario.estimatedReach, 0)
+    : null;
+  const modeledSpend = rows.reduce((sum, row) => sum + (row.scenario.modeledSpend || 0), 0);
+  const remaining = Math.max(0, scenarioFunding - modeledSpend);
+
+  return {
+    funding: scenarioFunding,
+    rows,
+    estimatedEvents: Number.isFinite(estimatedEvents) ? estimatedEvents : 0,
+    estimatedReach: estimatedReach != null && Number.isFinite(estimatedReach) ? estimatedReach : null,
+    reachIncomplete: missingReachRows.length,
+    modeledSpend: Number.isFinite(modeledSpend) ? modeledSpend : 0,
+    remaining: Number.isFinite(remaining) ? remaining : 0,
+  };
+}
+
 function resolveTrendsExplorerSliderMax(historicalCost, funding, existingMax) {
   const defaultMax = getTrendsExplorerCleanMax(historicalCost * 2);
   const fundingMax = funding > defaultMax ? getTrendsExplorerCleanMax(funding) : 0;
@@ -6995,6 +7229,9 @@ function applyTrendsExplorerFunding(amount, options = {}) {
     normalized,
     trendsExplorerSliderMax
   );
+  if (trendsExplorerViewState) {
+    trendsExplorerViewState.funding = normalized;
+  }
   updateTrendsExplorerControls(normalized, trendsExplorerSliderMax);
   renderTrendsExplorerOutputs(normalized, assumptions);
 }
@@ -7022,17 +7259,34 @@ function updateTrendsExplorerControls(funding, sliderMax) {
   }
 }
 
-function buildTrendsExplorerSummary(scenario) {
+function buildTrendsExplorerSummary(scenario, options = {}) {
   const fundingText = formatTrendsExplorerFunding(scenario.funding);
   const events = scenario.estimatedEvents;
   if (events == null || !Number.isFinite(events)) return '';
   const eventUnit = events === 1 ? 'completed event' : 'completed events';
+  const prefix = options.allocationMode
+    ? 'Based on the selected program allocations'
+    : 'Based on the selected historical data';
+  const ratePhrase = options.allocationMode
+    ? 'using observed historical delivery rates'
+    : 'at the observed historical delivery rate';
+
   if (scenario.estimatedReach == null) {
-    return `Based on the selected historical data, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} at the observed historical delivery rate.`;
+    if (options.allocationMode) {
+      return `${prefix}, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} ${ratePhrase}. Participant reach is unavailable for the allocated programs.`;
+    }
+    return `${prefix}, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} ${ratePhrase}.`;
   }
+
   const reach = scenario.estimatedReach;
   const reachUnit = reach === 1 ? 'participant engagement' : 'participant engagements';
-  return `Based on the selected historical data, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} and ${reach.toLocaleString('en-US')} ${reachUnit} at the observed historical delivery rate.`;
+  const reachCount = reach.toLocaleString('en-US');
+  if (options.reachIncomplete > 0) {
+    const excluded = options.reachIncomplete;
+    const programUnit = excluded === 1 ? 'allocated program' : 'allocated programs';
+    return `${prefix}, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} and ${reachCount}+ ${reachUnit} ${ratePhrase}. Participant reach excludes ${excluded} ${programUnit} without historical participant data.`;
+  }
+  return `${prefix}, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} and ${reachCount} ${reachUnit} ${ratePhrase}.`;
 }
 
 function renderTrendsExplorerOutputs(funding, assumptions) {
@@ -7040,8 +7294,23 @@ function renderTrendsExplorerOutputs(funding, assumptions) {
   const reachEl = document.getElementById('trends-explorer-reach-value');
   const fundingEl = document.getElementById('trends-explorer-funding-value');
   const spendEl = document.getElementById('trends-explorer-spend');
+  const reachNoteEl = document.getElementById('trends-explorer-reach-note');
   const summaryEl = document.getElementById('trends-explorer-summary');
   if (!eventsEl || !reachEl || !fundingEl || !spendEl || !summaryEl) return;
+
+  const programs = trendsExplorerViewState?.programs || [];
+  const percents = trendsExplorerViewState?.allocations;
+  if (programs.length && percents) {
+    const totals = calculateTrendsExplorerAllocatedTotals(funding, programs, percents);
+    renderTrendsExplorerTotals(totals);
+    renderTrendsExplorerAllocation(totals);
+    return;
+  }
+
+  if (reachNoteEl) {
+    reachNoteEl.hidden = true;
+    reachNoteEl.textContent = '';
+  }
 
   const scenario = calculateTrendsExplorerScenario(funding, assumptions);
   eventsEl.textContent = scenario.estimatedEvents == null
@@ -7064,6 +7333,244 @@ function renderTrendsExplorerOutputs(funding, assumptions) {
   spendEl.hidden = false;
   summaryEl.textContent = buildTrendsExplorerSummary(scenario);
   summaryEl.hidden = false;
+}
+
+function renderTrendsExplorerTotals(totals) {
+  const eventsEl = document.getElementById('trends-explorer-events-value');
+  const reachEl = document.getElementById('trends-explorer-reach-value');
+  const fundingEl = document.getElementById('trends-explorer-funding-value');
+  const spendEl = document.getElementById('trends-explorer-spend');
+  const reachNoteEl = document.getElementById('trends-explorer-reach-note');
+  const summaryEl = document.getElementById('trends-explorer-summary');
+  if (!eventsEl || !reachEl || !fundingEl || !spendEl || !summaryEl) return;
+
+  eventsEl.textContent = String(totals.estimatedEvents);
+  if (totals.estimatedReach == null) {
+    reachEl.textContent = '—';
+  } else if (totals.reachIncomplete > 0) {
+    reachEl.textContent = `${totals.estimatedReach.toLocaleString('en-US')}+`;
+  } else {
+    reachEl.textContent = totals.estimatedReach.toLocaleString('en-US');
+  }
+  fundingEl.textContent = formatTrendsExplorerFunding(totals.funding);
+
+  spendEl.textContent = `Modeled event spend: ${formatTrendsExplorerCurrencyAuto(totals.modeledSpend)}. Remaining scenario funding: ${formatTrendsExplorerCurrencyAuto(totals.remaining)}.`;
+  spendEl.hidden = false;
+
+  if (reachNoteEl) {
+    if (totals.reachIncomplete > 0 && totals.estimatedReach != null) {
+      const programUnit = totals.reachIncomplete === 1 ? 'allocated program' : 'allocated programs';
+      reachNoteEl.textContent = `Participant reach excludes ${totals.reachIncomplete} ${programUnit} without historical participant data.`;
+      reachNoteEl.hidden = false;
+    } else {
+      reachNoteEl.textContent = '';
+      reachNoteEl.hidden = true;
+    }
+  }
+
+  summaryEl.textContent = buildTrendsExplorerSummary(totals, {
+    allocationMode: true,
+    reachIncomplete: totals.reachIncomplete,
+  });
+  summaryEl.hidden = false;
+}
+
+function formatTrendsExplorerAllocationHistory(assumptions) {
+  const costText = assumptions.avgCostPerEvent != null && Number.isFinite(assumptions.avgCostPerEvent)
+    ? formatTotalRecordedEventCost(assumptions.avgCostPerEvent)
+    : '—';
+  const reachText = assumptions.avgParticipantsPerEvent != null && Number.isFinite(assumptions.avgParticipantsPerEvent)
+    ? assumptions.avgParticipantsPerEvent.toFixed(1)
+    : '—';
+  return `Avg cost/event: ${costText}. Avg participants/event: ${reachText}.`;
+}
+
+function formatTrendsExplorerAllocationScenario(row) {
+  const eventsText = String(row.scenario.estimatedEvents || 0);
+  const reachText = row.scenario.estimatedReach == null
+    ? '—'
+    : row.scenario.estimatedReach.toLocaleString('en-US');
+  const unusedText = formatTrendsExplorerCurrencyAuto(row.scenario.remaining || 0);
+  return `Estimated Events: ${eventsText}. Estimated Reach: ${reachText}. Unused Allocation: ${unusedText}.`;
+}
+
+function updateTrendsExplorerAllocationRow(rowEl, row, singleProgram) {
+  const percentEl = rowEl.querySelector('[data-explorer-percent]');
+  const dollarsEl = rowEl.querySelector('[data-explorer-dollars]');
+  const historyEl = rowEl.querySelector('[data-explorer-history]');
+  const scenarioEl = rowEl.querySelector('[data-explorer-scenario]');
+  const slider = rowEl.querySelector('[data-explorer-program]');
+  if (percentEl) percentEl.textContent = `${row.percent}%`;
+  if (dollarsEl) dollarsEl.textContent = formatTrendsExplorerFunding(row.allocated);
+  if (historyEl) historyEl.textContent = formatTrendsExplorerAllocationHistory(row.program.assumptions);
+  if (scenarioEl) scenarioEl.textContent = formatTrendsExplorerAllocationScenario(row);
+  if (slider) {
+    slider.min = '0';
+    slider.max = '100';
+    slider.step = '1';
+    slider.value = String(row.percent);
+    slider.disabled = singleProgram;
+    slider.setAttribute('aria-valuemin', '0');
+    slider.setAttribute('aria-valuemax', '100');
+    slider.setAttribute('aria-valuenow', String(row.percent));
+    slider.setAttribute('aria-valuetext', `${row.percent} percent`);
+  }
+}
+
+function buildTrendsExplorerAllocationRow(row, singleProgram) {
+  const rowEl = document.createElement('div');
+  rowEl.className = 'trends-explorer-allocation-row';
+  rowEl.dataset.explorerProgramRow = row.program.key;
+
+  const programCell = document.createElement('div');
+  const nameEl = document.createElement('div');
+  nameEl.className = 'trends-explorer-allocation-name';
+  nameEl.textContent = row.program.label;
+  const historyEl = document.createElement('p');
+  historyEl.className = 'trends-explorer-allocation-history';
+  historyEl.dataset.explorerHistory = '';
+  historyEl.textContent = formatTrendsExplorerAllocationHistory(row.program.assumptions);
+  programCell.append(nameEl, historyEl);
+
+  const allocationCell = document.createElement('div');
+  const allocationLabel = document.createElement('div');
+  allocationLabel.className = 'trends-explorer-allocation-kicker';
+  allocationLabel.textContent = 'Allocation';
+  const percentEl = document.createElement('div');
+  percentEl.className = 'trends-explorer-allocation-percent';
+  percentEl.dataset.explorerPercent = '';
+  percentEl.textContent = `${row.percent}%`;
+  const dollarsEl = document.createElement('div');
+  dollarsEl.className = 'trends-explorer-allocation-dollars';
+  dollarsEl.dataset.explorerDollars = '';
+  dollarsEl.textContent = formatTrendsExplorerFunding(row.allocated);
+  allocationCell.append(allocationLabel, percentEl, dollarsEl);
+
+  const sliderCell = document.createElement('div');
+  sliderCell.className = 'trends-explorer-allocation-slider-cell';
+  const sliderId = `trends-explorer-allocation-slider-${row.program.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const sliderLabel = document.createElement('label');
+  sliderLabel.className = 'visually-hidden';
+  sliderLabel.setAttribute('for', sliderId);
+  sliderLabel.textContent = `${row.program.label} allocation percentage`;
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.id = sliderId;
+  slider.className = 'trends-explorer-allocation-slider';
+  slider.dataset.explorerProgram = row.program.key;
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  slider.value = String(row.percent);
+  slider.disabled = singleProgram;
+  slider.setAttribute('aria-valuemin', '0');
+  slider.setAttribute('aria-valuemax', '100');
+  slider.setAttribute('aria-valuenow', String(row.percent));
+  slider.setAttribute('aria-valuetext', `${row.percent} percent`);
+  sliderCell.append(sliderLabel, slider);
+
+  const scenarioCell = document.createElement('div');
+  scenarioCell.className = 'trends-explorer-allocation-scenario-cell';
+  const scenarioLabel = document.createElement('div');
+  scenarioLabel.className = 'trends-explorer-allocation-kicker';
+  scenarioLabel.textContent = 'Scenario';
+  const scenarioEl = document.createElement('p');
+  scenarioEl.className = 'trends-explorer-allocation-scenario';
+  scenarioEl.dataset.explorerScenario = '';
+  scenarioEl.textContent = formatTrendsExplorerAllocationScenario(row);
+  scenarioCell.append(scenarioLabel, scenarioEl);
+
+  rowEl.append(programCell, allocationCell, sliderCell, scenarioCell);
+  return rowEl;
+}
+
+function renderTrendsExplorerAllocationSummary(totals) {
+  const summaryEl = document.getElementById('trends-explorer-allocation-summary');
+  if (!summaryEl) return;
+  const allocatedPct = totals.rows.reduce((sum, row) => sum + row.percent, 0);
+  const programCount = totals.rows.length;
+  const programLabel = programCount === 1 ? 'Program' : 'Programs';
+  summaryEl.replaceChildren();
+
+  const allocated = document.createElement('span');
+  allocated.append('Allocated: ');
+  const allocatedValue = document.createElement('strong');
+  allocatedValue.textContent = `${allocatedPct}%`;
+  allocated.append(allocatedValue);
+
+  const funding = document.createElement('span');
+  funding.append('Scenario Funding: ');
+  const fundingValue = document.createElement('strong');
+  fundingValue.textContent = formatTrendsExplorerFunding(totals.funding);
+  funding.append(fundingValue);
+
+  const programs = document.createElement('span');
+  programs.append(`${programLabel}: `);
+  const programsValue = document.createElement('strong');
+  programsValue.textContent = String(programCount);
+  programs.append(programsValue);
+  summaryEl.append(allocated, funding, programs);
+}
+
+function renderTrendsExplorerAllocation(totals) {
+  const section = document.getElementById('trends-explorer-allocation');
+  const rowsEl = document.getElementById('trends-explorer-allocation-rows');
+  if (!section || !rowsEl) return;
+
+  if (!totals.rows.length) {
+    section.hidden = true;
+    rowsEl.replaceChildren();
+    return;
+  }
+
+  section.hidden = false;
+  renderTrendsExplorerAllocationSummary(totals);
+
+  const singleProgram = totals.rows.length === 1;
+  const existingRows = [...rowsEl.children];
+  const existingKeys = existingRows.map((rowEl) => rowEl.dataset.explorerProgramRow);
+  const nextKeys = totals.rows.map((row) => row.program.key);
+  const canReuse = existingKeys.length === nextKeys.length
+    && nextKeys.every((key, index) => existingKeys[index] === key);
+
+  if (!canReuse) {
+    rowsEl.replaceChildren();
+    totals.rows.forEach((row) => {
+      rowsEl.append(buildTrendsExplorerAllocationRow(row, singleProgram));
+    });
+    return;
+  }
+
+  existingRows.forEach((rowEl, index) => {
+    updateTrendsExplorerAllocationRow(rowEl, totals.rows[index], singleProgram);
+  });
+}
+
+function applyTrendsExplorerAllocationChange(programKey, editedPercent) {
+  const state = trendsExplorerViewState;
+  if (!state?.programs?.length) return;
+  const nextAllocations = redistributeTrendsExplorerAllocations(
+    state.programs,
+    state.allocations || {},
+    programKey,
+    editedPercent
+  );
+  trendsExplorerAllocations = nextAllocations;
+  state.allocations = nextAllocations;
+  const totals = calculateTrendsExplorerAllocatedTotals(state.funding, state.programs, nextAllocations);
+  renderTrendsExplorerTotals(totals);
+  renderTrendsExplorerAllocation(totals);
+}
+
+function resetTrendsExplorerAllocations() {
+  const state = trendsExplorerViewState;
+  if (!state?.programs?.length) return;
+  const historical = getTrendsExplorerHistoricalAllocationPercents(state.programs);
+  trendsExplorerAllocations = historical;
+  state.allocations = historical;
+  const totals = calculateTrendsExplorerAllocatedTotals(state.funding, state.programs, historical);
+  renderTrendsExplorerTotals(totals);
+  renderTrendsExplorerAllocation(totals);
 }
 
 function renderTrendsExplorerAssumptions(range, assumptions) {
@@ -7100,7 +7607,9 @@ function renderTrendsExplorerAssumptions(range, assumptions) {
 function showTrendsExplorerEmpty(message) {
   const empty = document.getElementById('trends-explorer-empty');
   const body = document.getElementById('trends-explorer-body');
+  const allocation = document.getElementById('trends-explorer-allocation');
   trendsExplorerViewState = null;
+  if (allocation) allocation.hidden = true;
   if (body) body.hidden = true;
   if (empty) {
     empty.textContent = message;
@@ -7149,7 +7658,16 @@ function renderTrendsExplorerSection(filters) {
     trendsExplorerSliderMax
   );
 
-  trendsExplorerViewState = { basis, assumptions, funding };
+  const programs = aggregateTrendsExplorerPrograms(eligibleEvents);
+  const allocations = resolveTrendsExplorerAllocations(programs, trendsExplorerAllocations);
+
+  trendsExplorerViewState = {
+    basis,
+    assumptions,
+    funding,
+    programs,
+    allocations,
+  };
   renderTrendsExplorerAssumptions(basis, assumptions);
   updateTrendsExplorerControls(funding, trendsExplorerSliderMax);
   renderTrendsExplorerOutputs(funding, assumptions);
@@ -7317,6 +7835,18 @@ function setupTrends() {
         : normalizeTrendsExplorerFunding(trendsExplorerViewState?.assumptions?.recordedCost || 0));
     if (parsed != null) applyTrendsExplorerFunding(parsed, { fromUser: true });
     explorerInput.value = formatTrendsExplorerFunding(fallback);
+  });
+
+  document.getElementById('trends-explorer-allocation-rows')?.addEventListener('input', (event) => {
+    const slider = event.target.closest('[data-explorer-program]');
+    if (!slider) return;
+    const parsedPercent = Number.parseInt(slider.value, 10);
+    if (!Number.isFinite(parsedPercent)) return;
+    applyTrendsExplorerAllocationChange(slider.dataset.explorerProgram, parsedPercent);
+  });
+
+  document.getElementById('trends-explorer-allocation-reset')?.addEventListener('click', () => {
+    resetTrendsExplorerAllocations();
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');
