@@ -3360,6 +3360,91 @@ body:has(#new-event-modal[open]) {
   min-width: 0;
 }
 
+#view-trends .trends-chart-controls-end {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+#view-trends .trends-outlook-export-btn {
+  padding: 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#view-trends .trends-outlook-export-btn:hover {
+  background: #f9fafb;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-outlook-export-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#view-trends .trends-outlook-export-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+#view-trends .trends-section-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+#view-trends .trends-section-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#view-trends .trends-section-export-btn:hover {
+  background: #f9fafb;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-section-export-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#view-trends .trends-section-export-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+#view-trends .trends-section-export-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
 #view-trends .trends-chart-metric-field {
   min-width: 180px;
 }
@@ -4533,6 +4618,23 @@ body:has(#new-event-modal[open]) {
 
   #view-trends .trends-chart-switch {
     flex: 1 1 100%;
+  }
+
+  #view-trends .trends-chart-controls-end {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+
+  #view-trends .trends-section-header-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+
+  #view-trends .trends-section-header-actions .trends-demand-metric-field {
+    flex: 1 1 auto;
+    min-width: min(180px, 100%);
   }
 
   #view-trends .trends-chart-program-menu {

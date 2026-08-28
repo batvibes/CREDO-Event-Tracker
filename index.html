@@ -795,6 +795,9 @@
                       <option value="12">12 Months</option>
                     </select>
                   </label>
+                  <div class="trends-chart-controls-end">
+                    <button type="button" class="trends-outlook-export-btn" id="trends-outlook-export-btn">Export Report</button>
+                  </div>
                 </div>
               </div>
               <div class="trends-chart-legend" id="trends-chart-legend" hidden></div>
@@ -817,13 +820,21 @@
                   <h3 class="trends-chart-title">Program Demand</h3>
                   <p class="trends-chart-subtitle">See which programs received the most activity during the selected period.</p>
                 </div>
-                <label class="trends-filter-field trends-demand-metric-field">
-                  <span class="trends-filter-label">Measure By</span>
-                  <select id="trends-demand-metric" class="filter-select" aria-label="Program demand measure">
-                    <option value="participantReach" selected>Participant Reach</option>
-                    <option value="completedEvents">Completed Events</option>
-                  </select>
-                </label>
+                <div class="trends-section-header-actions">
+                  <label class="trends-filter-field trends-demand-metric-field">
+                    <span class="trends-filter-label">Measure By</span>
+                    <select id="trends-demand-metric" class="filter-select" aria-label="Program demand measure">
+                      <option value="participantReach" selected>Participant Reach</option>
+                      <option value="completedEvents">Completed Events</option>
+                    </select>
+                  </label>
+                  <button type="button" class="trends-section-export-btn" id="trends-demand-export-btn" aria-label="Export Program Demand report">
+                    <svg class="trends-section-export-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                      <path d="M8 2v8m0 0L5.5 7.5M8 10l2.5-2.5M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                    <span>Export</span>
+                  </button>
+                </div>
               </div>
               <div class="trends-breakdown-summary" id="trends-demand-summary" hidden></div>
               <div class="trends-breakdown-legend" id="trends-demand-legend" hidden>
@@ -846,13 +857,21 @@
                   <h3 class="trends-chart-title">Command Reach</h3>
                   <p class="trends-chart-subtitle">See which commands CREDO served during the selected period and how that reach compares over time.</p>
                 </div>
-                <label class="trends-filter-field trends-demand-metric-field">
-                  <span class="trends-filter-label">Measure By</span>
-                  <select id="trends-reach-metric" class="filter-select" aria-label="Command reach measure">
-                    <option value="participantReach" selected>Participant Reach</option>
-                    <option value="completedEvents">Completed Events</option>
-                  </select>
-                </label>
+                <div class="trends-section-header-actions">
+                  <label class="trends-filter-field trends-demand-metric-field">
+                    <span class="trends-filter-label">Measure By</span>
+                    <select id="trends-reach-metric" class="filter-select" aria-label="Command reach measure">
+                      <option value="participantReach" selected>Participant Reach</option>
+                      <option value="completedEvents">Completed Events</option>
+                    </select>
+                  </label>
+                  <button type="button" class="trends-section-export-btn" id="trends-reach-export-btn" aria-label="Export Command Reach report">
+                    <svg class="trends-section-export-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                      <path d="M8 2v8m0 0L5.5 7.5M8 10l2.5-2.5M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                    <span>Export</span>
+                  </button>
+                </div>
               </div>
               <div class="trends-breakdown-summary" id="trends-reach-summary" hidden></div>
               <div class="trends-breakdown-legend" id="trends-reach-legend" hidden>
@@ -875,6 +894,14 @@
                 <div class="trends-chart-heading">
                   <h3 class="trends-chart-title">Resource Impact</h3>
                   <p class="trends-chart-subtitle">See how recorded event costs relate to CREDO activity during the selected period.</p>
+                </div>
+                <div class="trends-section-header-actions">
+                  <button type="button" class="trends-section-export-btn" id="trends-resource-export-btn" aria-label="Export Resource Impact report">
+                    <svg class="trends-section-export-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                      <path d="M8 2v8m0 0L5.5 7.5M8 10l2.5-2.5M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                    <span>Export</span>
+                  </button>
                 </div>
               </div>
               <p class="trends-breakdown-empty" id="trends-resource-empty" hidden></p>
@@ -927,6 +954,14 @@
                 <div class="trends-chart-heading">
                   <h3 class="trends-chart-title">Impact Explorer</h3>
                   <p class="trends-chart-subtitle">See what gaining or losing event funding could mean for CREDO, then decide where that gain or loss lands.</p>
+                </div>
+                <div class="trends-section-header-actions">
+                  <button type="button" class="trends-section-export-btn" id="trends-explorer-export-btn" aria-label="Export Impact Explorer report">
+                    <svg class="trends-section-export-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                      <path d="M8 2v8m0 0L5.5 7.5M8 10l2.5-2.5M3 12.5h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                    <span>Export</span>
+                  </button>
                 </div>
               </div>
               <p class="trends-breakdown-empty" id="trends-explorer-empty" hidden></p>

@@ -43,6 +43,20 @@ import { clearMirOpenPhotoSection, renderMirOpenPhotoSection } from './mir-photo
 import { applyMirPhotoSlots, clearMirPhotoSlots, getMirPhotosForSave, setupMirPhotoUploads } from './mir-photo-upload.js';
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
 import { exportEventSyncReportPdf } from './event-report-pdf-export.js';
+import {
+  buildTrendsOutlookPdfFilename,
+  exportTrendsOutlookReportPdf,
+} from './trends-outlook-pdf-export.js';
+import {
+  buildCommandReachPdfFilename,
+  buildImpactExplorerPdfFilename,
+  buildProgramDemandPdfFilename,
+  buildResourceImpactPdfFilename,
+  exportCommandReachReportPdf,
+  exportImpactExplorerReportPdf,
+  exportProgramDemandReportPdf,
+  exportResourceImpactReportPdf,
+} from './trends-section-pdf-export.js';
 // PDF libraries load on demand via aar-pdf-export.js — not at app bootstrap.
 import {
   canDeleteEvents,
@@ -4864,8 +4878,6 @@ function renderTrendsComparisonExplainer(period, compareMode, currentRange, comp
 
 function renderTrendsKpis(metrics, comparison) {
   const grid = document.getElementById('trends-kpi-grid');
-  if (!grid) return;
-
   const cards = [
     { key: 'completedEvents', label: 'Completed Events' },
     { key: 'participantReach', label: 'Participant Reach' },
@@ -4873,6 +4885,19 @@ function renderTrendsKpis(metrics, comparison) {
     { key: 'totalRecordedEventCost', label: 'Total Recorded Event Cost' },
     { key: 'costPerParticipant', label: 'Cost per Participant' },
   ];
+
+  trendsOutlookKpiSnapshot = cards.map((card) => {
+    const comparisonInfo = comparison?.[card.key];
+    return {
+      key: card.key,
+      label: card.label,
+      value: formatTrendsKpiValue(card.key, metrics),
+      comparisonText: comparisonInfo?.text || '',
+      comparisonDirection: comparisonInfo?.direction || 'neutral',
+    };
+  });
+
+  if (!grid) return;
 
   grid.innerHTML = cards
     .map((card) => {
@@ -4905,6 +4930,12 @@ const TRENDS_OUTLOOK_PROJECTION_COLOR = '#6b5ca5';
 const TRENDS_OUTLOOK_PROGRAM_COLORS = ['#2f6f4e', '#1d4ed8', '#a16207', '#0f766e'];
 
 let trendsChartDrawState = null;
+let trendsOutlookKpiSnapshot = null;
+let trendsOutlookReportSnapshot = null;
+let trendsDemandReportSnapshot = null;
+let trendsReachReportSnapshot = null;
+let trendsResourceReportSnapshot = null;
+let trendsExplorerReportSnapshot = null;
 let trendsOutlookSelectedKeys = [];
 let trendsOutlookMultiCompareEnabled = false;
 let trendsOutlookPrevProgramCount = 0;
@@ -5738,6 +5769,185 @@ function getTrendsOutlookProjectionHorizonLabel(months) {
   return 'Projected Next 3 Months';
 }
 
+function getTrendsPeriodOptionLabel() {
+  const select = document.getElementById('trends-period');
+  return select?.options[select.selectedIndex]?.text || 'Selected period';
+}
+
+function getTrendsReportBaseMeta() {
+  const periodLabel = getTrendsPeriodOptionLabel();
+  const range = getTrendsCurrentRange();
+  const rangeText = range ? formatTrendsExplainerRange(range) : '';
+  const compareMode = getTrendsCompareMode();
+  const comparisonLabel = compareMode === TRENDS_COMPARE_NONE
+    ? 'None'
+    : (getTrendsComparisonPhrase(compareMode) || 'None');
+  return {
+    periodLabel: rangeText ? `${periodLabel} (${rangeText})` : periodLabel,
+    comparisonLabel,
+    compareMode,
+    comparePhrase: getTrendsComparisonPhrase(compareMode),
+  };
+}
+
+function getTrendsMeasureByLabel(selectId) {
+  const select = document.getElementById(selectId);
+  return select?.options[select.selectedIndex]?.text || 'Participant Reach';
+}
+
+function buildTrendsBreakdownReportRows(rows, metricKey, compareMode) {
+  const scaleMax = getTrendsBreakdownScaleMax(rows, compareMode);
+  return rows.map((row) => {
+    const comparison = compareMode === TRENDS_COMPARE_NONE
+      ? null
+      : buildTrendsMetricComparison(row.currentValue, row.baselineValue, compareMode);
+    return {
+      key: row.key,
+      label: row.label,
+      currentValue: row.currentValue,
+      baselineValue: row.baselineValue,
+      valueText: formatTrendsBreakdownValue(metricKey, row.currentValue),
+      comparisonText: comparison?.text || '',
+      comparisonDirection: comparison?.direction || 'neutral',
+      currentPct: getTrendsBreakdownDotPercent(row.currentValue, scaleMax),
+      comparePct: getTrendsBreakdownDotPercent(row.baselineValue, scaleMax),
+      showCompare: compareMode !== TRENDS_COMPARE_NONE,
+    };
+  });
+}
+
+function setTrendsSectionExportBusy(button, busy, idleLabel = 'Export') {
+  if (!button) return;
+  button.disabled = Boolean(busy);
+  const label = button.querySelector('span:last-child');
+  if (label) label.textContent = busy ? 'Exporting…' : idleLabel;
+}
+
+async function runTrendsSectionExport(button, exportFn) {
+  setTrendsSectionExportBusy(button, true);
+  try {
+    await exportFn();
+  } catch (error) {
+    console.error('Trends section report export failed.', error);
+  } finally {
+    setTrendsSectionExportBusy(button, false);
+  }
+}
+
+function getTrendsOutlookProgramsReportLabel(selection = getTrendsOutlookSelection()) {
+  if (selection.mode === 'all' || !selection.programs?.length) return 'All Programs';
+  return selection.programs.map((program) => program.label).join(', ');
+}
+
+function getTrendsOutlookProjectionReportLabel(enabled) {
+  if (!enabled) return 'Off';
+  const months = getTrendsProjectionHorizonMonths();
+  if (months === 6) return 'Next 6 Months';
+  if (months === 12) return 'Next 12 Months';
+  return 'Next 3 Months';
+}
+
+function buildTrendsOutlookReportContext(selection = getTrendsOutlookSelection()) {
+  const base = getTrendsReportBaseMeta();
+  const showProjection = isTrendsChartProjectionEnabled();
+  return {
+    periodLabel: base.periodLabel,
+    comparisonLabel: base.comparisonLabel,
+    metricLabel: getTrendsChartMetricLabel(),
+    programsLabel: getTrendsOutlookProgramsReportLabel(selection),
+    projectionLabel: getTrendsOutlookProjectionReportLabel(showProjection),
+    projectionEnabled: showProjection,
+  };
+}
+
+function updateTrendsOutlookReportSnapshot(partial = {}) {
+  const context = partial.context || buildTrendsOutlookReportContext();
+  trendsOutlookReportSnapshot = {
+    kpis: trendsOutlookKpiSnapshot || [],
+    context,
+    chart: partial.chart || null,
+    emptyMessage: partial.emptyMessage || '',
+    legendItems: partial.legendItems || [],
+    legendHint: partial.legendHint || '',
+    note: partial.note || '',
+    projectionEnabled: Boolean(context.projectionEnabled),
+    projectionSummary: partial.projectionSummary || null,
+  };
+}
+
+async function exportTrendsOutlookReport() {
+  const button = document.getElementById('trends-outlook-export-btn');
+  const snapshot = trendsOutlookReportSnapshot;
+  if (!snapshot?.kpis?.length) return;
+
+  const previousLabel = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Exporting…';
+  }
+
+  try {
+    const generatedAt = new Date();
+    const payload = {
+      ...structuredClone(snapshot),
+      generatedAt,
+      filename: buildTrendsOutlookPdfFilename(generatedAt),
+    };
+    await exportTrendsOutlookReportPdf(payload);
+  } catch (error) {
+    console.error('Trend & Outlook report export failed.', error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel || 'Export Report';
+    }
+  }
+}
+
+async function exportTrendsDemandReport() {
+  const snapshot = trendsDemandReportSnapshot;
+  if (!snapshot) return;
+  const generatedAt = new Date();
+  await exportProgramDemandReportPdf({
+    ...structuredClone(snapshot),
+    generatedAt,
+    filename: buildProgramDemandPdfFilename(generatedAt),
+  });
+}
+
+async function exportTrendsReachReport() {
+  const snapshot = trendsReachReportSnapshot;
+  if (!snapshot) return;
+  const generatedAt = new Date();
+  await exportCommandReachReportPdf({
+    ...structuredClone(snapshot),
+    generatedAt,
+    filename: buildCommandReachPdfFilename(generatedAt),
+  });
+}
+
+async function exportTrendsResourceReport() {
+  const snapshot = trendsResourceReportSnapshot;
+  if (!snapshot) return;
+  const generatedAt = new Date();
+  await exportResourceImpactReportPdf({
+    ...structuredClone(snapshot),
+    generatedAt,
+    filename: buildResourceImpactPdfFilename(generatedAt),
+  });
+}
+
+async function exportTrendsExplorerReport() {
+  const snapshot = trendsExplorerReportSnapshot;
+  if (!snapshot) return;
+  const generatedAt = new Date();
+  await exportImpactExplorerReportPdf({
+    ...structuredClone(snapshot),
+    generatedAt,
+    filename: buildImpactExplorerPdfFilename(generatedAt),
+  });
+}
+
 function formatTrendsOutlookProjectedTotal(metricKey, months, projectedTotal) {
   const horizon = months === 6 ? 'Next 6 Months' : months === 12 ? 'Next 12 Months' : 'Next 3 Months';
   if (metricKey === 'completedEvents') {
@@ -6064,6 +6274,14 @@ function showTrendsChartEmpty(message) {
     wrap.hidden = true;
     wrap.innerHTML = '';
   }
+  updateTrendsOutlookReportSnapshot({
+    chart: null,
+    emptyMessage: message,
+    legendItems: [],
+    legendHint: '',
+    note: '',
+    projectionSummary: null,
+  });
 }
 
 function renderTrendsChartSection(currentRange, currentEvents, period) {
@@ -6489,6 +6707,25 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     ariaLabel: `Trend and outlook for ${metricLabel}`,
   };
   drawTrendsChartSvg(trendsChartDrawState);
+  updateTrendsOutlookReportSnapshot({
+    chart: {
+      seriesList,
+      axisLabels,
+      boundaryIndex,
+      boundaryLabel,
+      metricKey,
+      metricLabel,
+    },
+    emptyMessage: '',
+    legendItems,
+    legendHint,
+    note: noteParts.filter(Boolean).join(' '),
+    projectionSummary,
+    context: {
+      ...buildTrendsOutlookReportContext(selection),
+      metricLabel,
+    },
+  });
 }
 
 function getTrendsDemandMetricKey() {
@@ -6922,6 +7159,18 @@ function renderTrendsDemandSection(
       list: 'trends-demand-list',
       toggle: 'trends-demand-toggle',
     }, 'No finalized AAR data is available for Program Demand.');
+    const base = getTrendsReportBaseMeta();
+    trendsDemandReportSnapshot = {
+      periodLabel: base.periodLabel,
+      comparisonLabel: base.comparisonLabel,
+      measureByLabel: getTrendsMeasureByLabel('trends-demand-metric'),
+      summaryLines: [],
+      rows: [],
+      compareModeEnabled: false,
+      comparePhrase: '',
+      emptyMessage: 'No finalized AAR data is available for Program Demand.',
+      rowNote: '',
+    };
     return;
   }
 
@@ -6941,10 +7190,11 @@ function renderTrendsDemandSection(
   const rows = buildTrendsDemandRows(currentMap, baselineMap, metricKey, compareMode);
   const currentTotal = rows.reduce((sum, row) => sum + row.currentValue, 0);
   const metricPhrase = getTrendsBreakdownMetricPhrase(metricKey);
-  updateTrendsBreakdownSummary(summary, [
+  const summaryLines = [
     buildTrendsDemandHeadline(metricKey, currentTotal, currentMap.size),
     buildTrendsConcentrationSentence(rows, currentTotal, 3, 'program', 'programs', metricPhrase),
-  ]);
+  ];
+  updateTrendsBreakdownSummary(summary, summaryLines);
   updateTrendsBreakdownLegend(
     'trends-demand-legend',
     'trends-demand-legend-compare',
@@ -6964,6 +7214,20 @@ function renderTrendsDemandSection(
     'program',
     'programs'
   );
+  const base = getTrendsReportBaseMeta();
+  trendsDemandReportSnapshot = {
+    periodLabel: base.periodLabel,
+    comparisonLabel: base.comparisonLabel,
+    measureByLabel: getTrendsMeasureByLabel('trends-demand-metric'),
+    summaryLines,
+    rows: buildTrendsBreakdownReportRows(rows, metricKey, compareMode),
+    compareModeEnabled: compareMode !== TRENDS_COMPARE_NONE,
+    comparePhrase: base.comparePhrase,
+    emptyMessage: '',
+    rowNote: rows.length > TRENDS_BREAKDOWN_DEFAULT_ROWS
+      ? `Ranked programs include the full list of ${rows.length} programs.`
+      : '',
+  };
 }
 
 function getTrendsReachMetricKey() {
@@ -7019,6 +7283,18 @@ function renderTrendsReachSection(
       list: 'trends-reach-list',
       toggle: 'trends-reach-toggle',
     }, 'No finalized AAR data is available for Command Reach.');
+    const base = getTrendsReportBaseMeta();
+    trendsReachReportSnapshot = {
+      periodLabel: base.periodLabel,
+      comparisonLabel: base.comparisonLabel,
+      measureByLabel: getTrendsMeasureByLabel('trends-reach-metric'),
+      summaryLines: [],
+      rows: [],
+      compareModeEnabled: false,
+      comparePhrase: '',
+      emptyMessage: 'No finalized AAR data is available for Command Reach.',
+      rowNote: '',
+    };
     return;
   }
 
@@ -7038,10 +7314,11 @@ function renderTrendsReachSection(
   const rows = buildTrendsDemandRows(currentMap, baselineMap, metricKey, compareMode);
   const currentTotal = rows.reduce((sum, row) => sum + row.currentValue, 0);
   const metricPhrase = getTrendsBreakdownMetricPhrase(metricKey);
-  updateTrendsBreakdownSummary(summary, [
+  const summaryLines = [
     buildTrendsReachBreadthSentence(currentEvents),
     buildTrendsConcentrationSentence(rows, currentTotal, 5, 'command', 'commands', metricPhrase),
-  ]);
+  ];
+  updateTrendsBreakdownSummary(summary, summaryLines);
   updateTrendsBreakdownLegend(
     'trends-reach-legend',
     'trends-reach-legend-compare',
@@ -7061,6 +7338,26 @@ function renderTrendsReachSection(
     'command',
     'commands'
   );
+  const base = getTrendsReportBaseMeta();
+  const hasUnspecified = rows.some((row) => row.key === 'Unspecified');
+  trendsReachReportSnapshot = {
+    periodLabel: base.periodLabel,
+    comparisonLabel: base.comparisonLabel,
+    measureByLabel: getTrendsMeasureByLabel('trends-reach-metric'),
+    summaryLines,
+    rows: buildTrendsBreakdownReportRows(rows, metricKey, compareMode),
+    compareModeEnabled: compareMode !== TRENDS_COMPARE_NONE,
+    comparePhrase: base.comparePhrase,
+    emptyMessage: '',
+    rowNote: [
+      rows.length > TRENDS_BREAKDOWN_DEFAULT_ROWS
+        ? `Ranked commands include the full list of ${rows.length} commands.`
+        : '',
+      hasUnspecified
+        ? 'Unspecified appears in the ranked list when command is blank or TBD, but does not increase identified-command breadth.'
+        : '',
+    ].filter(Boolean).join(' '),
+  };
 }
 
 function getTrendsCostPerCompletedEvent(metrics) {
@@ -7328,6 +7625,20 @@ function renderTrendsResourceSection(
     empty.textContent = 'No finalized AAR data is available for Resource Impact.';
     empty.hidden = false;
     renderTrendsCostDetails(new Map());
+    const base = getTrendsReportBaseMeta();
+    trendsResourceReportSnapshot = {
+      periodLabel: base.periodLabel,
+      comparisonLabel: base.comparisonLabel,
+      kpis: [],
+      relationshipText: '',
+      spendingSummaryLines: [],
+      spendingRows: [],
+      compareModeEnabled: false,
+      comparePhrase: '',
+      costDetailsExpanded: trendsCostDetailsExpanded,
+      costDetailRows: [],
+      emptyMessage: 'No finalized AAR data is available for Resource Impact.',
+    };
     return;
   }
 
@@ -7363,7 +7674,7 @@ function renderTrendsResourceSection(
 
   const rows = buildTrendsDemandRows(currentMap, baselineMap, 'recordedCost', compareMode);
   const currentTotal = rows.reduce((sum, row) => sum + row.currentValue, 0);
-  updateTrendsBreakdownSummary(spendingSummary, [
+  const spendingSummaryLines = [
     `${formatTotalRecordedEventCost(currentTotal)} recorded across ${currentMap.size} ${currentMap.size === 1 ? 'program' : 'programs'}`,
     buildTrendsConcentrationSentence(
       rows,
@@ -7373,7 +7684,8 @@ function renderTrendsResourceSection(
       'programs',
       'recorded event costs'
     ),
-  ]);
+  ];
+  updateTrendsBreakdownSummary(spendingSummary, spendingSummaryLines);
   updateTrendsBreakdownLegend(
     'trends-spending-legend',
     'trends-spending-legend-compare',
@@ -7394,6 +7706,44 @@ function renderTrendsResourceSection(
     'programs'
   );
   renderTrendsCostDetails(currentMap);
+
+  const base = getTrendsReportBaseMeta();
+  const kpiCards = [
+    { key: 'totalRecordedEventCost', label: 'Total Recorded Event Cost' },
+    { key: 'costPerParticipant', label: 'Cost per Participant' },
+    { key: 'costPerCompletedEvent', label: 'Cost per Completed Event' },
+    { key: 'participantsPer10k', label: 'Participants per $10,000' },
+  ];
+  trendsResourceReportSnapshot = {
+    periodLabel: base.periodLabel,
+    comparisonLabel: base.comparisonLabel,
+    kpis: kpiCards.map((card) => {
+      const comparisonInfo = comparison?.[card.key];
+      const includeComparison = compareMode !== TRENDS_COMPARE_NONE
+        && comparisonInfo
+        && comparisonInfo.text !== 'No comparison';
+      return {
+        key: card.key,
+        label: card.label,
+        value: formatTrendsResourceMetricValue(card.key, currentMetrics),
+        comparisonText: includeComparison ? comparisonInfo.text : '',
+        comparisonDirection: comparisonInfo?.direction || 'neutral',
+      };
+    }),
+    relationshipText,
+    spendingSummaryLines,
+    spendingRows: buildTrendsBreakdownReportRows(rows, 'recordedCost', compareMode),
+    compareModeEnabled: compareMode !== TRENDS_COMPARE_NONE,
+    comparePhrase: base.comparePhrase,
+    costDetailsExpanded: trendsCostDetailsExpanded,
+    costDetailRows: buildTrendsCostDetailRows(currentMap).map((row) => ({
+      label: row.label,
+      recordedCost: formatTotalRecordedEventCost(row.recordedCost),
+      completedEvents: String(row.completedEvents),
+      avgCostPerEvent: formatTrendsAvgCostPerEvent(row.recordedCost, row.completedEvents),
+    })),
+    emptyMessage: '',
+  };
 }
 
 function buildTrendsCostDetailRows(currentMap) {
@@ -7429,6 +7779,19 @@ function renderTrendsCostDetails(currentMap) {
   toggle.textContent = trendsCostDetailsExpanded
     ? 'Hide program cost details'
     : 'View program cost details';
+
+  if (trendsResourceReportSnapshot) {
+    trendsResourceReportSnapshot = {
+      ...trendsResourceReportSnapshot,
+      costDetailsExpanded: trendsCostDetailsExpanded,
+      costDetailRows: buildTrendsCostDetailRows(currentMap).map((row) => ({
+        label: row.label,
+        recordedCost: formatTotalRecordedEventCost(row.recordedCost),
+        completedEvents: String(row.completedEvents),
+        avgCostPerEvent: formatTrendsAvgCostPerEvent(row.recordedCost, row.completedEvents),
+      })),
+    };
+  }
 
   if (!trendsCostDetailsExpanded) {
     details.hidden = true;
@@ -8309,6 +8672,89 @@ function renderTrendsExplorerOutputs() {
   summaryEl.textContent = buildTrendsExplorerSummary(totals);
   summaryEl.hidden = false;
   renderTrendsExplorerPrograms(totals);
+
+  const balanceItems = [];
+  if (totals.change > 0) {
+    balanceItems.push(['Additional Funding', formatTrendsExplorerSignedCurrency(totals.change)]);
+    balanceItems.push(['Assigned', formatTrendsExplorerCurrency(totals.assignedTotal)]);
+    balanceItems.push(['Still Available', formatTrendsExplorerCurrency(totals.unassigned)]);
+  } else if (totals.change < 0) {
+    balanceItems.push(['Funding Reduction', formatTrendsExplorerSignedCurrency(totals.change)]);
+    balanceItems.push(['Assigned Reduction', formatTrendsExplorerSignedCurrency(totals.assignedTotal)]);
+    balanceItems.push(['Reduction Still to Assign', formatTrendsExplorerSignedCurrency(totals.unassigned)]);
+  } else {
+    balanceItems.push(['Funding Change', '$0']);
+    balanceItems.push(['Assigned', '$0']);
+    balanceItems.push(['Still Available', '$0']);
+  }
+
+  const methodEl = document.querySelector('#trends-explorer-method p');
+  trendsExplorerReportSnapshot = {
+    emptyMessage: '',
+    basisLabel: formatTrendsProjectionRange(state.basis),
+    scenarioLabel: getTrendsExplorerChangeLabel(totals.change),
+    fundingChangeText: formatTrendsExplorerSignedCurrency(totals.change),
+    balanceItems,
+    impactKpis: [
+      {
+        label: 'Funding Change',
+        value: formatTrendsExplorerSignedCurrency(totals.change),
+        comparisonText: '',
+        comparisonDirection: 'neutral',
+      },
+      {
+        label: 'Estimated Event Impact',
+        value: `≈ ${formatTrendsExplorerSignedCount(totals.estimatedEvents, 'Event', 'Events')}`,
+        comparisonText: '',
+        comparisonDirection: 'neutral',
+      },
+      {
+        label: 'Estimated Participant Impact',
+        value: totals.estimatedReach == null
+          ? '—'
+          : (totals.reachIncomplete > 0
+            ? `≈ ${formatTrendsExplorerSignedCount(totals.estimatedReach, 'Participant Engagement', 'Participant Engagements')}+`
+            : `≈ ${formatTrendsExplorerSignedCount(totals.estimatedReach, 'Participant Engagement', 'Participant Engagements')}`),
+        comparisonText: '',
+        comparisonDirection: 'neutral',
+      },
+    ],
+    spendNote: spendEl.hidden ? '' : spendEl.textContent,
+    reachNote: reachNoteEl?.hidden ? '' : (reachNoteEl?.textContent || ''),
+    summary: summaryEl.textContent,
+    programs: totals.rows.map((row) => ({
+      label: row.program.label,
+      estimable: Boolean(row.program.estimable),
+      historyText: row.program.estimable
+        ? formatTrendsExplorerProgramHistory(row.program.assumptions)
+        : 'Insufficient recorded cost history',
+      fundingText: formatTrendsExplorerSignedCurrency(row.assigned),
+      eventsText: row.impact.estimatedEvents == null
+        ? '—'
+        : formatTrendsExplorerCompactSigned(row.impact.estimatedEvents),
+      reachText: row.impact.estimatedReach == null
+        ? (row.program.estimable ? 'unavailable' : '—')
+        : formatTrendsExplorerCompactSigned(row.impact.estimatedReach),
+      residualText: formatTrendsExplorerResidual(row),
+      avgCostPerEvent: row.program.assumptions?.avgCostPerEvent ?? null,
+      avgParticipantsPerEvent: row.program.assumptions?.avgParticipantsPerEvent ?? null,
+    })),
+    assumptions: [
+      ['Historical Basis', formatTrendsProjectionRange(state.basis)],
+      ['Completed Events', String(state.assumptions.completedEvents)],
+      ['Recorded Event Cost', formatTotalRecordedEventCost(state.assumptions.recordedCost)],
+      ['Avg Cost / Event', state.assumptions.avgCostPerEvent != null && Number.isFinite(state.assumptions.avgCostPerEvent)
+        ? formatTotalRecordedEventCost(state.assumptions.avgCostPerEvent)
+        : '—'],
+      ['Avg Participants / Event', state.assumptions.avgParticipantsPerEvent != null && Number.isFinite(state.assumptions.avgParticipantsPerEvent)
+        ? state.assumptions.avgParticipantsPerEvent.toFixed(1)
+        : '—'],
+      ...(state.assumptions.avgCostPerParticipant != null && Number.isFinite(state.assumptions.avgCostPerParticipant)
+        ? [['Avg Cost / Participant', formatTotalRecordedEventCost(state.assumptions.avgCostPerParticipant)]]
+        : []),
+    ],
+    methodText: methodEl?.textContent || 'Impact Explorer estimates how a hypothetical funding change could affect completed events and participant engagements using recorded historical CREDO event costs and delivery rates from the previous 12 months. It does not use or require a CREDO budget, and it does not model command impact.',
+  };
 }
 
 function applyTrendsExplorerProgramAssignment(programKey, requestedAmount) {
@@ -8407,6 +8853,9 @@ function showTrendsExplorerEmpty(message) {
     empty.textContent = message;
     empty.hidden = false;
   }
+  trendsExplorerReportSnapshot = {
+    emptyMessage: message,
+  };
 }
 
 function renderTrendsExplorerSection(filters) {
@@ -8549,6 +8998,33 @@ function setupTrends() {
   document.getElementById('trends-chart-metric')?.addEventListener('change', rerenderTrendsChart);
   document.getElementById('trends-chart-show-projection')?.addEventListener('change', rerenderTrendsChart);
   document.getElementById('trends-chart-projection-horizon')?.addEventListener('change', rerenderTrendsChart);
+  document.getElementById('trends-outlook-export-btn')?.addEventListener('click', () => {
+    exportTrendsOutlookReport();
+  });
+  document.getElementById('trends-demand-export-btn')?.addEventListener('click', () => {
+    runTrendsSectionExport(
+      document.getElementById('trends-demand-export-btn'),
+      exportTrendsDemandReport
+    );
+  });
+  document.getElementById('trends-reach-export-btn')?.addEventListener('click', () => {
+    runTrendsSectionExport(
+      document.getElementById('trends-reach-export-btn'),
+      exportTrendsReachReport
+    );
+  });
+  document.getElementById('trends-resource-export-btn')?.addEventListener('click', () => {
+    runTrendsSectionExport(
+      document.getElementById('trends-resource-export-btn'),
+      exportTrendsResourceReport
+    );
+  });
+  document.getElementById('trends-explorer-export-btn')?.addEventListener('click', () => {
+    runTrendsSectionExport(
+      document.getElementById('trends-explorer-export-btn'),
+      exportTrendsExplorerReport
+    );
+  });
 
   document.getElementById('trends-demand-metric')?.addEventListener('change', () => {
     const { currentEvents, compareMode, comparisonRanges, filters } = getTrendsBreakdownRenderArgs();
