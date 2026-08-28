@@ -7208,6 +7208,163 @@ function calculateTrendsExplorerAllocatedTotals(funding, programs, percents) {
   };
 }
 
+function formatTrendsExplorerSignedCount(delta, singular, plural) {
+  if (!Number.isFinite(delta) || delta === 0) return null;
+  const amount = Math.abs(delta).toLocaleString('en-US');
+  const unit = Math.abs(delta) === 1 ? singular : plural;
+  return `${delta > 0 ? '+' : '−'}${amount} ${unit}`;
+}
+
+function formatTrendsExplorerSignedCurrency(delta, label) {
+  if (!Number.isFinite(delta) || Math.abs(delta) < 0.005) return null;
+  const amount = formatTrendsExplorerCurrencyAuto(Math.abs(delta));
+  return `${delta > 0 ? '+' : '−'}${amount} ${label}`;
+}
+
+function formatTrendsExplorerPointChange(delta) {
+  if (!Number.isFinite(delta) || delta === 0) return 'No change';
+  return delta > 0 ? `+${delta} pts` : `−${Math.abs(delta)} pts`;
+}
+
+function allocationsMatchTrendsExplorerBaseline(programs, currentPercents, baselinePercents) {
+  return programs.every((program) => (
+    (currentPercents[program.key] || 0) === (baselinePercents[program.key] || 0)
+  ));
+}
+
+function getTrendsExplorerComparisonState(funding, programs, currentPercents) {
+  const baselinePercents = getTrendsExplorerHistoricalAllocationPercents(programs);
+  const current = calculateTrendsExplorerAllocatedTotals(funding, programs, currentPercents);
+  const baseline = calculateTrendsExplorerAllocatedTotals(funding, programs, baselinePercents);
+  return {
+    funding: current.funding,
+    current,
+    baseline,
+    baselinePercents,
+    matchesBaseline: allocationsMatchTrendsExplorerBaseline(programs, currentPercents, baselinePercents),
+  };
+}
+
+function hideTrendsExplorerComparison() {
+  const section = document.getElementById('trends-explorer-comparison');
+  if (section) section.hidden = true;
+}
+
+function renderTrendsExplorerComparison(currentTotals) {
+  const section = document.getElementById('trends-explorer-comparison');
+  const aggregatesEl = document.getElementById('trends-explorer-comparison-aggregates');
+  const programsEl = document.getElementById('trends-explorer-comparison-programs');
+  const reachNoteEl = document.getElementById('trends-explorer-comparison-reach-note');
+  if (!section || !aggregatesEl || !programsEl || !reachNoteEl) return;
+
+  const programs = trendsExplorerViewState?.programs || [];
+  const currentPercents = trendsExplorerViewState?.allocations;
+  if (programs.length < 2 || !currentPercents) {
+    hideTrendsExplorerComparison();
+    aggregatesEl.replaceChildren();
+    programsEl.replaceChildren();
+    reachNoteEl.hidden = true;
+    reachNoteEl.textContent = '';
+    return;
+  }
+
+  const comparison = getTrendsExplorerComparisonState(
+    currentTotals.funding,
+    programs,
+    currentPercents
+  );
+  const { baseline, current, baselinePercents, matchesBaseline } = comparison;
+  if (matchesBaseline) {
+    hideTrendsExplorerComparison();
+    aggregatesEl.replaceChildren();
+    programsEl.replaceChildren();
+    reachNoteEl.hidden = true;
+    reachNoteEl.textContent = '';
+    return;
+  }
+
+  section.hidden = false;
+
+  const eventChip = formatTrendsExplorerSignedCount(
+    current.estimatedEvents - baseline.estimatedEvents,
+    'estimated event',
+    'estimated events'
+  );
+  const spendChip = formatTrendsExplorerSignedCurrency(
+    current.modeledSpend - baseline.modeledSpend,
+    'modeled event spend'
+  );
+  const remainingChip = formatTrendsExplorerSignedCurrency(
+    current.remaining - baseline.remaining,
+    'remaining funding'
+  );
+  const reachClean = baseline.estimatedReach != null
+    && current.estimatedReach != null
+    && baseline.reachIncomplete === 0
+    && current.reachIncomplete === 0;
+  const reachChip = reachClean
+    ? formatTrendsExplorerSignedCount(
+      current.estimatedReach - baseline.estimatedReach,
+      'participant engagement',
+      'participant engagements'
+    )
+    : null;
+
+  aggregatesEl.replaceChildren();
+  const chips = [eventChip, reachChip, spendChip].filter(Boolean);
+  if (chips.length === 0 && remainingChip) chips.push(remainingChip);
+  if (chips.length === 0) {
+    const unchanged = document.createElement('p');
+    unchanged.className = 'trends-explorer-comparison-unchanged';
+    unchanged.textContent = 'Estimated totals are unchanged at this funding level.';
+    aggregatesEl.append(unchanged);
+  } else {
+    chips.forEach((text) => {
+      const chip = document.createElement('span');
+      chip.className = 'trends-explorer-comparison-chip';
+      chip.textContent = text;
+      aggregatesEl.append(chip);
+    });
+  }
+
+  if (!reachClean && (baseline.reachIncomplete > 0 || current.reachIncomplete > 0
+    || baseline.estimatedReach == null || current.estimatedReach == null)) {
+    reachNoteEl.textContent = 'Participant comparison excludes programs without historical participant data.';
+    reachNoteEl.hidden = false;
+  } else {
+    reachNoteEl.textContent = '';
+    reachNoteEl.hidden = true;
+  }
+
+  programsEl.replaceChildren();
+  current.rows.forEach((row) => {
+    const startingPercent = baselinePercents[row.program.key] || 0;
+    const currentPercent = row.percent || 0;
+    if (currentPercent === startingPercent) return;
+    const change = formatTrendsExplorerPointChange(currentPercent - startingPercent);
+    const programRow = document.createElement('div');
+    programRow.className = 'trends-explorer-comparison-program';
+    programRow.setAttribute(
+      'aria-label',
+      `${row.program.label} ${startingPercent} percent to ${currentPercent} percent, ${change}.`
+    );
+    const name = document.createElement('div');
+    name.className = 'trends-explorer-comparison-program-name';
+    name.textContent = row.program.label;
+    const detail = document.createElement('div');
+    detail.className = 'trends-explorer-comparison-program-change';
+    detail.textContent = `${startingPercent}% → ${currentPercent}%  (${change})`;
+    programRow.append(name, detail);
+    programsEl.append(programRow);
+  });
+}
+
+function refreshTrendsExplorerAllocatedViews(currentTotals) {
+  renderTrendsExplorerTotals(currentTotals);
+  renderTrendsExplorerAllocation(currentTotals);
+  renderTrendsExplorerComparison(currentTotals);
+}
+
 function resolveTrendsExplorerSliderMax(historicalCost, funding, existingMax) {
   const defaultMax = getTrendsExplorerCleanMax(historicalCost * 2);
   const fundingMax = funding > defaultMax ? getTrendsExplorerCleanMax(funding) : 0;
@@ -7302,10 +7459,11 @@ function renderTrendsExplorerOutputs(funding, assumptions) {
   const percents = trendsExplorerViewState?.allocations;
   if (programs.length && percents) {
     const totals = calculateTrendsExplorerAllocatedTotals(funding, programs, percents);
-    renderTrendsExplorerTotals(totals);
-    renderTrendsExplorerAllocation(totals);
+    refreshTrendsExplorerAllocatedViews(totals);
     return;
   }
+
+  hideTrendsExplorerComparison();
 
   if (reachNoteEl) {
     reachNoteEl.hidden = true;
@@ -7517,7 +7675,7 @@ function renderTrendsExplorerAllocation(totals) {
   const rowsEl = document.getElementById('trends-explorer-allocation-rows');
   if (!section || !rowsEl) return;
 
-  if (!totals.rows.length) {
+  if (!totals.rows.length || totals.rows.length < 2) {
     section.hidden = true;
     rowsEl.replaceChildren();
     return;
@@ -7558,8 +7716,7 @@ function applyTrendsExplorerAllocationChange(programKey, editedPercent) {
   trendsExplorerAllocations = nextAllocations;
   state.allocations = nextAllocations;
   const totals = calculateTrendsExplorerAllocatedTotals(state.funding, state.programs, nextAllocations);
-  renderTrendsExplorerTotals(totals);
-  renderTrendsExplorerAllocation(totals);
+  refreshTrendsExplorerAllocatedViews(totals);
 }
 
 function resetTrendsExplorerAllocations() {
@@ -7569,8 +7726,7 @@ function resetTrendsExplorerAllocations() {
   trendsExplorerAllocations = historical;
   state.allocations = historical;
   const totals = calculateTrendsExplorerAllocatedTotals(state.funding, state.programs, historical);
-  renderTrendsExplorerTotals(totals);
-  renderTrendsExplorerAllocation(totals);
+  refreshTrendsExplorerAllocatedViews(totals);
 }
 
 function renderTrendsExplorerAssumptions(range, assumptions) {
@@ -7610,6 +7766,7 @@ function showTrendsExplorerEmpty(message) {
   const allocation = document.getElementById('trends-explorer-allocation');
   trendsExplorerViewState = null;
   if (allocation) allocation.hidden = true;
+  hideTrendsExplorerComparison();
   if (body) body.hidden = true;
   if (empty) {
     empty.textContent = message;
