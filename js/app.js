@@ -4972,6 +4972,143 @@ function aggregateTrendsChartBuckets(buckets, eventsForRange, bucketSize) {
   }));
 }
 
+function getTrendsChartUnclippedBucketRange(bucket, bucketSize) {
+  if (bucketSize === 'week') {
+    return {
+      start: bucket.start,
+      end: addDaysToIsoDate(bucket.start, 6),
+    };
+  }
+  if (bucketSize === 'quarter') {
+    const start = bucket.start;
+    return {
+      start,
+      end: addDaysToIsoDate(addCalendarMonthsToIso(start, 3), -1),
+    };
+  }
+  const start = `${bucket.start.slice(0, 7)}-01`;
+  return {
+    start,
+    end: addDaysToIsoDate(addCalendarMonthsToIso(start, 1), -1),
+  };
+}
+
+function clipTrendsChartInterval(interval, range) {
+  if (!interval || !range) return null;
+  const start = interval.start < range.start ? range.start : interval.start;
+  const end = interval.end > range.end ? range.end : interval.end;
+  if (start > end) return null;
+  return { start, end };
+}
+
+function getTrendsChartEffectiveBucketRange(bucket, currentRange, bucketSize) {
+  return clipTrendsChartInterval(
+    getTrendsChartUnclippedBucketRange(bucket, bucketSize),
+    currentRange
+  );
+}
+
+function shiftTrendsChartIntervalByDays(interval, days) {
+  return {
+    start: addDaysToIsoDate(interval.start, days),
+    end: addDaysToIsoDate(interval.end, days),
+  };
+}
+
+function getTrendsChartHistoricalIntervals(effectiveInterval, period, compareMode, currentRange) {
+  if (!effectiveInterval || compareMode === TRENDS_COMPARE_NONE) return [];
+
+  if (compareMode === TRENDS_COMPARE_PREVIOUS) {
+    if (period === 'this-fy' || period === 'last-fy') {
+      return [shiftTrendsRangeByYears(effectiveInterval, -1)];
+    }
+    const days = inclusiveDayCount(currentRange.start, currentRange.end);
+    return [shiftTrendsChartIntervalByDays(effectiveInterval, -days)];
+  }
+
+  if (compareMode === TRENDS_COMPARE_LAST_YEAR) {
+    return [shiftTrendsRangeByYears(effectiveInterval, -1)];
+  }
+
+  if (compareMode === TRENDS_COMPARE_AVG_2) {
+    return [
+      shiftTrendsRangeByYears(effectiveInterval, -1),
+      shiftTrendsRangeByYears(effectiveInterval, -2),
+    ];
+  }
+
+  if (compareMode === TRENDS_COMPARE_AVG_3) {
+    return [
+      shiftTrendsRangeByYears(effectiveInterval, -1),
+      shiftTrendsRangeByYears(effectiveInterval, -2),
+      shiftTrendsRangeByYears(effectiveInterval, -3),
+    ];
+  }
+
+  return [];
+}
+
+function formatTrendsChartHistoricalLabel(interval, bucketSize) {
+  if (!interval) return '';
+  if (bucketSize === 'week') {
+    return `Week of ${formatTrendsChartWeekLabel(interval.start, true)}`;
+  }
+  if (bucketSize === 'quarter') {
+    return formatTrendsChartQuarterLabel(interval.start);
+  }
+  return formatTrendsChartMonthAxisLabel(interval.start, true);
+}
+
+function formatTrendsChartAverageLabel(bucket, bucketSize) {
+  if (bucketSize === 'week') {
+    return `Week of ${formatTrendsChartWeekLabel(bucket.start, false)} equivalent`;
+  }
+  if (bucketSize === 'quarter') {
+    const date = parseLocalIsoDate(bucket.start);
+    const quarter = Math.floor(date.getMonth() / 3) + 1;
+    return `Q${quarter} equivalent`;
+  }
+  const date = parseLocalIsoDate(bucket.start);
+  return `${date.toLocaleString('en-US', { month: 'short' })} equivalent`;
+}
+
+function buildTrendsChartComparisonSeries(currentBuckets, currentRange, period, compareMode, filters, bucketSize, metricKey) {
+  if (compareMode === TRENDS_COMPARE_NONE) return [];
+
+  const compareLabel = getTrendsComparisonPhrase(compareMode);
+  const isAverage = compareMode === TRENDS_COMPARE_AVG_2 || compareMode === TRENDS_COMPARE_AVG_3;
+  const periodCount = compareMode === TRENDS_COMPARE_AVG_3 ? 3 : compareMode === TRENDS_COMPARE_AVG_2 ? 2 : 1;
+
+  return currentBuckets.map((bucket) => {
+    const effective = getTrendsChartEffectiveBucketRange(bucket, currentRange, bucketSize);
+    const historicalIntervals = getTrendsChartHistoricalIntervals(
+      effective,
+      period,
+      compareMode,
+      currentRange
+    );
+    const metricsList = historicalIntervals.map((interval) => (
+      calculateTrendsMetrics(getTrendsEventsForRange(interval, filters))
+    ));
+    const metrics = metricsList.length === 1
+      ? metricsList[0]
+      : averageTrendsMetrics(metricsList);
+    const value = getTrendsChartSeriesValue(metrics, metricKey);
+    const primaryInterval = historicalIntervals[0];
+
+    return {
+      axisLabel: bucket.axisLabel,
+      tooltipLabel: isAverage
+        ? formatTrendsChartAverageLabel(bucket, bucketSize)
+        : formatTrendsChartHistoricalLabel(primaryInterval, bucketSize),
+      seriesLabel: compareLabel,
+      extraLabel: isAverage ? `Average of ${periodCount} historical periods` : '',
+      value,
+      formattedValue: formatTrendsChartValue(metricKey, value),
+    };
+  });
+}
+
 function getTrendsChartSeriesValue(metrics, metricKey) {
   if (metricKey === 'costPerParticipant') {
     return metrics.costPerParticipant;
@@ -5055,7 +5192,7 @@ function hideTrendsChartTooltip() {
   }
 }
 
-function showTrendsChartTooltip(anchor, tooltipLabel, metricLabel, formattedValue) {
+function showTrendsChartTooltip(anchor, point, metricLabel) {
   const tooltip = document.getElementById('trends-chart-tooltip');
   const body = document.querySelector('#view-trends .trends-chart-body');
   if (!tooltip || !body) return;
@@ -5063,10 +5200,20 @@ function showTrendsChartTooltip(anchor, tooltipLabel, metricLabel, formattedValu
   tooltip.hidden = false;
   tooltip.textContent = '';
   const labelLine = document.createElement('div');
-  labelLine.textContent = tooltipLabel;
+  labelLine.textContent = point.tooltipLabel;
   const valueLine = document.createElement('div');
-  valueLine.textContent = `${metricLabel}: ${formattedValue}`;
+  valueLine.textContent = `${metricLabel}: ${point.formattedValue}`;
   tooltip.append(labelLine, valueLine);
+  if (point.seriesLabel) {
+    const seriesLine = document.createElement('div');
+    seriesLine.textContent = point.seriesLabel;
+    tooltip.append(seriesLine);
+  }
+  if (point.extraLabel) {
+    const extraLine = document.createElement('div');
+    extraLine.textContent = point.extraLabel;
+    tooltip.append(extraLine);
+  }
 
   const bodyRect = body.getBoundingClientRect();
   const anchorRect = anchor.getBoundingClientRect();
@@ -5101,7 +5248,7 @@ function drawTrendsChartSvg(state) {
   hideTrendsChartTooltip();
   wrap.innerHTML = '';
 
-  const { series, metricKey, metricLabel } = state;
+  const { series, compareSeries, metricKey, metricLabel } = state;
   const width = Math.max(wrap.clientWidth || 640, 280);
   const height = wrap.clientWidth && wrap.clientWidth < 640 ? 240 : 280;
   const pad = {
@@ -5112,7 +5259,10 @@ function drawTrendsChartSvg(state) {
   };
   const plotWidth = Math.max(width - pad.left - pad.right, 40);
   const plotHeight = Math.max(height - pad.top - pad.bottom, 80);
-  const values = series.map((point) => point.value);
+  const values = [
+    ...series.map((point) => point.value),
+    ...(compareSeries || []).map((point) => point.value),
+  ];
   const scale = getTrendsChartScale(values);
   const xAt = (index) => (
     series.length === 1
@@ -5124,7 +5274,9 @@ function drawTrendsChartSvg(state) {
   const svg = createSvgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': `Historical ${metricLabel} trend`,
+    'aria-label': compareSeries?.length
+      ? `Historical ${metricLabel} trend with ${state.compareLabel} comparison`
+      : `Historical ${metricLabel} trend`,
   });
 
   scale.ticks.forEach((tick) => {
@@ -5174,77 +5326,119 @@ function drawTrendsChartSvg(state) {
     svg.appendChild(label);
   });
 
-  const plotted = series
-    .map((point, index) => ({ point, index }))
-    .filter((entry) => entry.point.value != null && Number.isFinite(entry.point.value));
+  function appendSeriesPath(points, style) {
+    const plotted = points
+      .map((point, index) => ({ point, index }))
+      .filter((entry) => entry.point.value != null && Number.isFinite(entry.point.value));
 
-  if (plotted.length > 1) {
-    let segment = [];
-    const flushSegment = () => {
-      if (segment.length > 1) {
-        svg.appendChild(createSvgElement('polyline', {
-          points: segment.map((entry) => `${xAt(entry.index)},${yAt(entry.point.value)}`).join(' '),
-          fill: 'none',
-          stroke: '#00205b',
-          'stroke-width': 2,
-          'stroke-linejoin': 'round',
-          'stroke-linecap': 'round',
-        }));
-      }
-      segment = [];
-    };
+    if (plotted.length > 1) {
+      let segment = [];
+      const flushSegment = () => {
+        if (segment.length > 1) {
+          const lineAttrs = {
+            points: segment.map((entry) => `${xAt(entry.index)},${yAt(entry.point.value)}`).join(' '),
+            fill: 'none',
+            stroke: style.stroke,
+            'stroke-width': style.width,
+            'stroke-linejoin': 'round',
+            'stroke-linecap': 'round',
+          };
+          if (style.dash) lineAttrs['stroke-dasharray'] = style.dash;
+          svg.appendChild(createSvgElement('polyline', lineAttrs));
+        }
+        segment = [];
+      };
 
-    plotted.forEach((entry, plottedIndex) => {
-      const previous = plotted[plottedIndex - 1];
-      if (previous && entry.index !== previous.index + 1) flushSegment();
-      segment.push(entry);
+      plotted.forEach((entry, plottedIndex) => {
+        const previous = plotted[plottedIndex - 1];
+        if (previous && entry.index !== previous.index + 1) flushSegment();
+        segment.push(entry);
+      });
+      flushSegment();
+    }
+
+    plotted.forEach((entry) => {
+      const x = xAt(entry.index);
+      const y = yAt(entry.point.value);
+      const hit = createSvgElement('circle', {
+        class: 'trends-chart-point',
+        cx: x,
+        cy: y,
+        r: 10,
+        fill: 'transparent',
+        tabindex: '0',
+        role: 'img',
+        'aria-label': `${entry.point.tooltipLabel}. ${metricLabel}: ${entry.point.formattedValue}. ${entry.point.seriesLabel || 'Current Period'}`,
+      });
+      const marker = createSvgElement('circle', {
+        cx: x,
+        cy: y,
+        r: style.markerRadius,
+        fill: style.stroke,
+        stroke: '#ffffff',
+        'stroke-width': 1.5,
+        'pointer-events': 'none',
+      });
+      const show = () => showTrendsChartTooltip(hit, entry.point, metricLabel);
+      hit.addEventListener('mouseenter', show);
+      hit.addEventListener('focus', show);
+      hit.addEventListener('mouseleave', hideTrendsChartTooltip);
+      hit.addEventListener('blur', hideTrendsChartTooltip);
+      svg.appendChild(hit);
+      svg.appendChild(marker);
     });
-    flushSegment();
   }
 
-  plotted.forEach((entry) => {
-    const x = xAt(entry.index);
-    const y = yAt(entry.point.value);
-    const hit = createSvgElement('circle', {
-      class: 'trends-chart-point',
-      cx: x,
-      cy: y,
-      r: 10,
-      fill: 'transparent',
-      tabindex: '0',
-      role: 'img',
-      'aria-label': `${entry.point.tooltipLabel}. ${metricLabel}: ${entry.point.formattedValue}`,
+  if (compareSeries?.length) {
+    appendSeriesPath(compareSeries, {
+      stroke: '#4b5563',
+      width: 2,
+      dash: '6 4',
+      markerRadius: 3,
     });
-    const marker = createSvgElement('circle', {
-      cx: x,
-      cy: y,
-      r: 3.5,
-      fill: '#00205b',
-      stroke: '#ffffff',
-      'stroke-width': 1.5,
-      'pointer-events': 'none',
-    });
-    const show = () => showTrendsChartTooltip(
-      hit,
-      entry.point.tooltipLabel,
-      metricLabel,
-      entry.point.formattedValue
-    );
-    hit.addEventListener('mouseenter', show);
-    hit.addEventListener('focus', show);
-    hit.addEventListener('mouseleave', hideTrendsChartTooltip);
-    hit.addEventListener('blur', hideTrendsChartTooltip);
-    svg.appendChild(hit);
-    svg.appendChild(marker);
+  }
+
+  appendSeriesPath(series, {
+    stroke: '#00205b',
+    width: 2.25,
+    markerRadius: 3.5,
   });
 
   wrap.appendChild(svg);
+}
+
+function updateTrendsChartLegend(compareLabel) {
+  const legend = document.getElementById('trends-chart-legend');
+  const compareItem = document.getElementById('trends-chart-legend-compare');
+  const compareLabelEl = document.getElementById('trends-chart-legend-compare-label');
+  if (legend) legend.hidden = false;
+  if (compareItem) compareItem.hidden = !compareLabel;
+  if (compareLabelEl) compareLabelEl.textContent = compareLabel || '';
+}
+
+function updateTrendsChartNote(message) {
+  const note = document.getElementById('trends-chart-note');
+  if (!note) return;
+  if (!message) {
+    note.hidden = true;
+    note.textContent = '';
+    return;
+  }
+  note.hidden = false;
+  note.textContent = message;
+}
+
+function hideTrendsChartChrome() {
+  const legend = document.getElementById('trends-chart-legend');
+  if (legend) legend.hidden = true;
+  updateTrendsChartNote('');
 }
 
 function showTrendsChartEmpty(message) {
   const empty = document.getElementById('trends-chart-empty');
   const wrap = document.getElementById('trends-chart-svg-wrap');
   hideTrendsChartTooltip();
+  hideTrendsChartChrome();
   trendsChartDrawState = null;
   if (empty) {
     empty.hidden = false;
@@ -5274,16 +5468,18 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
   const metricKey = getTrendsChartMetricKey();
   const metricLabel = getTrendsChartMetricLabel(metricKey);
   const bucketSize = getTrendsChartBucketSize(period, currentRange);
-  const buckets = aggregateTrendsChartBuckets(
+  const currentBuckets = aggregateTrendsChartBuckets(
     generateTrendsChartBuckets(currentRange, bucketSize),
     currentEvents,
     bucketSize
   );
-  const series = buckets.map((bucket) => {
+  const series = currentBuckets.map((bucket) => {
     const value = getTrendsChartSeriesValue(bucket.metrics, metricKey);
     return {
       axisLabel: bucket.axisLabel,
       tooltipLabel: bucket.tooltipLabel,
+      seriesLabel: 'Current Period',
+      extraLabel: '',
       value,
       formattedValue: formatTrendsChartValue(metricKey, value),
     };
@@ -5296,10 +5492,43 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     return;
   }
 
+  const compareMode = getTrendsCompareMode();
+  const compareLabel = getTrendsComparisonPhrase(compareMode);
+  let compareSeries = null;
+  let compareNote = '';
+
+  if (compareMode !== TRENDS_COMPARE_NONE) {
+    compareSeries = buildTrendsChartComparisonSeries(
+      currentBuckets,
+      currentRange,
+      period,
+      compareMode,
+      getTrendsFilterState(),
+      bucketSize,
+      metricKey
+    );
+
+    if (
+      metricKey === 'costPerParticipant'
+      && compareSeries.every((point) => point.value == null)
+    ) {
+      compareSeries = null;
+      compareNote = 'No historical participant data is available for the selected Cost per Participant comparison.';
+    }
+  }
+
   empty.hidden = true;
   empty.textContent = '';
   wrap.hidden = false;
-  trendsChartDrawState = { series, metricKey, metricLabel };
+  updateTrendsChartLegend(compareSeries ? compareLabel : '');
+  updateTrendsChartNote(compareNote);
+  trendsChartDrawState = {
+    series,
+    compareSeries,
+    metricKey,
+    metricLabel,
+    compareLabel,
+  };
   drawTrendsChartSvg(trendsChartDrawState);
 }
 

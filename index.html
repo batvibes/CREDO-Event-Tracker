@@ -764,9 +764,20 @@
                   </select>
                 </label>
               </div>
+              <div class="trends-chart-legend" id="trends-chart-legend" hidden>
+                <span class="trends-chart-legend-item">
+                  <span class="trends-chart-legend-swatch trends-chart-legend-swatch-current" aria-hidden="true"></span>
+                  Current Period
+                </span>
+                <span class="trends-chart-legend-item" id="trends-chart-legend-compare" hidden>
+                  <span class="trends-chart-legend-swatch trends-chart-legend-swatch-compare" aria-hidden="true"></span>
+                  <span id="trends-chart-legend-compare-label"></span>
+                </span>
+              </div>
               <div class="trends-chart-body">
                 <p class="trends-chart-empty" id="trends-chart-empty" hidden></p>
                 <div class="trends-chart-svg-wrap" id="trends-chart-svg-wrap"></div>
+                <p class="trends-chart-note" id="trends-chart-note" hidden></p>
                 <div class="trends-chart-tooltip" id="trends-chart-tooltip" hidden></div>
               </div>
             </section>
