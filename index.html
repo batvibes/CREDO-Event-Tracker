@@ -926,6 +926,93 @@
                 <div class="trends-projection-method" id="trends-projection-method"></div>
               </div>
             </section>
+            <section class="trends-resource-section" id="trends-explorer-section">
+              <div class="trends-chart-header">
+                <div class="trends-chart-heading">
+                  <h3 class="trends-chart-title">Impact Explorer</h3>
+                  <p class="trends-chart-subtitle">Explore what different funding levels could support based on recorded historical CREDO activity.</p>
+                </div>
+              </div>
+              <p class="trends-breakdown-empty" id="trends-explorer-empty" hidden></p>
+              <div class="trends-explorer-body" id="trends-explorer-body" hidden>
+                <div class="trends-explorer-funding">
+                  <div class="trends-explorer-funding-control">
+                    <label class="trends-filter-label" for="trends-explorer-funding-input">Scenario Funding</label>
+                    <input
+                      type="text"
+                      id="trends-explorer-funding-input"
+                      class="reports-input trends-explorer-funding-input"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      spellcheck="false"
+                    >
+                  </div>
+                  <label class="visually-hidden" for="trends-explorer-funding-slider">Scenario Funding</label>
+                  <input
+                    type="range"
+                    id="trends-explorer-funding-slider"
+                    class="trends-explorer-slider"
+                    min="0"
+                    max="0"
+                    step="1"
+                    value="0"
+                    aria-valuemin="0"
+                    aria-valuemax="0"
+                    aria-valuenow="0"
+                    aria-valuetext="$0"
+                  >
+                </div>
+                <div class="trends-explorer-metrics" id="trends-explorer-metrics">
+                  <div class="trends-explorer-metric">
+                    <div class="trends-explorer-metric-label">Estimated Completed Events</div>
+                    <div class="trends-explorer-metric-value" id="trends-explorer-events-value">—</div>
+                  </div>
+                  <div class="trends-explorer-metric">
+                    <div class="trends-explorer-metric-label">Estimated Participant Reach</div>
+                    <div class="trends-explorer-metric-value" id="trends-explorer-reach-value">—</div>
+                  </div>
+                  <div class="trends-explorer-metric">
+                    <div class="trends-explorer-metric-label">Scenario Funding</div>
+                    <div class="trends-explorer-metric-value" id="trends-explorer-funding-value">—</div>
+                  </div>
+                </div>
+                <p class="trends-explorer-spend" id="trends-explorer-spend" hidden></p>
+                <p class="trends-explorer-summary" id="trends-explorer-summary" hidden></p>
+                <div class="trends-explorer-assumptions" id="trends-explorer-assumptions">
+                  <h4 class="trends-explorer-assumptions-title">Historical Assumptions</h4>
+                  <dl class="trends-explorer-assumptions-list">
+                    <div class="trends-explorer-assumptions-row">
+                      <dt>Historical basis</dt>
+                      <dd id="trends-explorer-assumption-basis">—</dd>
+                    </div>
+                    <div class="trends-explorer-assumptions-row">
+                      <dt>Cost-bearing completed events</dt>
+                      <dd id="trends-explorer-assumption-events">—</dd>
+                    </div>
+                    <div class="trends-explorer-assumptions-row">
+                      <dt>Recorded cost represented</dt>
+                      <dd id="trends-explorer-assumption-cost">—</dd>
+                    </div>
+                    <div class="trends-explorer-assumptions-row">
+                      <dt>Average recorded cost per event</dt>
+                      <dd id="trends-explorer-assumption-cost-event">—</dd>
+                    </div>
+                    <div class="trends-explorer-assumptions-row">
+                      <dt>Average participant reach per event</dt>
+                      <dd id="trends-explorer-assumption-reach-event">—</dd>
+                    </div>
+                    <div class="trends-explorer-assumptions-row" id="trends-explorer-assumption-cost-participant-row" hidden>
+                      <dt>Average recorded cost per participant</dt>
+                      <dd id="trends-explorer-assumption-cost-participant">—</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div class="trends-explorer-method">
+                  <p>Impact Explorer estimates how many events a hypothetical funding amount could support using the average recorded cost and participant reach of cost-bearing finalized events from the previous 12 months.</p>
+                  <p>Actual future results may vary. This is a historical-rate scenario, not a guaranteed forecast.</p>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
       </div>

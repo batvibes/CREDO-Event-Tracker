@@ -3769,7 +3769,8 @@ body:has(#new-event-modal[open]) {
 #view-trends .trends-cost-details[hidden],
 #view-trends .trends-cost-details-empty[hidden],
 #view-trends .trends-cost-details-table-wrap[hidden],
-#view-trends .trends-projection-body[hidden] {
+#view-trends .trends-projection-body[hidden],
+#view-trends .trends-explorer-body[hidden] {
   display: none;
 }
 
@@ -3983,9 +3984,151 @@ body:has(#new-event-modal[open]) {
   margin-bottom: 0;
 }
 
+#view-trends .trends-explorer-funding {
+  max-width: 420px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+#view-trends .trends-explorer-funding-control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+#view-trends .trends-explorer-funding-input {
+  width: 100%;
+  max-width: 220px;
+  font-variant-numeric: tabular-nums;
+}
+
+#view-trends .trends-explorer-slider {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 28px;
+  margin: 0;
+  accent-color: #00205b;
+}
+
+#view-trends .trends-explorer-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+#view-trends .trends-explorer-metric {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #f8f9f6;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+#view-trends .trends-explorer-metric-label {
+  margin-bottom: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-explorer-metric-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-explorer-spend {
+  margin: 0 0 12px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-explorer-spend[hidden],
+#view-trends .trends-explorer-summary[hidden],
+#view-trends .trends-explorer-assumptions-row[hidden] {
+  display: none;
+}
+
+#view-trends .trends-explorer-summary {
+  margin: 0 0 14px;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-explorer-assumptions {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+#view-trends .trends-explorer-assumptions-title {
+  margin: 0 0 8px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-explorer-assumptions-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+#view-trends .trends-explorer-assumptions-row {
+  min-width: 0;
+}
+
+#view-trends .trends-explorer-assumptions-row dt {
+  margin: 0 0 2px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-explorer-assumptions-row dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-explorer-method {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-explorer-method p {
+  margin: 0 0 4px;
+}
+
+#view-trends .trends-explorer-method p:last-child {
+  margin-bottom: 0;
+}
+
 @media (max-width: 900px) {
-  #view-trends .trends-projection-metrics {
+  #view-trends .trends-projection-metrics,
+  #view-trends .trends-explorer-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #view-trends .trends-explorer-metrics .trends-explorer-metric:last-child {
+    grid-column: 1 / -1;
   }
 
   #view-trends .trends-projection-pace-grid {
@@ -4047,7 +4190,24 @@ body:has(#new-event-modal[open]) {
     grid-template-columns: 1fr;
   }
 
-  #view-trends .trends-projection-metrics {
+  #view-trends .trends-projection-metrics,
+  #view-trends .trends-explorer-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  #view-trends .trends-explorer-metrics .trends-explorer-metric:last-child {
+    grid-column: auto;
+  }
+
+  #view-trends .trends-explorer-funding {
+    max-width: none;
+  }
+
+  #view-trends .trends-explorer-funding-input {
+    max-width: none;
+  }
+
+  #view-trends .trends-explorer-assumptions-list {
     grid-template-columns: 1fr;
   }
 

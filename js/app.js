@@ -4360,6 +4360,9 @@ let trendsReachExpanded = false;
 let trendsSpendingExpanded = false;
 let trendsCostDetailsExpanded = false;
 let trendsProjectionViewState = null;
+let trendsExplorerViewState = null;
+let trendsExplorerUserFunding = null;
+let trendsExplorerSliderMax = 0;
 
 function getTrendsPeriodValue() {
   return document.getElementById('trends-period')?.value || 'this-fy';
@@ -6847,6 +6850,311 @@ function renderTrendsProjectionSection(filters) {
   renderTrendsProjectionPaceChart();
 }
 
+function getTrendsExplorerBasisRange(today = new Date()) {
+  return getTrendsProjectionWindows(today, 3).basis;
+}
+
+function getTrendsExplorerEligibleEvents(events) {
+  return events.filter((event) => getTrendsEventRecordedCost(event) > 0);
+}
+
+function calculateTrendsExplorerAssumptions(eligibleEvents) {
+  let recordedCost = 0;
+  let participantReach = 0;
+  eligibleEvents.forEach((event) => {
+    recordedCost += getTrendsEventRecordedCost(event);
+    participantReach += getTrendsParticipantCount(event.participants);
+  });
+  const completedEvents = eligibleEvents.length;
+  return {
+    completedEvents,
+    recordedCost,
+    participantReach,
+    avgCostPerEvent: completedEvents > 0 ? recordedCost / completedEvents : null,
+    avgParticipantsPerEvent: completedEvents > 0 ? participantReach / completedEvents : null,
+    avgCostPerParticipant: participantReach > 0 ? recordedCost / participantReach : null,
+  };
+}
+
+function getTrendsExplorerRangeIncrement(amount) {
+  if (!(amount > 0) || !Number.isFinite(amount)) return 1000;
+  if (amount <= 10000) return 1000;
+  if (amount <= 50000) return 5000;
+  if (amount <= 100000) return 10000;
+  if (amount <= 500000) return 50000;
+  if (amount <= 2000000) return 100000;
+  return 250000;
+}
+
+function getTrendsExplorerCleanMax(amount) {
+  if (!(amount > 0) || !Number.isFinite(amount)) return 0;
+  const increment = getTrendsExplorerRangeIncrement(amount);
+  return Math.ceil(amount / increment) * increment;
+}
+
+function getTrendsExplorerSliderStep(max, fundingValue) {
+  if (!(max > 0) || !Number.isFinite(max)) return 1;
+  let step = 1;
+  if (max <= 10000) step = 1;
+  else if (max <= 100000) step = 1000;
+  else if (max <= 1000000) step = 5000;
+  else step = 10000;
+  const amount = normalizeTrendsExplorerFunding(fundingValue);
+  if (amount % step !== 0) return 1;
+  return step;
+}
+
+function normalizeTrendsExplorerFunding(value) {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.round(value);
+}
+
+function parseTrendsExplorerFunding(raw) {
+  const text = String(raw ?? '').trim();
+  if (text === '') return null;
+  if (/[-−]/.test(text)) return null;
+  const cleaned = text.replace(/[^0-9.]/g, '');
+  if (cleaned === '' || cleaned === '.') return null;
+  const num = Number(cleaned);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num);
+}
+
+function formatTrendsExplorerFunding(amount) {
+  const normalizedFunding = normalizeTrendsExplorerFunding(amount);
+  return normalizedFunding.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+function formatTrendsExplorerCurrencyAuto(amount) {
+  if (!Number.isFinite(amount)) return '—';
+  const rounded = Math.round(amount * 100) / 100;
+  const digits = Number.isInteger(rounded) ? 0 : 2;
+  return rounded.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function calculateTrendsExplorerScenario(funding, assumptions) {
+  const amount = normalizeTrendsExplorerFunding(funding);
+  const avgCostPerEvent = assumptions?.avgCostPerEvent;
+  if (!(avgCostPerEvent > 0) || !Number.isFinite(avgCostPerEvent)) {
+    return {
+      funding: amount,
+      estimatedEvents: null,
+      estimatedReach: null,
+      modeledSpend: null,
+      remaining: null,
+    };
+  }
+
+  const estimatedEvents = Math.max(0, Math.floor(amount / avgCostPerEvent));
+  const modeledSpend = estimatedEvents * avgCostPerEvent;
+  const remaining = Math.max(0, amount - modeledSpend);
+  const canEstimateReach = assumptions.participantReach > 0
+    && assumptions.avgParticipantsPerEvent != null
+    && Number.isFinite(assumptions.avgParticipantsPerEvent);
+  const estimatedReach = canEstimateReach
+    ? Math.round(estimatedEvents * assumptions.avgParticipantsPerEvent)
+    : null;
+
+  return {
+    funding: amount,
+    estimatedEvents: Number.isFinite(estimatedEvents) ? estimatedEvents : 0,
+    estimatedReach: canEstimateReach && Number.isFinite(estimatedReach) ? estimatedReach : null,
+    modeledSpend: Number.isFinite(modeledSpend) ? modeledSpend : 0,
+    remaining: Number.isFinite(remaining) ? remaining : 0,
+  };
+}
+
+function resolveTrendsExplorerSliderMax(historicalCost, funding, existingMax) {
+  const defaultMax = getTrendsExplorerCleanMax(historicalCost * 2);
+  const fundingMax = funding > defaultMax ? getTrendsExplorerCleanMax(funding) : 0;
+  const nextMax = Math.max(defaultMax, fundingMax, existingMax || 0, funding || 0);
+  return Number.isFinite(nextMax) ? nextMax : 0;
+}
+
+function applyTrendsExplorerFunding(amount, options = {}) {
+  const fromUser = Boolean(options.fromUser);
+  const normalized = normalizeTrendsExplorerFunding(amount);
+  if (fromUser) {
+    trendsExplorerUserFunding = normalized;
+  }
+  const assumptions = trendsExplorerViewState?.assumptions;
+  if (!assumptions) return;
+  const historicalCost = assumptions.recordedCost;
+  trendsExplorerSliderMax = resolveTrendsExplorerSliderMax(
+    historicalCost,
+    normalized,
+    trendsExplorerSliderMax
+  );
+  updateTrendsExplorerControls(normalized, trendsExplorerSliderMax);
+  renderTrendsExplorerOutputs(normalized, assumptions);
+}
+
+function updateTrendsExplorerControls(funding, sliderMax) {
+  const input = document.getElementById('trends-explorer-funding-input');
+  const slider = document.getElementById('trends-explorer-funding-slider');
+  const fundingValue = normalizeTrendsExplorerFunding(funding);
+  const step = getTrendsExplorerSliderStep(sliderMax, fundingValue);
+  const max = Math.max(0, sliderMax);
+
+  if (slider) {
+    slider.min = '0';
+    slider.max = String(max);
+    slider.step = String(step);
+    slider.value = String(fundingValue);
+    slider.setAttribute('aria-valuemin', '0');
+    slider.setAttribute('aria-valuemax', String(max));
+    slider.setAttribute('aria-valuenow', String(fundingValue));
+    slider.setAttribute('aria-valuetext', formatTrendsExplorerFunding(fundingValue));
+  }
+
+  if (input && document.activeElement !== input) {
+    input.value = formatTrendsExplorerFunding(fundingValue);
+  }
+}
+
+function buildTrendsExplorerSummary(scenario) {
+  const fundingText = formatTrendsExplorerFunding(scenario.funding);
+  const events = scenario.estimatedEvents;
+  if (events == null || !Number.isFinite(events)) return '';
+  const eventUnit = events === 1 ? 'completed event' : 'completed events';
+  if (scenario.estimatedReach == null) {
+    return `Based on the selected historical data, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} at the observed historical delivery rate.`;
+  }
+  const reach = scenario.estimatedReach;
+  const reachUnit = reach === 1 ? 'participant engagement' : 'participant engagements';
+  return `Based on the selected historical data, ${fundingText} could support approximately ${events.toLocaleString('en-US')} ${eventUnit} and ${reach.toLocaleString('en-US')} ${reachUnit} at the observed historical delivery rate.`;
+}
+
+function renderTrendsExplorerOutputs(funding, assumptions) {
+  const eventsEl = document.getElementById('trends-explorer-events-value');
+  const reachEl = document.getElementById('trends-explorer-reach-value');
+  const fundingEl = document.getElementById('trends-explorer-funding-value');
+  const spendEl = document.getElementById('trends-explorer-spend');
+  const summaryEl = document.getElementById('trends-explorer-summary');
+  if (!eventsEl || !reachEl || !fundingEl || !spendEl || !summaryEl) return;
+
+  const scenario = calculateTrendsExplorerScenario(funding, assumptions);
+  eventsEl.textContent = scenario.estimatedEvents == null
+    ? '—'
+    : String(scenario.estimatedEvents);
+  reachEl.textContent = scenario.estimatedReach == null
+    ? '—'
+    : scenario.estimatedReach.toLocaleString('en-US');
+  fundingEl.textContent = formatTrendsExplorerFunding(scenario.funding);
+
+  if (scenario.modeledSpend == null || scenario.remaining == null) {
+    spendEl.hidden = true;
+    spendEl.textContent = '';
+    summaryEl.hidden = true;
+    summaryEl.textContent = '';
+    return;
+  }
+
+  spendEl.textContent = `Modeled event spend: ${formatTrendsExplorerCurrencyAuto(scenario.modeledSpend)}. Remaining scenario funding: ${formatTrendsExplorerCurrencyAuto(scenario.remaining)}.`;
+  spendEl.hidden = false;
+  summaryEl.textContent = buildTrendsExplorerSummary(scenario);
+  summaryEl.hidden = false;
+}
+
+function renderTrendsExplorerAssumptions(range, assumptions) {
+  const basisEl = document.getElementById('trends-explorer-assumption-basis');
+  const eventsEl = document.getElementById('trends-explorer-assumption-events');
+  const costEl = document.getElementById('trends-explorer-assumption-cost');
+  const costEventEl = document.getElementById('trends-explorer-assumption-cost-event');
+  const reachEventEl = document.getElementById('trends-explorer-assumption-reach-event');
+  const costParticipantRow = document.getElementById('trends-explorer-assumption-cost-participant-row');
+  const costParticipantEl = document.getElementById('trends-explorer-assumption-cost-participant');
+  if (!basisEl || !eventsEl || !costEl || !costEventEl || !reachEventEl || !costParticipantRow || !costParticipantEl) {
+    return;
+  }
+
+  basisEl.textContent = formatTrendsProjectionRange(range);
+  eventsEl.textContent = String(assumptions.completedEvents);
+  costEl.textContent = formatTotalRecordedEventCost(assumptions.recordedCost);
+  costEventEl.textContent = assumptions.avgCostPerEvent != null && Number.isFinite(assumptions.avgCostPerEvent)
+    ? formatTotalRecordedEventCost(assumptions.avgCostPerEvent)
+    : '—';
+  reachEventEl.textContent = assumptions.avgParticipantsPerEvent != null && Number.isFinite(assumptions.avgParticipantsPerEvent)
+    ? assumptions.avgParticipantsPerEvent.toFixed(1)
+    : '—';
+
+  if (assumptions.avgCostPerParticipant != null && Number.isFinite(assumptions.avgCostPerParticipant)) {
+    costParticipantEl.textContent = formatTotalRecordedEventCost(assumptions.avgCostPerParticipant);
+    costParticipantRow.hidden = false;
+  } else {
+    costParticipantEl.textContent = '—';
+    costParticipantRow.hidden = true;
+  }
+}
+
+function showTrendsExplorerEmpty(message) {
+  const empty = document.getElementById('trends-explorer-empty');
+  const body = document.getElementById('trends-explorer-body');
+  trendsExplorerViewState = null;
+  if (body) body.hidden = true;
+  if (empty) {
+    empty.textContent = message;
+    empty.hidden = false;
+  }
+}
+
+function renderTrendsExplorerSection(filters) {
+  const empty = document.getElementById('trends-explorer-empty');
+  const body = document.getElementById('trends-explorer-body');
+  if (!empty || !body) return;
+
+  const basis = getTrendsExplorerBasisRange(new Date());
+  const basisEvents = getTrendsEventsForRange(basis, filters);
+
+  if (!basisEvents.length) {
+    showTrendsExplorerEmpty('No finalized historical data is available to calculate an Impact Explorer scenario.');
+    return;
+  }
+
+  const eligibleEvents = getTrendsExplorerEligibleEvents(basisEvents);
+  if (!eligibleEvents.length) {
+    showTrendsExplorerEmpty('No recorded historical event cost is available to calculate an Impact Explorer scenario.');
+    return;
+  }
+
+  const assumptions = calculateTrendsExplorerAssumptions(eligibleEvents);
+  if (!(assumptions.avgCostPerEvent > 0) || !Number.isFinite(assumptions.avgCostPerEvent)) {
+    showTrendsExplorerEmpty('No recorded historical event cost is available to calculate an Impact Explorer scenario.');
+    return;
+  }
+
+  empty.hidden = true;
+  empty.textContent = '';
+  body.hidden = false;
+
+  const historicalFunding = normalizeTrendsExplorerFunding(assumptions.recordedCost);
+  const funding = trendsExplorerUserFunding != null ? trendsExplorerUserFunding : historicalFunding;
+  const defaultMax = getTrendsExplorerCleanMax(assumptions.recordedCost * 2);
+  if (trendsExplorerUserFunding == null) {
+    trendsExplorerSliderMax = defaultMax;
+  }
+  trendsExplorerSliderMax = resolveTrendsExplorerSliderMax(
+    assumptions.recordedCost,
+    funding,
+    trendsExplorerSliderMax
+  );
+
+  trendsExplorerViewState = { basis, assumptions, funding };
+  renderTrendsExplorerAssumptions(basis, assumptions);
+  updateTrendsExplorerControls(funding, trendsExplorerSliderMax);
+  renderTrendsExplorerOutputs(funding, assumptions);
+}
+
 function renderTrends() {
   if (!document.getElementById('view-trends')) return;
 
@@ -6889,6 +7197,7 @@ function renderTrends() {
     historicalMetrics
   );
   renderTrendsProjectionSection(filters);
+  renderTrendsExplorerSection(filters);
 
   const emptyMessage = document.getElementById('trends-empty-message');
   if (emptyMessage) {
@@ -6972,6 +7281,42 @@ function setupTrends() {
 
   document.getElementById('trends-projection-metric')?.addEventListener('change', () => {
     renderTrendsProjectionPaceChart();
+  });
+
+  document.getElementById('trends-explorer-funding-slider')?.addEventListener('input', () => {
+    const slider = document.getElementById('trends-explorer-funding-slider');
+    const parsed = parseTrendsExplorerFunding(slider?.value);
+    if (parsed == null) return;
+    applyTrendsExplorerFunding(parsed, { fromUser: true });
+  });
+
+  const explorerInput = document.getElementById('trends-explorer-funding-input');
+  explorerInput?.addEventListener('input', () => {
+    const parsed = parseTrendsExplorerFunding(explorerInput.value);
+    if (parsed == null) return;
+    applyTrendsExplorerFunding(parsed, { fromUser: true });
+  });
+  explorerInput?.addEventListener('change', () => {
+    const parsed = parseTrendsExplorerFunding(explorerInput.value);
+    if (parsed == null) {
+      const fallback = trendsExplorerUserFunding != null
+        ? trendsExplorerUserFunding
+        : normalizeTrendsExplorerFunding(trendsExplorerViewState?.assumptions?.recordedCost || 0);
+      explorerInput.value = formatTrendsExplorerFunding(fallback);
+      return;
+    }
+    applyTrendsExplorerFunding(parsed, { fromUser: true });
+    explorerInput.value = formatTrendsExplorerFunding(parsed);
+  });
+  explorerInput?.addEventListener('blur', () => {
+    const parsed = parseTrendsExplorerFunding(explorerInput.value);
+    const fallback = parsed != null
+      ? parsed
+      : (trendsExplorerUserFunding != null
+        ? trendsExplorerUserFunding
+        : normalizeTrendsExplorerFunding(trendsExplorerViewState?.assumptions?.recordedCost || 0));
+    if (parsed != null) applyTrendsExplorerFunding(parsed, { fromUser: true });
+    explorerInput.value = formatTrendsExplorerFunding(fallback);
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');
