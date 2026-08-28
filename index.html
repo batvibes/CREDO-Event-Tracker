@@ -781,6 +781,24 @@
                 <div class="trends-chart-tooltip" id="trends-chart-tooltip" hidden></div>
               </div>
             </section>
+            <section class="trends-demand-section" id="trends-demand-section">
+              <div class="trends-chart-header">
+                <div class="trends-chart-heading">
+                  <h3 class="trends-chart-title">Program Demand</h3>
+                  <p class="trends-chart-subtitle">See which programs received the most activity during the selected period.</p>
+                </div>
+                <label class="trends-filter-field trends-demand-metric-field">
+                  <span class="trends-filter-label">Measure By</span>
+                  <select id="trends-demand-metric" class="filter-select" aria-label="Program demand measure">
+                    <option value="participantReach" selected>Participant Reach</option>
+                    <option value="completedEvents">Completed Events</option>
+                  </select>
+                </label>
+              </div>
+              <p class="trends-demand-summary" id="trends-demand-summary" hidden></p>
+              <p class="trends-demand-empty" id="trends-demand-empty" hidden></p>
+              <div class="trends-demand-list" id="trends-demand-list" hidden></div>
+            </section>
           </div>
         </section>
       </div>

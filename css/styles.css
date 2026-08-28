@@ -3422,6 +3422,113 @@ body:has(#new-event-modal[open]) {
   display: none;
 }
 
+#view-trends .trends-demand-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+#view-trends .trends-demand-metric-field {
+  min-width: 180px;
+}
+
+#view-trends .trends-demand-summary {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-demand-empty {
+  margin: 0;
+  padding: 36px 16px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+#view-trends .trends-demand-summary[hidden],
+#view-trends .trends-demand-empty[hidden],
+#view-trends .trends-demand-list[hidden] {
+  display: none;
+}
+
+#view-trends .trends-demand-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 100%;
+}
+
+#view-trends .trends-demand-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+#view-trends .trends-demand-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#view-trends .trends-demand-name {
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: break-word;
+}
+
+#view-trends .trends-demand-value {
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+#view-trends .trends-demand-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+#view-trends .trends-demand-bar-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 10px;
+  background: #eef1f4;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#view-trends .trends-demand-bar-fill {
+  height: 100%;
+  width: 0;
+  background: #00205b;
+  border-radius: 999px;
+}
+
+#view-trends .trends-demand-share {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+#view-trends .trends-demand-change {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 #view-trends .trends-chart-tooltip {
   position: absolute;
   z-index: 2;
@@ -3452,9 +3559,15 @@ body:has(#new-event-modal[open]) {
     height: 240px;
   }
 
-  #view-trends .trends-chart-metric-field {
+  #view-trends .trends-chart-metric-field,
+  #view-trends .trends-demand-metric-field {
     min-width: calc(50% - 6px);
     flex: 1 1 calc(50% - 6px);
+  }
+
+  #view-trends .trends-demand-row-top,
+  #view-trends .trends-demand-bar-row {
+    flex-wrap: wrap;
   }
 }
 

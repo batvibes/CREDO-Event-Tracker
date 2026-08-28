@@ -5532,6 +5532,238 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
   drawTrendsChartSvg(trendsChartDrawState);
 }
 
+function getTrendsDemandMetricKey() {
+  return document.getElementById('trends-demand-metric')?.value === 'completedEvents'
+    ? 'completedEvents'
+    : 'participantReach';
+}
+
+function normalizeTrendsDemandEventType(event) {
+  const raw = String(event?.eventType ?? '').trim();
+  if (!raw || isTbd(raw)) {
+    return { key: 'Unspecified', label: 'Unspecified' };
+  }
+  return { key: raw, label: raw };
+}
+
+function aggregateTrendsDemandByEventType(eventsForRange) {
+  const map = new Map();
+  eventsForRange.forEach((event) => {
+    const { key, label } = normalizeTrendsDemandEventType(event);
+    const existing = map.get(key) || {
+      key,
+      label,
+      participantReach: 0,
+      completedEvents: 0,
+    };
+    existing.participantReach += getTrendsParticipantCount(event.participants);
+    existing.completedEvents += 1;
+    map.set(key, existing);
+  });
+  return map;
+}
+
+function averageTrendsDemandMaps(maps) {
+  const result = new Map();
+  if (!maps.length) return result;
+
+  const keys = new Set();
+  maps.forEach((map) => {
+    map.forEach((_, key) => keys.add(key));
+  });
+
+  keys.forEach((key) => {
+    let label = 'Unspecified';
+    let participantReach = 0;
+    let completedEvents = 0;
+    maps.forEach((map) => {
+      const entry = map.get(key);
+      if (!entry) return;
+      label = entry.label;
+      participantReach += entry.participantReach;
+      completedEvents += entry.completedEvents;
+    });
+    result.set(key, {
+      key,
+      label,
+      participantReach: participantReach / maps.length,
+      completedEvents: completedEvents / maps.length,
+    });
+  });
+
+  return result;
+}
+
+function getTrendsDemandMetricValue(entry, metricKey) {
+  if (!entry) return 0;
+  return metricKey === 'completedEvents' ? entry.completedEvents : entry.participantReach;
+}
+
+function formatTrendsDemandValue(value) {
+  return Math.round(value).toLocaleString('en-US');
+}
+
+function formatTrendsDemandShare(currentValue, totalValue) {
+  if (totalValue === 0) return '0.0%';
+  const share = (currentValue / totalValue) * 100;
+  if (!Number.isFinite(share)) return '0.0%';
+  return `${share.toFixed(1)}%`;
+}
+
+function buildTrendsDemandRows(currentMap, baselineMap, metricKey, compareMode) {
+  const keys = new Set(currentMap.keys());
+  if (compareMode !== TRENDS_COMPARE_NONE) {
+    baselineMap.forEach((_, key) => keys.add(key));
+  }
+
+  const rows = [];
+  keys.forEach((key) => {
+    const currentEntry = currentMap.get(key);
+    const baselineEntry = baselineMap.get(key);
+    const label = currentEntry?.label || baselineEntry?.label || 'Unspecified';
+    const currentValue = getTrendsDemandMetricValue(currentEntry, metricKey);
+    const baselineValue = getTrendsDemandMetricValue(baselineEntry, metricKey);
+    rows.push({
+      key,
+      label,
+      currentValue,
+      baselineValue,
+    });
+  });
+
+  rows.sort((a, b) => {
+    if (b.currentValue !== a.currentValue) return b.currentValue - a.currentValue;
+    return a.label.localeCompare(b.label);
+  });
+
+  return rows;
+}
+
+function buildTrendsDemandSummary(rows, metricKey) {
+  const leader = rows.find((row) => row.currentValue > 0);
+  if (!leader) return '';
+  if (metricKey === 'completedEvents') {
+    return `${leader.label} had the highest number of completed events during the selected period.`;
+  }
+  return `${leader.label} had the highest participant reach during the selected period.`;
+}
+
+function renderTrendsDemandSection(
+  currentEvents,
+  compareMode,
+  comparisonRanges,
+  filters
+) {
+  const summary = document.getElementById('trends-demand-summary');
+  const empty = document.getElementById('trends-demand-empty');
+  const list = document.getElementById('trends-demand-list');
+  if (!summary || !empty || !list) return;
+
+  summary.hidden = true;
+  summary.textContent = '';
+  empty.hidden = true;
+  empty.textContent = '';
+  list.hidden = true;
+  list.replaceChildren();
+
+  if (!currentEvents.length) {
+    empty.textContent = 'No finalized AAR data is available for Program Demand.';
+    empty.hidden = false;
+    return;
+  }
+
+  const metricKey = getTrendsDemandMetricKey();
+  const currentMap = aggregateTrendsDemandByEventType(currentEvents);
+  let baselineMap = new Map();
+
+  if (compareMode !== TRENDS_COMPARE_NONE) {
+    const historicalMaps = comparisonRanges.map((range) => (
+      aggregateTrendsDemandByEventType(getTrendsEventsForRange(range, filters))
+    ));
+    baselineMap = historicalMaps.length === 1
+      ? historicalMaps[0]
+      : averageTrendsDemandMaps(historicalMaps);
+  }
+
+  const rows = buildTrendsDemandRows(currentMap, baselineMap, metricKey, compareMode);
+  const currentTotal = rows.reduce((sum, row) => sum + row.currentValue, 0);
+  const maxCurrent = rows.reduce((max, row) => Math.max(max, row.currentValue), 0);
+  const unitLabel = metricKey === 'completedEvents'
+    ? 'completed events'
+    : 'participants';
+  const shareLabel = metricKey === 'completedEvents'
+    ? 'selected completed events'
+    : 'selected participant reach';
+
+  const summaryText = buildTrendsDemandSummary(rows, metricKey);
+  if (summaryText) {
+    summary.textContent = summaryText;
+    summary.hidden = false;
+  }
+
+  list.setAttribute('role', 'list');
+  rows.forEach((row) => {
+    const shareText = formatTrendsDemandShare(row.currentValue, currentTotal);
+    const barWidth = maxCurrent > 0 ? (row.currentValue / maxCurrent) * 100 : 0;
+    const formattedValue = formatTrendsDemandValue(row.currentValue);
+    const item = document.createElement('div');
+    item.className = 'trends-demand-row';
+    item.setAttribute('role', 'listitem');
+
+    const top = document.createElement('div');
+    top.className = 'trends-demand-row-top';
+
+    const name = document.createElement('span');
+    name.className = 'trends-demand-name';
+    name.textContent = row.label;
+
+    const value = document.createElement('span');
+    value.className = 'trends-demand-value';
+    value.textContent = formattedValue;
+
+    top.append(name, value);
+
+    const barRow = document.createElement('div');
+    barRow.className = 'trends-demand-bar-row';
+
+    const track = document.createElement('div');
+    track.className = 'trends-demand-bar-track';
+    track.setAttribute('role', 'img');
+    track.setAttribute(
+      'aria-label',
+      `${row.label}: ${formattedValue} ${unitLabel}, ${shareText.replace('%', '')} percent of ${shareLabel}.`
+    );
+
+    const fill = document.createElement('div');
+    fill.className = 'trends-demand-bar-fill';
+    fill.style.width = `${barWidth}%`;
+    track.append(fill);
+
+    const share = document.createElement('span');
+    share.className = 'trends-demand-share';
+    share.textContent = shareText;
+
+    barRow.append(track, share);
+    item.append(top, barRow);
+
+    if (compareMode !== TRENDS_COMPARE_NONE) {
+      const comparison = buildTrendsMetricComparison(
+        row.currentValue,
+        row.baselineValue,
+        compareMode
+      );
+      const change = document.createElement('p');
+      change.className = `trends-demand-change trends-kpi-comparison-${comparison.direction}`;
+      change.textContent = comparison.text;
+      item.append(change);
+    }
+
+    list.append(item);
+  });
+
+  list.hidden = false;
+}
+
 function renderTrends() {
   if (!document.getElementById('view-trends')) return;
 
@@ -5562,6 +5794,7 @@ function renderTrends() {
   renderTrendsComparisonExplainer(period, compareMode, currentRange, comparisonRanges);
   renderTrendsKpis(currentMetrics, comparison);
   renderTrendsChartSection(currentRange, currentEvents, period);
+  renderTrendsDemandSection(currentEvents, compareMode, comparisonRanges, filters);
 
   const emptyMessage = document.getElementById('trends-empty-message');
   if (emptyMessage) {
@@ -5592,6 +5825,17 @@ function setupTrends() {
     const currentRange = getTrendsCurrentRange();
     const currentEvents = getTrendsEventsForRange(currentRange, getTrendsFilterState());
     renderTrendsChartSection(currentRange, currentEvents, getTrendsPeriodValue());
+  });
+
+  document.getElementById('trends-demand-metric')?.addEventListener('change', () => {
+    const currentRange = getTrendsCurrentRange();
+    const filters = getTrendsFilterState();
+    const compareMode = getTrendsCompareMode();
+    const currentEvents = getTrendsEventsForRange(currentRange, filters);
+    const comparisonRanges = (compareMode !== TRENDS_COMPARE_NONE && currentRange)
+      ? getTrendsComparisonRanges(currentRange, getTrendsPeriodValue(), compareMode)
+      : [];
+    renderTrendsDemandSection(currentEvents, compareMode, comparisonRanges, filters);
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');
