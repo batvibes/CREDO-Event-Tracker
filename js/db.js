@@ -57,6 +57,7 @@ export function eventFromRow(row) {
     aarFinalized: booleanFromDb(row.aar_finalized),
     aarFinalizedAt: row.aar_finalized_at ?? null,
     aarSequenceNumber: row.aar_sequence_number == null ? '' : String(row.aar_sequence_number),
+    createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   };
 }
@@ -227,6 +228,17 @@ export async function insertEvent(event) {
 
 export async function updateEvent(event) {
   const userId = await getUserId();
+  let previous = null;
+  if (event.aarFinalized === true) {
+    const { data: previousRow, error: fetchError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', event.id)
+      .single();
+    if (fetchError) throw fetchError;
+    previous = previousRow;
+  }
+
   const { data, error } = await supabase
     .from('events')
     .update({
@@ -238,7 +250,14 @@ export async function updateEvent(event) {
     .single();
 
   if (error) throw error;
-  return eventFromRow(data);
+
+  if (!previous || !booleanFromDb(data.aar_finalized)) {
+    return { event: eventFromRow(data), resequenced: [] };
+  }
+
+  const resequenced = await resequenceAffectedAarGroups(previous, data, userId);
+  const savedRow = resequenced.find((entry) => entry.id === event.id) || eventFromRow(data);
+  return { event: savedRow, resequenced };
 }
 
 export async function updateEventAarFields(id, fields) {
@@ -275,6 +294,13 @@ export async function clearEventAar(id) {
   }
 
   const userId = await getUserId();
+  const { data: previous, error: fetchError } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) throw fetchError;
 
   const { data, error } = await supabase
     .from('events')
@@ -298,7 +324,9 @@ export async function clearEventAar(id) {
     .single();
 
   if (error) throw error;
-  return eventFromRow(data);
+  const saved = eventFromRow(data);
+  const resequenced = await resequenceAffectedAarGroups(previous, data, userId);
+  return { event: saved, resequenced };
 }
 
 function formatAarSequenceNumber(seriesCode, sequenceIndex, calendarYear) {
@@ -308,33 +336,329 @@ function formatAarSequenceNumber(seriesCode, sequenceIndex, calendarYear) {
   return `${tt}${ss}${yy}`;
 }
 
-async function countFinalizedAarsForSeriesYear(seriesCode, calendarYear) {
-  const { data: types, error: typesError } = await supabase
+function getAarSequenceNamespace(seriesCode, calendarYear) {
+  return {
+    tt: seriesCode.padStart(2, '0').slice(-2),
+    yy: String(calendarYear).slice(-2),
+  };
+}
+
+function isAarSequenceInNamespace(sequenceNumber, seriesCode, calendarYear) {
+  if (!sequenceNumber) return false;
+  const { tt, yy } = getAarSequenceNamespace(seriesCode, calendarYear);
+  return new RegExp(`^${tt}\\d+${yy}$`).test(String(sequenceNumber));
+}
+
+function summarizeAarSequenceRow(row) {
+  return {
+    id: row?.id ?? null,
+    eventType: row?.event_type ?? null,
+    startDate: row?.start_date ?? null,
+    date: row?.date ?? null,
+    effectiveDate: row?.effectiveDate ?? getAarEffectiveDateFromRow(row),
+    finalized: booleanFromDb(row?.aar_finalized),
+    sequenceNumber: row?.aar_sequence_number ?? null,
+    createdAt: row?.created_at ?? null,
+  };
+}
+
+function getAarEffectiveDateFromRow(row) {
+  const startDate = row?.start_date || row?.date;
+  if (!startDate || startDate === 'TBD') return null;
+  return String(startDate);
+}
+
+function getAarCalendarYearFromEffectiveDate(effectiveDate) {
+  if (!effectiveDate) return null;
+  const year = parseInt(String(effectiveDate).slice(0, 4), 10);
+  if (!Number.isFinite(year) || year < 1000) return null;
+  return year;
+}
+
+function compareFinalizedAarSequenceRows(a, b) {
+  if (a.effectiveDate !== b.effectiveDate) {
+    return a.effectiveDate < b.effectiveDate ? -1 : 1;
+  }
+  const createdA = a.created_at || '';
+  const createdB = b.created_at || '';
+  if (createdA !== createdB) {
+    return createdA < createdB ? -1 : 1;
+  }
+  return String(a.id).localeCompare(String(b.id));
+}
+
+async function fetchEventTypeSeriesMap() {
+  const { data, error } = await supabase
     .from('event_types')
     .select('name, series_code');
 
-  if (typesError) throw typesError;
+  if (error) throw error;
 
-  const typeNames = (types ?? [])
-    .filter((entry) => (entry.series_code ?? '').trim() === seriesCode)
-    .map((entry) => entry.name);
+  const map = new Map();
+  (data ?? []).forEach((entry) => {
+    if (!entry?.name) return;
+    map.set(entry.name, (entry.series_code ?? '').trim());
+  });
+  return map;
+}
 
-  if (typeNames.length === 0) return 0;
+function resolveAarSequenceGroup(row, seriesMap) {
+  if (!row || !booleanFromDb(row.aar_finalized)) return null;
+  const seriesCode = (seriesMap.get(row.event_type) || '').trim();
+  const effectiveDate = getAarEffectiveDateFromRow(row);
+  const calendarYear = getAarCalendarYearFromEffectiveDate(effectiveDate);
+  if (!seriesCode || !calendarYear) return null;
+  return { seriesCode, calendarYear };
+}
 
-  const { data: finalized, error } = await supabase
+function sameAarSequenceGroup(a, b) {
+  return Boolean(
+    a
+    && b
+    && a.seriesCode === b.seriesCode
+    && a.calendarYear === b.calendarYear
+  );
+}
+
+async function fetchFinalizedAarsForSeriesYear(seriesCode, calendarYear, seriesMap) {
+  const typeNames = [...seriesMap.entries()]
+    .filter(([, code]) => code === seriesCode)
+    .map(([name]) => name);
+
+  if (!typeNames.length) return [];
+
+  const { data, error } = await supabase
     .from('events')
-    .select('start_date, date')
+    .select('id, start_date, date, event_type, aar_finalized, aar_sequence_number, created_at')
     .eq('aar_finalized', true)
     .in('event_type', typeNames);
 
   if (error) throw error;
 
-  return (finalized ?? []).filter((row) => {
-    const startDate = row.start_date || row.date;
-    if (!startDate || startDate === 'TBD') return false;
-    const year = parseInt(String(startDate).slice(0, 4), 10);
-    return Number.isFinite(year) && year === calendarYear;
-  }).length;
+  return (data ?? [])
+    .map((row) => ({
+      ...row,
+      effectiveDate: getAarEffectiveDateFromRow(row),
+    }))
+    .filter((row) => getAarCalendarYearFromEffectiveDate(row.effectiveDate) === calendarYear);
+}
+
+async function fetchRowsHoldingSeriesYearSequences(seriesCode, calendarYear) {
+  const { tt, yy } = getAarSequenceNamespace(seriesCode, calendarYear);
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, event_type, start_date, date, aar_finalized, aar_sequence_number, created_at')
+    .like('aar_sequence_number', `${tt}%${yy}`);
+
+  if (error) throw error;
+
+  return (data ?? [])
+    .filter((row) => isAarSequenceInNamespace(row.aar_sequence_number, seriesCode, calendarYear))
+    .map((row) => ({
+      ...row,
+      effectiveDate: getAarEffectiveDateFromRow(row),
+    }));
+}
+
+async function lookupAarSequenceOwner(sequenceNumber) {
+  if (!sequenceNumber) return null;
+  const { data, error } = await supabase
+    .from('events')
+    .select('id, event_type, start_date, date, aar_finalized, aar_sequence_number, created_at')
+    .eq('aar_sequence_number', sequenceNumber)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[resequence] failed to look up sequence owner', {
+      sequenceNumber,
+      message: error.message,
+      code: error.code,
+    });
+    return null;
+  }
+  return data ? summarizeAarSequenceRow(data) : null;
+}
+
+async function nullAarSequenceNumbers(ids, userId) {
+  const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+  if (!uniqueIds.length) return [];
+
+  const { error } = await supabase
+    .from('events')
+    .update({
+      aar_sequence_number: null,
+      updated_by: userId,
+    })
+    .in('id', uniqueIds);
+
+  if (error) throw error;
+  return uniqueIds;
+}
+
+async function resequenceFinalizedAarsForSeriesYear(seriesCode, calendarYear, options = {}) {
+  if (!seriesCode || !Number.isFinite(calendarYear)) return [];
+
+  const visited = options.visited || new Set();
+  const visitKey = `${seriesCode}:${calendarYear}`;
+  if (visited.has(visitKey)) return [];
+  visited.add(visitKey);
+
+  const userId = options.userId ?? await getUserId();
+  const seriesMap = options.seriesMap ?? await fetchEventTypeSeriesMap();
+  const rows = await fetchFinalizedAarsForSeriesYear(seriesCode, calendarYear, seriesMap);
+  const sorted = [...rows].sort(compareFinalizedAarSequenceRows);
+  const occupants = await fetchRowsHoldingSeriesYearSequences(seriesCode, calendarYear);
+  const groupIds = sorted.map((row) => row.id);
+  const occupantIds = occupants.map((row) => row.id);
+  const idsToNull = [...new Set([...groupIds, ...occupantIds])];
+
+  console.info('[resequence] series/year group', {
+    seriesCode,
+    calendarYear,
+    typeNames: [...seriesMap.entries()].filter(([, code]) => code === seriesCode).map(([name]) => name),
+    group: sorted.map((row, index) => ({
+      ...summarizeAarSequenceRow(row),
+      intendedSequence: formatAarSequenceNumber(seriesCode, index + 1, calendarYear),
+    })),
+    namespaceOccupants: occupants.map(summarizeAarSequenceRow),
+    idsToNull,
+  });
+
+  if (!idsToNull.length) return [];
+
+  await nullAarSequenceNumbers(idsToNull, userId);
+
+  const remainingOccupants = await fetchRowsHoldingSeriesYearSequences(seriesCode, calendarYear);
+  if (remainingOccupants.length) {
+    console.error('[resequence] namespace still occupied after null pass', {
+      seriesCode,
+      calendarYear,
+      remainingOccupants: remainingOccupants.map(summarizeAarSequenceRow),
+    });
+    await nullAarSequenceNumbers(remainingOccupants.map((row) => row.id), userId);
+    const stillOccupied = await fetchRowsHoldingSeriesYearSequences(seriesCode, calendarYear);
+    if (stillOccupied.length) {
+      const error = new Error('AAR_SEQUENCE_NAMESPACE_STILL_OCCUPIED');
+      error.details = stillOccupied.map(summarizeAarSequenceRow);
+      throw error;
+    }
+  }
+
+  const resequenced = [];
+  for (let index = 0; index < sorted.length; index += 1) {
+    const sequenceNumber = formatAarSequenceNumber(seriesCode, index + 1, calendarYear);
+    const { data, error } = await supabase
+      .from('events')
+      .update({
+        aar_sequence_number: sequenceNumber,
+        updated_by: userId,
+      })
+      .eq('id', sorted[index].id)
+      .select()
+      .single();
+
+    if (error) {
+      const owner = await lookupAarSequenceOwner(sequenceNumber);
+      console.error('[resequence] assignment collision', {
+        seriesCode,
+        calendarYear,
+        sequenceNumber,
+        target: summarizeAarSequenceRow(sorted[index]),
+        owner,
+        message: error.message,
+        code: error.code,
+        details: error.details,
+      });
+      throw error;
+    }
+    resequenced.push(eventFromRow(data));
+  }
+
+  const groupIdSet = new Set(groupIds);
+  const displacedGroups = [];
+  occupants.forEach((row) => {
+    if (groupIdSet.has(row.id) || !booleanFromDb(row.aar_finalized)) return;
+    const group = resolveAarSequenceGroup(row, seriesMap);
+    if (!group || (group.seriesCode === seriesCode && group.calendarYear === calendarYear)) return;
+    if (displacedGroups.some((entry) => sameAarSequenceGroup(entry, group))) return;
+    displacedGroups.push(group);
+  });
+
+  for (const group of displacedGroups) {
+    const extra = await resequenceFinalizedAarsForSeriesYear(group.seriesCode, group.calendarYear, {
+      userId,
+      seriesMap,
+      visited,
+    });
+    resequenced.push(...extra);
+  }
+
+  return resequenced;
+}
+
+async function resequenceAffectedAarGroups(previousRow, currentRow, userId) {
+  const seriesMap = await fetchEventTypeSeriesMap();
+  const previousGroup = resolveAarSequenceGroup(previousRow, seriesMap);
+  const currentGroup = resolveAarSequenceGroup(currentRow, seriesMap);
+  const previousDate = getAarEffectiveDateFromRow(previousRow);
+  const currentDate = getAarEffectiveDateFromRow(currentRow);
+  const previousType = previousRow?.event_type;
+  const currentType = currentRow?.event_type;
+
+  if (
+    sameAarSequenceGroup(previousGroup, currentGroup)
+    && previousDate === currentDate
+    && previousType === currentType
+  ) {
+    return [];
+  }
+
+  const groups = [];
+  const addGroup = (group) => {
+    if (!group) return;
+    if (groups.some((entry) => sameAarSequenceGroup(entry, group))) return;
+    groups.push(group);
+  };
+
+  if (sameAarSequenceGroup(previousGroup, currentGroup)) {
+    addGroup(currentGroup);
+  } else {
+    if (currentRow?.id && previousGroup && !sameAarSequenceGroup(previousGroup, currentGroup)) {
+      const { error: clearError } = await supabase
+        .from('events')
+        .update({
+          aar_sequence_number: null,
+          updated_by: userId,
+        })
+        .eq('id', currentRow.id);
+      if (clearError) throw clearError;
+    }
+    addGroup(previousGroup);
+    addGroup(currentGroup);
+  }
+
+  const resequenced = [];
+  for (const group of groups) {
+    const rows = await resequenceFinalizedAarsForSeriesYear(
+      group.seriesCode,
+      group.calendarYear,
+      { userId, seriesMap }
+    );
+    resequenced.push(...rows);
+  }
+  return resequenced;
+}
+
+function logFinalizeEventAarFailure(step, eventId, error, extra = {}) {
+  console.error('[finalizeEventAar] failed', {
+    step,
+    eventId,
+    message: error?.message ?? String(error),
+    code: error?.code ?? null,
+    details: error?.details ?? null,
+    hint: error?.hint ?? null,
+    ...extra,
+  });
 }
 
 export async function finalizeEventAar(eventId) {
@@ -350,43 +674,32 @@ export async function finalizeEventAar(eventId) {
     .eq('id', eventId)
     .single();
 
-  if (fetchError) throw fetchError;
+  if (fetchError) {
+    logFinalizeEventAarFailure('fetch-event', eventId, fetchError);
+    throw fetchError;
+  }
   if (booleanFromDb(eventRow.aar_finalized) || eventRow.aar_sequence_number) {
     throw new Error('ALREADY_FINALIZED');
   }
 
-  const { data: typeRow, error: typeError } = await supabase
-    .from('event_types')
-    .select('series_code')
-    .eq('name', eventRow.event_type)
-    .maybeSingle();
-
-  if (typeError) throw typeError;
-
-  const seriesCode = (typeRow?.series_code ?? '').trim();
+  const seriesMap = await fetchEventTypeSeriesMap();
+  const seriesCode = (seriesMap.get(eventRow.event_type) || '').trim();
   if (!seriesCode) {
     throw new Error('NO_SERIES_CODE');
   }
 
-  const startDate = eventRow.start_date || eventRow.date;
-  if (!startDate || startDate === 'TBD') {
+  const effectiveDate = getAarEffectiveDateFromRow(eventRow);
+  const calendarYear = getAarCalendarYearFromEffectiveDate(effectiveDate);
+  if (!calendarYear) {
     throw new Error('NO_VALID_START_DATE');
   }
-
-  const calendarYear = parseInt(String(startDate).slice(0, 4), 10);
-  if (!Number.isFinite(calendarYear)) {
-    throw new Error('NO_VALID_START_DATE');
-  }
-
-  const finalizedCount = await countFinalizedAarsForSeriesYear(seriesCode, calendarYear);
-  const sequenceNumber = formatAarSequenceNumber(seriesCode, finalizedCount + 1, calendarYear);
 
   const { data: updated, error: updateError } = await supabase
     .from('events')
     .update({
       aar_finalized: true,
       aar_finalized_at: new Date().toISOString(),
-      aar_sequence_number: sequenceNumber,
+      aar_sequence_number: null,
       updated_by: userId,
     })
     .eq('id', eventId)
@@ -394,20 +707,79 @@ export async function finalizeEventAar(eventId) {
     .select()
     .single();
 
-  if (updateError) throw updateError;
+  if (updateError) {
+    logFinalizeEventAarFailure('update-finalize', eventId, updateError, {
+      eventType: eventRow.event_type,
+      seriesCode,
+      calendarYear,
+      startDate: effectiveDate,
+      userId,
+    });
+    throw updateError;
+  }
   if (!updated || updated.id !== eventId) {
     throw new Error('ALREADY_FINALIZED');
   }
-  if (!updated.aar_sequence_number) {
+
+  let resequenced;
+  try {
+    resequenced = await resequenceFinalizedAarsForSeriesYear(seriesCode, calendarYear, {
+      userId,
+      seriesMap,
+    });
+  } catch (resequenceError) {
+    logFinalizeEventAarFailure('resequence', eventId, resequenceError, {
+      eventType: eventRow.event_type,
+      seriesCode,
+      calendarYear,
+      startDate: effectiveDate,
+    });
+    const { error: rollbackError } = await supabase
+      .from('events')
+      .update({
+        aar_finalized: false,
+        aar_finalized_at: null,
+        aar_sequence_number: null,
+        updated_by: userId,
+      })
+      .eq('id', eventId);
+    if (rollbackError) {
+      logFinalizeEventAarFailure('resequence-rollback', eventId, rollbackError);
+    }
+    throw resequenceError;
+  }
+
+  const saved = resequenced.find((entry) => entry.id === eventId);
+  if (!saved?.aarSequenceNumber) {
     throw new Error('MISSING_SEQUENCE_NUMBER');
   }
 
-  return eventFromRow(updated);
+  return { event: saved, resequenced };
 }
 
 export async function deleteEventById(id) {
+  const { data: previous, error: fetchError } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) throw fetchError;
+
   const { error } = await supabase.from('events').delete().eq('id', id);
   if (error) throw error;
+
+  const userId = await getUserId();
+  const resequenced = await resequenceAffectedAarGroups(
+    previous,
+    {
+      ...previous,
+      aar_finalized: false,
+      aar_sequence_number: null,
+    },
+    userId
+  );
+  return { resequenced };
 }
 
 export async function renameEventTypeInEvents(previousName, newName) {

@@ -392,8 +392,11 @@ function syncEventTypeNames() {
 
 async function persistEvent(event) {
   try {
-    const saved = await updateEvent(event);
+    const result = await updateEvent(event);
+    const saved = result.event ?? result;
     Object.assign(event, normalizeEvent(saved));
+    applyAarResequencePatches(result.resequenced);
+    refreshOpenAarDocumentIfNeeded();
   } catch (err) {
     console.error(err);
     alert('Failed to save event.');
@@ -2433,7 +2436,8 @@ function getEventCalendarYear(event) {
   const start = event.startDate ?? event.date;
   if (isTbd(start)) return null;
   const year = parseInt(String(start).slice(0, 4), 10);
-  return Number.isFinite(year) ? year : null;
+  if (!Number.isFinite(year) || year < 1000) return null;
+  return year;
 }
 
 function isAarFinalized(event) {
@@ -2777,6 +2781,29 @@ function hasAarProgress(event) {
   return getAarStatus(event) !== 'Not Started';
 }
 
+function applyAarResequencePatches(resequenced) {
+  if (!Array.isArray(resequenced) || !resequenced.length) return;
+  resequenced.forEach((saved) => {
+    applyAarEventPatch(saved.id, {
+      aarSequenceNumber: saved.aarSequenceNumber == null ? '' : String(saved.aarSequenceNumber),
+      aarFinalized: saved.aarFinalized === true,
+      aarFinalizedAt: saved.aarFinalizedAt ?? null,
+      updatedAt: saved.updatedAt ?? null,
+    });
+  });
+}
+
+function refreshOpenAarDocumentIfNeeded() {
+  if (!aarDocumentEventId) return;
+  const open = events.find((entry) => entry.id === aarDocumentEventId);
+  if (!open) return;
+  if (aarScreen === 'preview') {
+    buildAarPreviewDocument(open);
+  } else if (aarScreen === 'document') {
+    populateAarDocument(open);
+  }
+}
+
 function syncAarClearToEvent(eventId, saved) {
   if (!eventId || !saved || saved.id !== eventId) return;
 
@@ -2806,8 +2833,10 @@ async function clearAarFromSearch(event) {
   if (!confirmed) return;
 
   try {
-    const saved = await clearEventAar(event.id);
+    const result = await clearEventAar(event.id);
+    const saved = result.event ?? result;
     syncAarClearToEvent(event.id, saved);
+    applyAarResequencePatches(result.resequenced);
     syncAarStateAfterDataLoad();
     logAarAudit(event.id, 'Draft Cleared');
 
@@ -2841,8 +2870,10 @@ async function deleteAarFromHistory(event) {
   if (!confirmed) return;
 
   try {
-    const saved = await clearEventAar(event.id);
+    const result = await clearEventAar(event.id);
+    const saved = result.event ?? result;
     syncAarClearToEvent(event.id, saved);
+    applyAarResequencePatches(result.resequenced);
     syncAarStateAfterDataLoad();
     logAarAudit(event.id, 'Final Deleted');
 
@@ -2993,12 +3024,14 @@ async function markAarFinal() {
   }
 
   const confirmed = confirm(
-    'Mark this AAR as final? A binder sequence number will be permanently assigned and the report will become read-only.'
+    'Mark this AAR as final? A binder sequence number will be assigned from chronological order in this series and year, and the report will become read-only.'
   );
   if (!confirmed) return;
 
   try {
-    const saved = await finalizeEventAar(event.id);
+    const result = await finalizeEventAar(event.id);
+    const saved = result.event ?? result;
+    applyAarResequencePatches(result.resequenced);
     syncAarFinalizeToEvent(event.id, saved);
     syncAarStateAfterDataLoad();
     logAarAudit(
@@ -3020,7 +3053,18 @@ async function markAarFinal() {
       }
     }
   } catch (err) {
-    console.error(err);
+    console.error('[markAarFinal] failed', {
+      eventId: event.id,
+      eventType: event.eventType,
+      startDate: event.startDate,
+      date: event.date,
+      seriesCode: getEventTypeSeriesCode(event.eventType),
+      calendarYear: getEventCalendarYear(event),
+      message: err?.message ?? String(err),
+      code: err?.code ?? null,
+      details: err?.details ?? null,
+      hint: err?.hint ?? null,
+    });
     if (err.message === 'NO_SERIES_CODE') {
       alert(
         'Cannot finalize this AAR: the event type has no series code. Assign a series code in Settings → Event Types before finalizing.'
@@ -4364,6 +4408,7 @@ let trendsExplorerViewState = null;
 let trendsExplorerUserFunding = null;
 let trendsExplorerSliderMax = 0;
 let trendsExplorerAllocations = null;
+let trendsExplorerHeldKeys = new Set();
 
 function getTrendsPeriodValue() {
   return document.getElementById('trends-period')?.value || 'this-fy';
@@ -7147,18 +7192,100 @@ function resolveTrendsExplorerAllocations(programs, storedAllocations) {
   return { ...addedPercents, ...preservedPercents };
 }
 
-function redistributeTrendsExplorerAllocations(programs, currentPercents, editedKey, editedPercent) {
-  if (programs.length === 1) return { [programs[0].key]: 100 };
+function pruneTrendsExplorerHeldKeys(programs) {
+  const allowed = new Set((programs || []).map((program) => program.key));
+  trendsExplorerHeldKeys = new Set([...trendsExplorerHeldKeys].filter((key) => allowed.has(key)));
+  return trendsExplorerHeldKeys;
+}
 
-  const nextPercent = Math.max(0, Math.min(100, Math.round(editedPercent)));
-  const others = programs.filter((program) => program.key !== editedKey);
-  const remaining = 100 - nextPercent;
+function setTrendsExplorerAllocationConstraintVisible(visible) {
+  const el = document.getElementById('trends-explorer-allocation-constraint');
+  if (!el) return;
+  el.hidden = !visible;
+}
 
-  const positiveOthers = others.filter((program) => (currentPercents[program.key] || 0) > 0);
-  const otherItems = others.map((program) => {
+function getTrendsExplorerHoldLabel(programLabel, held) {
+  return held
+    ? `Keep ${programLabel} at its current allocation while other programs are adjusted. Activate to allow automatic changes.`
+    : `Keep ${programLabel} at its current allocation while other programs are adjusted.`;
+}
+
+function updateTrendsExplorerHoldControls(programs) {
+  pruneTrendsExplorerHeldKeys(programs);
+  const heldCount = trendsExplorerHeldKeys.size;
+  const clearBtn = document.getElementById('trends-explorer-allocation-clear');
+  if (clearBtn) clearBtn.hidden = heldCount < 2;
+
+  document.querySelectorAll('[data-explorer-hold]').forEach((button) => {
+    const programKey = button.dataset.explorerHold;
+    const held = trendsExplorerHeldKeys.has(programKey);
+    const label = button.dataset.explorerHoldLabel || programKey;
+    button.setAttribute('aria-pressed', held ? 'true' : 'false');
+    button.setAttribute('aria-label', getTrendsExplorerHoldLabel(label, held));
+    button.classList.toggle('is-selected', held);
+  });
+}
+
+function toggleTrendsExplorerHold(programKey) {
+  if (!programKey) return;
+  if (trendsExplorerHeldKeys.has(programKey)) {
+    trendsExplorerHeldKeys.delete(programKey);
+    setTrendsExplorerAllocationConstraintVisible(false);
+  } else {
+    trendsExplorerHeldKeys.add(programKey);
+  }
+  updateTrendsExplorerHoldControls(trendsExplorerViewState?.programs || []);
+}
+
+function clearTrendsExplorerHolds() {
+  if (!trendsExplorerHeldKeys.size) return;
+  trendsExplorerHeldKeys = new Set();
+  setTrendsExplorerAllocationConstraintVisible(false);
+  updateTrendsExplorerHoldControls(trendsExplorerViewState?.programs || []);
+}
+
+function redistributeTrendsExplorerAllocations(programs, currentPercents, editedKey, editedPercent, heldKeys = []) {
+  if (programs.length === 1) {
+    return { percents: { [programs[0].key]: 100 }, blocked: false };
+  }
+
+  const requested = Math.max(0, Math.min(100, Math.round(editedPercent)));
+  const heldSet = new Set(
+    (heldKeys || []).filter((key) => (
+      key !== editedKey && programs.some((program) => program.key === key)
+    ))
+  );
+  const heldPrograms = programs.filter((program) => heldSet.has(program.key));
+  const flexiblePrograms = programs.filter((program) => (
+    program.key !== editedKey && !heldSet.has(program.key)
+  ));
+  const heldTotal = heldPrograms.reduce(
+    (sum, program) => sum + (currentPercents[program.key] || 0),
+    0
+  );
+  const maxEdited = Math.max(0, 100 - heldTotal);
+  const nextPercent = Math.max(0, Math.min(maxEdited, requested));
+  const remaining = Math.max(0, 100 - nextPercent - heldTotal);
+  const blocked = flexiblePrograms.length === 0 && requested !== nextPercent;
+  const heldPercents = Object.fromEntries(
+    heldPrograms.map((program) => [program.key, currentPercents[program.key] || 0])
+  );
+
+  if (flexiblePrograms.length === 0) {
+    return {
+      percents: {
+        [editedKey]: nextPercent,
+        ...heldPercents,
+      },
+      blocked,
+    };
+  }
+
+  const positiveFlexible = flexiblePrograms.filter((program) => (currentPercents[program.key] || 0) > 0);
+  const flexibleItems = flexiblePrograms.map((program) => {
     let share = 0;
     if (remaining <= 0) share = 0;
-    else if (positiveOthers.length > 0) share = currentPercents[program.key] || 0;
+    else if (positiveFlexible.length > 0) share = currentPercents[program.key] || 0;
     else share = 1;
     return {
       key: program.key,
@@ -7166,10 +7293,14 @@ function redistributeTrendsExplorerAllocations(programs, currentPercents, edited
       share,
     };
   });
-  const otherPercents = allocateTrendsExplorerIntegerPercents(otherItems, remaining);
+  const flexiblePercents = allocateTrendsExplorerIntegerPercents(flexibleItems, remaining);
   return {
-    [editedKey]: nextPercent,
-    ...otherPercents,
+    percents: {
+      [editedKey]: nextPercent,
+      ...heldPercents,
+      ...flexiblePercents,
+    },
+    blocked: false,
   };
 }
 
@@ -7558,16 +7689,24 @@ function updateTrendsExplorerAllocationRow(rowEl, row, singleProgram) {
   const historyEl = rowEl.querySelector('[data-explorer-history]');
   const scenarioEl = rowEl.querySelector('[data-explorer-scenario]');
   const slider = rowEl.querySelector('[data-explorer-program]');
+  const holdBtn = rowEl.querySelector('[data-explorer-hold]');
+  const held = trendsExplorerHeldKeys.has(row.program.key);
   if (percentEl) percentEl.textContent = `${row.percent}%`;
   if (dollarsEl) dollarsEl.textContent = formatTrendsExplorerFunding(row.allocated);
   if (historyEl) historyEl.textContent = formatTrendsExplorerAllocationHistory(row.program.assumptions);
   if (scenarioEl) scenarioEl.textContent = formatTrendsExplorerAllocationScenario(row);
+  if (holdBtn) {
+    holdBtn.dataset.explorerHoldLabel = row.program.label;
+    holdBtn.setAttribute('aria-pressed', held ? 'true' : 'false');
+    holdBtn.setAttribute('aria-label', getTrendsExplorerHoldLabel(row.program.label, held));
+    holdBtn.classList.toggle('is-selected', held);
+  }
   if (slider) {
     slider.min = '0';
     slider.max = '100';
     slider.step = '1';
     slider.value = String(row.percent);
-    slider.disabled = singleProgram;
+    slider.disabled = Boolean(singleProgram);
     slider.setAttribute('aria-valuemin', '0');
     slider.setAttribute('aria-valuemax', '100');
     slider.setAttribute('aria-valuenow', String(row.percent));
@@ -7579,8 +7718,20 @@ function buildTrendsExplorerAllocationRow(row, singleProgram) {
   const rowEl = document.createElement('div');
   rowEl.className = 'trends-explorer-allocation-row';
   rowEl.dataset.explorerProgramRow = row.program.key;
+  const held = trendsExplorerHeldKeys.has(row.program.key);
 
   const programCell = document.createElement('div');
+  programCell.className = 'trends-explorer-allocation-program';
+  const holdBtn = document.createElement('button');
+  holdBtn.type = 'button';
+  holdBtn.className = 'trends-explorer-allocation-hold';
+  holdBtn.dataset.explorerHold = row.program.key;
+  holdBtn.dataset.explorerHoldLabel = row.program.label;
+  holdBtn.setAttribute('aria-pressed', held ? 'true' : 'false');
+  holdBtn.setAttribute('aria-label', getTrendsExplorerHoldLabel(row.program.label, held));
+  if (held) holdBtn.classList.add('is-selected');
+  const programCopy = document.createElement('div');
+  programCopy.className = 'trends-explorer-allocation-program-copy';
   const nameEl = document.createElement('div');
   nameEl.className = 'trends-explorer-allocation-name';
   nameEl.textContent = row.program.label;
@@ -7588,7 +7739,8 @@ function buildTrendsExplorerAllocationRow(row, singleProgram) {
   historyEl.className = 'trends-explorer-allocation-history';
   historyEl.dataset.explorerHistory = '';
   historyEl.textContent = formatTrendsExplorerAllocationHistory(row.program.assumptions);
-  programCell.append(nameEl, historyEl);
+  programCopy.append(nameEl, historyEl);
+  programCell.append(holdBtn, programCopy);
 
   const allocationCell = document.createElement('div');
   const allocationLabel = document.createElement('div');
@@ -7678,10 +7830,15 @@ function renderTrendsExplorerAllocation(totals) {
   if (!totals.rows.length || totals.rows.length < 2) {
     section.hidden = true;
     rowsEl.replaceChildren();
+    setTrendsExplorerAllocationConstraintVisible(false);
+    const clearBtn = document.getElementById('trends-explorer-allocation-clear');
+    if (clearBtn) clearBtn.hidden = true;
+    pruneTrendsExplorerHeldKeys(totals.rows.map((row) => row.program));
     return;
   }
 
   section.hidden = false;
+  pruneTrendsExplorerHeldKeys(totals.rows.map((row) => row.program));
   renderTrendsExplorerAllocationSummary(totals);
 
   const singleProgram = totals.rows.length === 1;
@@ -7696,25 +7853,28 @@ function renderTrendsExplorerAllocation(totals) {
     totals.rows.forEach((row) => {
       rowsEl.append(buildTrendsExplorerAllocationRow(row, singleProgram));
     });
-    return;
+  } else {
+    existingRows.forEach((rowEl, index) => {
+      updateTrendsExplorerAllocationRow(rowEl, totals.rows[index], singleProgram);
+    });
   }
-
-  existingRows.forEach((rowEl, index) => {
-    updateTrendsExplorerAllocationRow(rowEl, totals.rows[index], singleProgram);
-  });
+  updateTrendsExplorerHoldControls(totals.rows.map((row) => row.program));
 }
 
 function applyTrendsExplorerAllocationChange(programKey, editedPercent) {
   const state = trendsExplorerViewState;
   if (!state?.programs?.length) return;
-  const nextAllocations = redistributeTrendsExplorerAllocations(
+  const result = redistributeTrendsExplorerAllocations(
     state.programs,
     state.allocations || {},
     programKey,
-    editedPercent
+    editedPercent,
+    [...trendsExplorerHeldKeys]
   );
+  const nextAllocations = result.percents;
   trendsExplorerAllocations = nextAllocations;
   state.allocations = nextAllocations;
+  setTrendsExplorerAllocationConstraintVisible(result.blocked);
   const totals = calculateTrendsExplorerAllocatedTotals(state.funding, state.programs, nextAllocations);
   refreshTrendsExplorerAllocatedViews(totals);
 }
@@ -7722,6 +7882,8 @@ function applyTrendsExplorerAllocationChange(programKey, editedPercent) {
 function resetTrendsExplorerAllocations() {
   const state = trendsExplorerViewState;
   if (!state?.programs?.length) return;
+  trendsExplorerHeldKeys = new Set();
+  setTrendsExplorerAllocationConstraintVisible(false);
   const historical = getTrendsExplorerHistoricalAllocationPercents(state.programs);
   trendsExplorerAllocations = historical;
   state.allocations = historical;
@@ -7765,6 +7927,8 @@ function showTrendsExplorerEmpty(message) {
   const body = document.getElementById('trends-explorer-body');
   const allocation = document.getElementById('trends-explorer-allocation');
   trendsExplorerViewState = null;
+  pruneTrendsExplorerHeldKeys([]);
+  setTrendsExplorerAllocationConstraintVisible(false);
   if (allocation) allocation.hidden = true;
   hideTrendsExplorerComparison();
   if (body) body.hidden = true;
@@ -7816,6 +7980,7 @@ function renderTrendsExplorerSection(filters) {
   );
 
   const programs = aggregateTrendsExplorerPrograms(eligibleEvents);
+  pruneTrendsExplorerHeldKeys(programs);
   const allocations = resolveTrendsExplorerAllocations(programs, trendsExplorerAllocations);
 
   trendsExplorerViewState = {
@@ -8002,8 +8167,18 @@ function setupTrends() {
     applyTrendsExplorerAllocationChange(slider.dataset.explorerProgram, parsedPercent);
   });
 
+  document.getElementById('trends-explorer-allocation-rows')?.addEventListener('click', (event) => {
+    const holdBtn = event.target.closest('[data-explorer-hold]');
+    if (!holdBtn) return;
+    toggleTrendsExplorerHold(holdBtn.dataset.explorerHold);
+  });
+
   document.getElementById('trends-explorer-allocation-reset')?.addEventListener('click', () => {
     resetTrendsExplorerAllocations();
+  });
+
+  document.getElementById('trends-explorer-allocation-clear')?.addEventListener('click', () => {
+    clearTrendsExplorerHolds();
   });
 
   const chartWrap = document.getElementById('trends-chart-svg-wrap');
@@ -8109,8 +8284,9 @@ async function deleteEvent(eventId) {
   if (!canDeleteEvents()) return;
   if (!confirm('Delete this event?')) return;
   try {
-    await deleteEventById(eventId);
+    const result = await deleteEventById(eventId);
     events = events.filter((e) => e.id !== eventId);
+    applyAarResequencePatches(result?.resequenced);
     render();
   } catch (err) {
     console.error(err);

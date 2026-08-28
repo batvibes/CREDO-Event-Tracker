@@ -985,11 +985,15 @@
                       <h4 class="trends-explorer-allocation-title">Program Allocation</h4>
                       <p class="trends-explorer-allocation-subtitle">Allocate the scenario funding across program types using historical delivery rates.</p>
                     </div>
-                    <button type="button" class="trends-explorer-allocation-reset" id="trends-explorer-allocation-reset">Reset Allocation</button>
+                    <div class="trends-explorer-allocation-actions">
+                      <button type="button" class="trends-explorer-allocation-clear" id="trends-explorer-allocation-clear" hidden>Clear Selections</button>
+                      <button type="button" class="trends-explorer-allocation-reset" id="trends-explorer-allocation-reset">Reset Allocation</button>
+                    </div>
                   </div>
                   <p class="trends-explorer-allocation-note">Starting allocation reflects the historical recorded-cost mix in the selected 12-month basis. It is not a recommendation.</p>
                   <div class="trends-explorer-allocation-summary" id="trends-explorer-allocation-summary"></div>
                   <div class="trends-explorer-allocation-rows" id="trends-explorer-allocation-rows"></div>
+                  <p class="trends-explorer-allocation-constraint" id="trends-explorer-allocation-constraint" hidden>Another program needs to remain adjustable to redistribute funding.</p>
                 </div>
                 <div class="trends-explorer-comparison" id="trends-explorer-comparison" hidden>
                   <div class="trends-explorer-comparison-heading">
