@@ -1288,6 +1288,14 @@ function mountStaffMulti(root, options) {
 
   let tokens = [];
   let unbindOutside = null;
+  let menuMode = 'select';
+
+  function currentMembers() {
+    return (getTeamMembers() || [])
+      .filter((member) => cleanReferenceDisplayName(member.name))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+  }
 
   function syncHidden() {
     hidden.value = serializeCredoStaff(tokens);
@@ -1300,7 +1308,7 @@ function mountStaffMulti(root, options) {
         tokens = tokens.filter((_, i) => i !== index);
         renderChips();
         syncHidden();
-        if (!menu.hidden) renderMenu();
+        if (!menu.hidden && menuMode === 'select') renderMenu();
       });
       if (token.orphan) chip.classList.add('is-orphan');
       chips.appendChild(chip);
@@ -1314,19 +1322,101 @@ function mountStaffMulti(root, options) {
     return new Set(tokens.filter((token) => token.id).map((token) => token.id));
   }
 
+  function hasSelectedName(name) {
+    const key = normalizeReferenceName(name);
+    return tokens.some((token) => normalizeReferenceName(token.name) === key);
+  }
+
+  function addOtherStaffName(rawValue) {
+    const raw = String(rawValue ?? '');
+    if (raw.includes(',')) {
+      return { ok: false, error: 'Commas cannot be used in staff names.' };
+    }
+
+    const name = cleanReferenceDisplayName(raw);
+    if (!name) {
+      return { ok: false, error: 'Name is required.' };
+    }
+
+    const match = currentMembers().find(
+      (member) => normalizeReferenceName(member.name) === normalizeReferenceName(name)
+    );
+    if (match) {
+      if (!tokens.some((token) => token.id === match.id) && !hasSelectedName(match.name)) {
+        tokens.push({ id: match.id, name: match.name, orphan: false });
+        renderChips();
+        syncHidden();
+      }
+      return { ok: true };
+    }
+
+    if (hasSelectedName(name)) {
+      return { ok: true };
+    }
+
+    tokens.push({ id: null, name, orphan: true });
+    renderChips();
+    syncHidden();
+    return { ok: true };
+  }
+
+  function renderAddOtherPanel() {
+    menuMode = 'add-other';
+    menu.innerHTML = `
+      <div class="ref-inline-add">
+        <label class="ref-inline-add-label">
+          Staff name
+          <input type="text" class="ref-staff-other-name" maxlength="200" autocomplete="off">
+        </label>
+        <p class="field-error ref-staff-other-error" hidden></p>
+        <div class="ref-inline-add-actions">
+          <button type="button" class="btn btn-secondary ref-inline-cancel">Cancel</button>
+          <button type="button" class="btn btn-primary ref-inline-save">Add</button>
+        </div>
+      </div>`;
+
+    const nameInput = menu.querySelector('.ref-staff-other-name');
+    const errorEl = menu.querySelector('.ref-staff-other-error');
+    nameInput?.focus();
+
+    function showError(message) {
+      if (!errorEl) return;
+      errorEl.textContent = message;
+      errorEl.hidden = !message;
+    }
+
+    function submitOtherStaff() {
+      const result = addOtherStaffName(nameInput?.value ?? '');
+      if (!result.ok) {
+        showError(result.error);
+        nameInput?.focus();
+        return;
+      }
+      menuMode = 'select';
+      renderMenu();
+    }
+
+    menu.querySelector('.ref-inline-cancel')?.addEventListener('click', () => {
+      menuMode = 'select';
+      renderMenu();
+    });
+    menu.querySelector('.ref-inline-save')?.addEventListener('click', submitOtherStaff);
+    nameInput?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      submitOtherStaff();
+    });
+  }
+
   function renderMenu() {
-    const members = (getTeamMembers() || [])
-      .filter((member) => cleanReferenceDisplayName(member.name))
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
-
-    const selected = selectedIds();
-    const orphanTokens = tokens.filter((token) => token.orphan);
-
-    if (!members.length && !orphanTokens.length) {
-      menu.innerHTML = '<div class="ref-menu-empty">No team members available</div>';
+    if (menuMode === 'add-other') {
+      renderAddOtherPanel();
       return;
     }
+
+    const members = currentMembers();
+    const selected = selectedIds();
+    const orphanTokens = tokens.filter((token) => token.orphan);
 
     const memberMarkup = members.map((member) => `
       <label class="ref-check-option">
@@ -1335,11 +1425,22 @@ function mountStaffMulti(root, options) {
       </label>
     `).join('');
 
+    const emptyMarkup = !members.length
+      ? '<div class="ref-menu-empty">No team members available</div>'
+      : '';
+
     const orphanMarkup = orphanTokens.length
       ? `<div class="ref-menu-empty">Preserved historical names not on the current team list remain as chips above.</div>`
       : '';
 
-    menu.innerHTML = `${memberMarkup}${orphanMarkup}`;
+    const addActionMarkup = `
+      <div class="ref-menu-actions">
+        <button type="button" class="ref-menu-add" data-action="add-other-staff">
+          Add Other Staff
+        </button>
+      </div>`;
+
+    menu.innerHTML = `${memberMarkup}${emptyMarkup}${orphanMarkup}${addActionMarkup}`;
 
     menu.querySelectorAll('input[type="checkbox"][data-id]').forEach((checkbox) => {
       checkbox.addEventListener('change', () => {
@@ -1356,10 +1457,20 @@ function mountStaffMulti(root, options) {
         syncHidden();
       });
     });
+
+    menu.querySelector('[data-action="add-other-staff"]')?.addEventListener('click', () => {
+      renderAddOtherPanel();
+    });
+  }
+
+  function closeMenu() {
+    menu.hidden = true;
+    menuMode = 'select';
   }
 
   function openMenu() {
     closeAllMenus(menu);
+    menuMode = 'select';
     renderMenu();
     menu.hidden = false;
     if (unbindOutside) unbindOutside();
@@ -1368,12 +1479,13 @@ function mountStaffMulti(root, options) {
 
   trigger.addEventListener('click', () => {
     if (menu.hidden) openMenu();
-    else menu.hidden = true;
+    else closeMenu();
   });
 
   return {
     reset() {
       tokens = [];
+      menuMode = 'select';
       renderChips();
       syncHidden();
       menu.hidden = true;
@@ -1386,6 +1498,7 @@ function mountStaffMulti(root, options) {
       }
       const parsed = parseCredoStaffTokens(cleaned, getTeamMembers());
       tokens = parsed.tokens;
+      menuMode = 'select';
       renderChips();
       syncHidden();
     },
