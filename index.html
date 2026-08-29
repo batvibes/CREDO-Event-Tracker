@@ -100,6 +100,10 @@
           <span class="nav-icon">▤</span>
           Trends
         </a>
+        <a href="#" class="nav-item" data-view="financials">
+          <span class="nav-icon">◈</span>
+          Financials
+        </a>
         <a href="#" class="nav-item" data-view="team">
           <span class="nav-icon">☷</span>
           Team
@@ -1075,6 +1079,82 @@
                   <p>Actual future results may vary. This is a historical-rate scenario, not a guaranteed forecast.</p>
                 </div>
               </div>
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <div id="view-financials" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Financials</h1>
+            <h2>Financial Overview</h2>
+            <p class="tagline">Review recorded CREDO event expenditures by cost category, vendor, program, and reporting period.</p>
+          </div>
+        </header>
+        <section class="content-section financials-section">
+          <div class="financials-filter-bar">
+            <label class="financials-filter-field">
+              <span class="financials-filter-label">Reporting Period</span>
+              <select id="financials-period" class="filter-select" aria-label="Financials reporting period">
+                <option value="this-fy" selected>Current Fiscal Year</option>
+                <option value="last-fy">Previous Fiscal Year</option>
+                <option value="calendar-year">Calendar Year</option>
+                <option value="ytd">Year to Date</option>
+                <option value="12m">Last 12 Months</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+            </label>
+            <label class="financials-filter-field">
+              <span class="financials-filter-label">Program</span>
+              <select id="financials-program" class="filter-select" aria-label="Financials program filter">
+                <option value="">All Programs</option>
+              </select>
+            </label>
+            <label class="financials-filter-field" id="financials-start-field" hidden>
+              <span class="financials-filter-label">Custom Start Date</span>
+              <input type="date" id="financials-start-date" class="reports-input" disabled>
+            </label>
+            <label class="financials-filter-field" id="financials-end-field" hidden>
+              <span class="financials-filter-label">Custom End Date</span>
+              <input type="date" id="financials-end-date" class="reports-input" disabled>
+            </label>
+          </div>
+
+          <div class="financials-results">
+            <section class="financials-summary" aria-label="Financial summary">
+              <div class="financials-summary-band" id="financials-kpi-grid"></div>
+            </section>
+
+            <section class="financials-category-section" aria-label="Cost breakdown">
+              <div class="financials-section-heading">
+                <h3 class="financials-section-title">Cost Breakdown</h3>
+                <p class="financials-section-subtitle">See how recorded event spending is distributed across cost categories.</p>
+              </div>
+              <p class="financials-empty-message" id="financials-empty-message" hidden></p>
+              <div class="financials-breakdown-layout">
+                <div class="financials-donut-panel">
+                  <div class="financials-donut" id="financials-donut"></div>
+                </div>
+                <div class="financials-category-list" id="financials-category-list"></div>
+              </div>
+            </section>
+
+            <section class="financials-vendor-section" aria-label="Venue and catering spending">
+              <div class="financials-section-heading financials-vendor-heading">
+                <div>
+                  <h3 class="financials-section-title">Venue &amp; Catering Spending</h3>
+                  <p class="financials-section-subtitle">See where recorded venue and catering dollars went for the selected period and program.</p>
+                </div>
+                <div class="financials-vendor-tabs" role="tablist" aria-label="Venue and catering spending">
+                  <button type="button" class="financials-vendor-tab is-active" id="financials-tab-venues" role="tab" aria-selected="true" data-vendor-type="venues">Venues</button>
+                  <button type="button" class="financials-vendor-tab" id="financials-tab-caterers" role="tab" aria-selected="false" data-vendor-type="caterers">Caterers</button>
+                </div>
+              </div>
+              <div class="financials-vendor-summary" id="financials-vendor-summary"></div>
+              <p class="financials-empty-message" id="financials-vendor-empty" hidden></p>
+              <div class="financials-vendor-list" id="financials-vendor-list"></div>
+              <div id="financials-vendor-detail" class="financials-vendor-detail" hidden aria-live="polite"></div>
             </section>
           </div>
         </section>

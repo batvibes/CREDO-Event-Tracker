@@ -9160,6 +9160,755 @@ function setupTrends() {
   updateTrendsCustomDateFields();
 }
 
+const FINANCIALS_COST_CATEGORIES = [
+  { key: 'venue', label: 'Venue', resolve: resolveTrendsVenueCost },
+  { key: 'catering', label: 'Catering', resolve: resolveTrendsCateringCost },
+  { key: 'lodging', label: 'Lodging', resolve: (event) => parseEventCostNumber(event.lodgingCost) },
+  {
+    key: 'transportation',
+    label: 'Transportation',
+    resolve: (event) => parseEventCostNumber(event.transportationCost),
+  },
+  { key: 'materials', label: 'Materials', resolve: (event) => parseEventCostNumber(event.materialsCost) },
+  { key: 'other', label: 'Other', resolve: (event) => parseEventCostNumber(event.otherCost) },
+];
+
+const FINANCIALS_CATEGORY_COLORS = {
+  venue: '#00205b',
+  catering: '#345c3a',
+  lodging: '#1a4a7a',
+  transportation: '#4b5563',
+  materials: '#6b5344',
+  other: '#9ca3af',
+};
+
+let financialsVendorType = 'venues';
+let financialsSelectedVendorKey = null;
+
+function getFinancialsPeriodValue() {
+  return document.getElementById('financials-period')?.value || 'this-fy';
+}
+
+function getFinancialsProgramValue() {
+  return document.getElementById('financials-program')?.value || '';
+}
+
+function populateFinancialsProgramOptions() {
+  populateTrendsSelect(
+    document.getElementById('financials-program'),
+    '<option value="">All Programs</option>',
+    eventTypes
+  );
+}
+
+function updateFinancialsCustomDateFields() {
+  const isCustom = getFinancialsPeriodValue() === 'custom';
+  const startField = document.getElementById('financials-start-field');
+  const endField = document.getElementById('financials-end-field');
+  const startInput = document.getElementById('financials-start-date');
+  const endInput = document.getElementById('financials-end-date');
+  if (startField) startField.hidden = !isCustom;
+  if (endField) endField.hidden = !isCustom;
+  if (startInput) startInput.disabled = !isCustom;
+  if (endInput) endInput.disabled = !isCustom;
+}
+
+function getFinancialsCurrentRange() {
+  const period = getFinancialsPeriodValue();
+  const today = new Date();
+  const todayIso = formatLocalIsoDate(today);
+  const calendarYear = today.getFullYear();
+
+  if (period === '12m') {
+    return {
+      start: formatLocalIsoDate(shiftLocalDateByMonths(today, -12)),
+      end: todayIso,
+    };
+  }
+
+  if (period === 'last-fy') {
+    return getFiscalYearRange(getCurrentFiscalYearNumber(today) - 1);
+  }
+
+  if (period === 'calendar-year') {
+    return getCalendarYearRange(calendarYear);
+  }
+
+  if (period === 'ytd') {
+    const yearRange = getCalendarYearRange(calendarYear);
+    return {
+      start: yearRange.start,
+      end: todayIso < yearRange.end ? todayIso : yearRange.end,
+    };
+  }
+
+  if (period === 'custom') {
+    const start = document.getElementById('financials-start-date')?.value || '';
+    const end = document.getElementById('financials-end-date')?.value || '';
+    if (!start || !end || start > end) return null;
+    return { start, end };
+  }
+
+  const fyRange = getFiscalYearRange(getCurrentFiscalYearNumber(today));
+  return {
+    start: fyRange.start,
+    end: todayIso < fyRange.end ? todayIso : fyRange.end,
+  };
+}
+
+function getFinancialsEvents(range, program) {
+  if (!range) return [];
+
+  const todayIso = formatLocalIsoDate(new Date());
+  const selectedProgram = program || '';
+
+  return events.filter((event) => {
+    if (!isAarFinalized(event)) return false;
+
+    const isoDate = getTrendsEventDate(event);
+    if (!isoDate) return false;
+    if (isoDate > todayIso && getFinancialsPeriodValue() !== 'calendar-year') return false;
+    if (!isDateInRange(isoDate, range.start, range.end)) return false;
+    if (selectedProgram && event.eventType !== selectedProgram) return false;
+    return true;
+  });
+}
+
+function getFinancialsCategoryTotals(eventsForRange) {
+  return FINANCIALS_COST_CATEGORIES.map((category) => ({
+    key: category.key,
+    label: category.label,
+    total: eventsForRange.reduce((sum, event) => sum + category.resolve(event), 0),
+  }));
+}
+
+function formatFinancialsPercent(amount, total) {
+  if (!(total > 0)) return '0.0%';
+  return `${((amount / total) * 100).toFixed(1)}%`;
+}
+
+function getFinancialsLargestCategory(categories) {
+  let largest = null;
+  categories.forEach((category) => {
+    if (!(category.total > 0)) return;
+    if (!largest || category.total > largest.total) largest = category;
+  });
+  return largest;
+}
+
+function calculateFinancialsSummary(eventsForRange, categories) {
+  const totalRecordedEventCost = eventsForRange.reduce(
+    (sum, event) => sum + getTrendsEventRecordedCost(event),
+    0
+  );
+  const eventsWithRecordedCosts = eventsForRange.filter(
+    (event) => getTrendsEventRecordedCost(event) > 0
+  ).length;
+  const largestCategory = getFinancialsLargestCategory(categories);
+  const averageRecordedCost = eventsWithRecordedCosts > 0
+    ? totalRecordedEventCost / eventsWithRecordedCosts
+    : null;
+
+  return {
+    totalRecordedEventCost,
+    eventsWithRecordedCosts,
+    largestCategory,
+    averageRecordedCost,
+  };
+}
+
+function getFinancialsEmptyMessage(range, eventsForRange, eventsWithRecordedCosts) {
+  if (!range) {
+    return 'Enter a valid custom start and end date to review recorded expenditures.';
+  }
+  if (eventsForRange.length === 0) {
+    return 'No finalized After Action Reports match the selected period and program.';
+  }
+  if (eventsWithRecordedCosts === 0) {
+    return 'No recorded event costs for the selected period and program.';
+  }
+  return '';
+}
+
+function renderFinancialsSummary(summary) {
+  const grid = document.getElementById('financials-kpi-grid');
+  if (!grid) return;
+
+  const largestLabel = summary.largestCategory?.label || '—';
+  const averageLabel = summary.averageRecordedCost == null
+    ? '—'
+    : formatTotalRecordedEventCost(summary.averageRecordedCost);
+
+  grid.innerHTML = `
+    <div class="financials-summary-metric is-primary">
+      <div class="financials-summary-label">Total Recorded Spending</div>
+      <div class="financials-summary-value">${formatTotalRecordedEventCost(summary.totalRecordedEventCost)}</div>
+    </div>
+    <div class="financials-summary-metric">
+      <div class="financials-summary-label">Events With Recorded Costs</div>
+      <div class="financials-summary-value">${summary.eventsWithRecordedCosts.toLocaleString('en-US')}</div>
+    </div>
+    <div class="financials-summary-metric">
+      <div class="financials-summary-label">Average / Event</div>
+      <div class="financials-summary-value">${averageLabel}</div>
+    </div>
+    <div class="financials-summary-metric">
+      <div class="financials-summary-label">Largest Category</div>
+      <div class="financials-summary-value">${largestLabel}</div>
+    </div>`;
+}
+
+function getFinancialsCategoryColor(key) {
+  return FINANCIALS_CATEGORY_COLORS[key] || '#9ca3af';
+}
+
+function getFinancialsRankedCategories(categories) {
+  return [...categories].sort((left, right) => {
+    if (right.total !== left.total) return right.total - left.total;
+    return left.label.localeCompare(right.label, 'en', { sensitivity: 'base' });
+  });
+}
+
+function renderFinancialsDonut(categories, total) {
+  const mount = document.getElementById('financials-donut');
+  if (!mount) return;
+
+  const size = 220;
+  const cx = 110;
+  const cy = 110;
+  const radius = 76;
+  const strokeWidth = 26;
+  const circumference = 2 * Math.PI * radius;
+  const ranked = getFinancialsRankedCategories(categories);
+  const active = total > 0 ? ranked.filter((category) => category.total > 0) : [];
+  const gap = active.length > 1 ? circumference * 0.012 : 0;
+  let offset = 0;
+
+  const segments = active.map((category) => {
+    const length = (category.total / total) * circumference;
+    const dash = Math.max(0, length - gap);
+    const slice = {
+      color: getFinancialsCategoryColor(category.key),
+      dasharray: `${dash} ${circumference - dash}`,
+      dashoffset: -offset,
+    };
+    offset += length;
+    return slice;
+  });
+
+  const segmentMarkup = segments
+    .map((segment) => `
+      <circle
+        cx="${cx}"
+        cy="${cy}"
+        r="${radius}"
+        fill="none"
+        stroke="${segment.color}"
+        stroke-width="${strokeWidth}"
+        stroke-dasharray="${segment.dasharray}"
+        stroke-dashoffset="${segment.dashoffset}"
+        transform="rotate(-90 ${cx} ${cy})"
+      ></circle>`)
+    .join('');
+
+  mount.innerHTML = `
+    <div class="financials-donut-visual">
+      <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="Cost breakdown totaling ${formatTotalRecordedEventCost(total)}">
+        <circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#eef2f7" stroke-width="${strokeWidth}"></circle>
+        ${segmentMarkup}
+      </svg>
+      <div class="financials-donut-center">
+        <div class="financials-donut-center-label">Total</div>
+        <div class="financials-donut-center-value">${formatTotalRecordedEventCost(total)}</div>
+      </div>
+    </div>`;
+}
+
+function renderFinancialsCategoryList(categories, total) {
+  const list = document.getElementById('financials-category-list');
+  if (!list) return;
+
+  list.innerHTML = getFinancialsRankedCategories(categories)
+    .map((category) => {
+      const zeroClass = category.total > 0 ? '' : ' is-zero';
+      const color = getFinancialsCategoryColor(category.key);
+      return `
+        <div class="financials-category-row${zeroClass}">
+          <span class="financials-category-swatch" style="background:${color}" aria-hidden="true"></span>
+          <span class="financials-category-name">${category.label}</span>
+          <span class="financials-category-amount">${formatTotalRecordedEventCost(category.total)}</span>
+          <span class="financials-category-pct">${formatFinancialsPercent(category.total, total)}</span>
+        </div>`;
+    })
+    .join('');
+}
+
+const FINANCIALS_UNSPECIFIED_VENUE_KEY = 'unspecified-venue';
+const FINANCIALS_UNSPECIFIED_CATERER_KEY = 'unspecified-caterer';
+
+function getFinancialsVendorType() {
+  return financialsVendorType === 'caterers' ? 'caterers' : 'venues';
+}
+
+function setFinancialsVendorType(type) {
+  const nextType = type === 'caterers' ? 'caterers' : 'venues';
+  if (nextType !== financialsVendorType) {
+    closeFinancialsVendorDetail();
+  }
+  financialsVendorType = nextType;
+  updateFinancialsVendorTabs();
+}
+
+function updateFinancialsVendorTabs() {
+  const selected = getFinancialsVendorType();
+  document.querySelectorAll('#view-financials .financials-vendor-tab').forEach((tab) => {
+    const isActive = tab.dataset.vendorType === selected;
+    tab.classList.toggle('is-active', isActive);
+    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+}
+
+function escapeFinancialsHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function getFinancialsResolvedVendorName(event, type) {
+  const raw = type === 'caterers'
+    ? resolveAarCateringVendor(event)
+    : resolveAarVenue(event);
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed || isTbd(trimmed)) return '';
+  return trimmed;
+}
+
+function getFinancialsVendorCostResolver(type) {
+  return type === 'caterers' ? resolveTrendsCateringCost : resolveTrendsVenueCost;
+}
+
+function getFinancialsVendorGroupKey(event, type) {
+  const name = getFinancialsResolvedVendorName(event, type);
+  if (name === '') {
+    return type === 'caterers'
+      ? FINANCIALS_UNSPECIFIED_CATERER_KEY
+      : FINANCIALS_UNSPECIFIED_VENUE_KEY;
+  }
+  return name.toLowerCase();
+}
+
+function getFinancialsVendorContributingEvents(eventsForRange, type, vendorKey) {
+  const resolveCost = getFinancialsVendorCostResolver(type);
+  return eventsForRange
+    .map((event) => ({
+      event,
+      cost: resolveCost(event),
+      isoDate: getTrendsEventDate(event) || '',
+    }))
+    .filter((row) => row.cost > 0 && getFinancialsVendorGroupKey(row.event, type) === vendorKey)
+    .sort((left, right) => {
+      if (right.isoDate !== left.isoDate) return right.isoDate.localeCompare(left.isoDate);
+      return 0;
+    });
+}
+
+function aggregateFinancialsVendorPrograms(contributing) {
+  const grouped = new Map();
+  contributing.forEach(({ event, cost }) => {
+    const { key, label } = normalizeTrendsDemandEventType(event);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.total += cost;
+      existing.eventCount += 1;
+      return;
+    }
+    grouped.set(key, {
+      key,
+      name: label,
+      total: cost,
+      eventCount: 1,
+    });
+  });
+
+  return [...grouped.values()].sort((left, right) => {
+    if (right.total !== left.total) return right.total - left.total;
+    return left.name.localeCompare(right.name, 'en', { sensitivity: 'base' });
+  });
+}
+
+function aggregateFinancialsVendorCommands(contributing) {
+  const grouped = new Map();
+  contributing.forEach(({ event }) => {
+    const command = getTrendsCommandKey(event);
+    const key = command ? command.toLowerCase() : 'unspecified-command';
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.eventCount += 1;
+      return;
+    }
+    grouped.set(key, {
+      key,
+      name: command || 'Unspecified Command',
+      eventCount: 1,
+    });
+  });
+
+  return [...grouped.values()].sort((left, right) => {
+    if (right.eventCount !== left.eventCount) return right.eventCount - left.eventCount;
+    return left.name.localeCompare(right.name, 'en', { sensitivity: 'base' });
+  });
+}
+
+function closeFinancialsVendorDetail() {
+  financialsSelectedVendorKey = null;
+  const panel = document.getElementById('financials-vendor-detail');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+}
+
+function updateFinancialsVendorRowState() {
+  document.querySelectorAll('#financials-vendor-list .financials-vendor-row').forEach((row) => {
+    const selected = row.dataset.vendorKey === financialsSelectedVendorKey;
+    row.classList.toggle('is-selected', selected);
+    row.setAttribute('aria-expanded', selected ? 'true' : 'false');
+  });
+}
+
+function renderFinancialsVendorDetail(vendor, contributing, type) {
+  const panel = document.getElementById('financials-vendor-detail');
+  if (!panel) return;
+
+  if (!vendor) {
+    closeFinancialsVendorDetail();
+    return;
+  }
+
+  const isCaterer = type === 'caterers';
+  const detailLabel = isCaterer ? 'Caterer Details' : 'Venue Details';
+  const totalLabel = isCaterer ? 'Total Catering Spending' : 'Total Venue Spending';
+  const averageLabel = isCaterer ? 'Average Catering Cost / Event' : 'Average Venue Cost / Event';
+  const averageValue = vendor.eventCount > 0
+    ? formatTotalRecordedEventCost(vendor.total / vendor.eventCount)
+    : '—';
+  const programs = aggregateFinancialsVendorPrograms(contributing);
+  const commands = aggregateFinancialsVendorCommands(contributing);
+
+  const programMarkup = programs.length
+    ? programs.map((program) => {
+      const eventLabel = program.eventCount === 1 ? 'event' : 'events';
+      const average = program.eventCount > 0
+        ? formatTotalRecordedEventCost(program.total / program.eventCount)
+        : '—';
+      return `
+        <li class="financials-vendor-detail-item">
+          <div class="financials-vendor-detail-item-name">${escapeFinancialsHtml(program.name)}</div>
+          <div class="financials-vendor-detail-item-meta">${program.eventCount} ${eventLabel} · ${formatTotalRecordedEventCost(program.total)} total · ${average}/event</div>
+        </li>`;
+    }).join('')
+    : '<li class="financials-vendor-detail-empty">No programs recorded for this vendor.</li>';
+
+  const commandMarkup = commands.length
+    ? commands.map((command) => {
+      const eventLabel = command.eventCount === 1 ? 'event' : 'events';
+      return `
+        <li class="financials-vendor-detail-item">
+          <div class="financials-vendor-detail-item-name">${escapeFinancialsHtml(command.name)}</div>
+          <div class="financials-vendor-detail-item-meta">${command.eventCount} ${eventLabel}</div>
+        </li>`;
+    }).join('')
+    : '<li class="financials-vendor-detail-empty">No commands recorded for this vendor.</li>';
+
+  const eventMarkup = contributing.length
+    ? contributing.map(({ event, cost }) => {
+      const program = normalizeTrendsDemandEventType(event).label;
+      const command = getTrendsCommandKey(event) || 'Unspecified Command';
+      return `
+        <tr>
+          <td data-label="Date">${escapeFinancialsHtml(formatEventDateDisplay(event))}</td>
+          <td data-label="Program">${escapeFinancialsHtml(program)}</td>
+          <td data-label="Command">${escapeFinancialsHtml(command)}</td>
+          <td data-label="Recorded Cost">${formatTotalRecordedEventCost(cost)}</td>
+        </tr>`;
+    }).join('')
+    : '<tr><td colspan="4">No contributing events.</td></tr>';
+
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="financials-vendor-detail-header">
+      <div>
+        <h4 class="financials-vendor-detail-title">${escapeFinancialsHtml(vendor.name)}</h4>
+        <p class="financials-vendor-detail-kicker">${detailLabel}</p>
+      </div>
+      <button type="button" class="financials-vendor-detail-close" id="financials-vendor-detail-close">Close</button>
+    </div>
+    <div class="financials-vendor-detail-metrics">
+      <div class="financials-vendor-detail-metric">
+        <div class="financials-vendor-detail-metric-label">${totalLabel}</div>
+        <div class="financials-vendor-detail-metric-value">${formatTotalRecordedEventCost(vendor.total)}</div>
+      </div>
+      <div class="financials-vendor-detail-metric">
+        <div class="financials-vendor-detail-metric-label">Total Events</div>
+        <div class="financials-vendor-detail-metric-value">${vendor.eventCount.toLocaleString('en-US')}</div>
+      </div>
+      <div class="financials-vendor-detail-metric">
+        <div class="financials-vendor-detail-metric-label">${averageLabel}</div>
+        <div class="financials-vendor-detail-metric-value">${averageValue}</div>
+      </div>
+    </div>
+    <div class="financials-vendor-detail-split">
+      <section class="financials-vendor-detail-block" aria-label="Programs">
+        <h5 class="financials-vendor-detail-heading">Programs</h5>
+        <ul class="financials-vendor-detail-list">${programMarkup}</ul>
+      </section>
+      <section class="financials-vendor-detail-block" aria-label="Commands served">
+        <h5 class="financials-vendor-detail-heading">Commands Served</h5>
+        <ul class="financials-vendor-detail-list">${commandMarkup}</ul>
+      </section>
+    </div>
+    <section class="financials-vendor-detail-block" aria-label="Contributing events">
+      <h5 class="financials-vendor-detail-heading">Events</h5>
+      <div class="financials-vendor-detail-table-wrap">
+        <table class="financials-vendor-detail-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Program</th>
+              <th>Command</th>
+              <th>Recorded Cost</th>
+            </tr>
+          </thead>
+          <tbody>${eventMarkup}</tbody>
+        </table>
+      </div>
+    </section>`;
+
+  document.getElementById('financials-vendor-detail-close')?.addEventListener('click', () => {
+    closeFinancialsVendorDetail();
+    updateFinancialsVendorRowState();
+  });
+}
+
+function openFinancialsVendorDetail(vendorKey, eventsForRange, vendors, type) {
+  const vendor = vendors.find((entry) => entry.key === vendorKey);
+  if (!vendor) {
+    closeFinancialsVendorDetail();
+    updateFinancialsVendorRowState();
+    return;
+  }
+
+  financialsSelectedVendorKey = vendor.key;
+  const contributing = getFinancialsVendorContributingEvents(eventsForRange, type, vendor.key);
+  renderFinancialsVendorDetail(vendor, contributing, type);
+  updateFinancialsVendorRowState();
+}
+
+function aggregateFinancialsVendors(eventsForRange, type) {
+  const resolveCost = getFinancialsVendorCostResolver(type);
+  const unspecifiedKey = type === 'caterers'
+    ? FINANCIALS_UNSPECIFIED_CATERER_KEY
+    : FINANCIALS_UNSPECIFIED_VENUE_KEY;
+  const unspecifiedLabel = type === 'caterers' ? 'Unspecified Caterer' : 'Unspecified Venue';
+  const grouped = new Map();
+
+  eventsForRange.forEach((event) => {
+    const cost = resolveCost(event);
+    if (!(cost > 0)) return;
+
+    const name = getFinancialsResolvedVendorName(event, type);
+    const unspecified = name === '';
+    const key = unspecified ? unspecifiedKey : name.toLowerCase();
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.total += cost;
+      existing.eventCount += 1;
+      return;
+    }
+
+    grouped.set(key, {
+      key,
+      name: unspecified ? unspecifiedLabel : name,
+      unspecified,
+      total: cost,
+      eventCount: 1,
+    });
+  });
+
+  return [...grouped.values()]
+    .filter((vendor) => vendor.total > 0)
+    .sort((left, right) => {
+      if (right.total !== left.total) return right.total - left.total;
+      return left.name.localeCompare(right.name, 'en', { sensitivity: 'base' });
+    });
+}
+
+function getFinancialsVendorEmptyMessage(range, eventsForRange, type, vendors) {
+  if (!range) {
+    return 'Enter a valid custom start and end date to review recorded expenditures.';
+  }
+  if (eventsForRange.length === 0) {
+    return 'No finalized After Action Reports match the selected period and program.';
+  }
+  if (vendors.length === 0) {
+    return type === 'caterers'
+      ? 'No recorded catering spending for the selected period and program.'
+      : 'No recorded venue spending for the selected period and program.';
+  }
+  return '';
+}
+
+function renderFinancialsVendorSummary(type, totalSpending, identifiedCount) {
+  const summary = document.getElementById('financials-vendor-summary');
+  if (!summary) return;
+
+  const totalLabel = type === 'caterers' ? 'Total Catering Spending' : 'Total Venue Spending';
+  const identifiedLabel = type === 'caterers' ? 'Identified Caterers' : 'Identified Venues';
+
+  summary.innerHTML = `
+    <div class="financials-vendor-metric">
+      <div class="financials-vendor-metric-label">${totalLabel}</div>
+      <div class="financials-vendor-metric-value">${formatTotalRecordedEventCost(totalSpending)}</div>
+    </div>
+    <div class="financials-vendor-metric">
+      <div class="financials-vendor-metric-label">${identifiedLabel}</div>
+      <div class="financials-vendor-metric-value">${identifiedCount.toLocaleString('en-US')}</div>
+    </div>`;
+}
+
+function renderFinancialsVendorList(vendors, totalSpending, eventsForRange, type) {
+  const list = document.getElementById('financials-vendor-list');
+  if (!list) return;
+
+  list.innerHTML = vendors
+    .map((vendor) => {
+      const width = totalSpending > 0
+        ? Math.max(0, Math.min(100, (vendor.total / totalSpending) * 100))
+        : 0;
+      const eventLabel = vendor.eventCount === 1 ? 'event' : 'events';
+      const averageLabel = vendor.eventCount > 0
+        ? `${formatTotalRecordedEventCost(vendor.total / vendor.eventCount)}/event`
+        : '—';
+      const share = formatFinancialsPercent(vendor.total, totalSpending);
+      const selected = vendor.key === financialsSelectedVendorKey;
+      return `
+        <button
+          type="button"
+          class="financials-vendor-row${selected ? ' is-selected' : ''}"
+          data-vendor-key="${escapeFinancialsHtml(vendor.key)}"
+          aria-expanded="${selected ? 'true' : 'false'}"
+          aria-controls="financials-vendor-detail"
+        >
+          <div class="financials-vendor-row-main">
+            <div class="financials-vendor-name">${escapeFinancialsHtml(vendor.name)}</div>
+            <div class="financials-vendor-amount">${formatTotalRecordedEventCost(vendor.total)}</div>
+          </div>
+          <div class="financials-vendor-bar" aria-hidden="true">
+            <span class="financials-vendor-bar-fill" style="width: ${width.toFixed(1)}%"></span>
+          </div>
+          <div class="financials-vendor-meta">
+            <span>${vendor.eventCount} ${eventLabel}</span>
+            <span>${averageLabel}</span>
+            <span>${share}</span>
+          </div>
+        </button>`;
+    })
+    .join('');
+
+  list.querySelectorAll('.financials-vendor-row').forEach((row) => {
+    const openDetail = () => {
+      openFinancialsVendorDetail(row.dataset.vendorKey, eventsForRange, vendors, type);
+    };
+    row.addEventListener('click', openDetail);
+    row.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openDetail();
+    });
+  });
+}
+
+function renderFinancialsVendorSection(eventsForRange, range) {
+  updateFinancialsVendorTabs();
+
+  const type = getFinancialsVendorType();
+  const resolveCost = getFinancialsVendorCostResolver(type);
+  const vendors = aggregateFinancialsVendors(eventsForRange, type);
+  const totalSpending = eventsForRange.reduce((sum, event) => sum + resolveCost(event), 0);
+  const identifiedCount = vendors.filter((vendor) => !vendor.unspecified).length;
+  const emptyMessage = getFinancialsVendorEmptyMessage(range, eventsForRange, type, vendors);
+
+  renderFinancialsVendorSummary(type, totalSpending, identifiedCount);
+  renderFinancialsVendorList(vendors, totalSpending, eventsForRange, type);
+
+  const emptyEl = document.getElementById('financials-vendor-empty');
+  if (emptyEl) {
+    emptyEl.textContent = emptyMessage;
+    emptyEl.hidden = !emptyMessage;
+  }
+
+  if (financialsSelectedVendorKey) {
+    openFinancialsVendorDetail(financialsSelectedVendorKey, eventsForRange, vendors, type);
+  } else {
+    closeFinancialsVendorDetail();
+  }
+}
+
+function renderFinancials() {
+  if (!document.getElementById('view-financials')) return;
+
+  populateFinancialsProgramOptions();
+  updateFinancialsCustomDateFields();
+
+  const range = getFinancialsCurrentRange();
+  const eventsForRange = getFinancialsEvents(range, getFinancialsProgramValue());
+  const categories = getFinancialsCategoryTotals(eventsForRange);
+  const summary = calculateFinancialsSummary(eventsForRange, categories);
+  const emptyMessage = getFinancialsEmptyMessage(
+    range,
+    eventsForRange,
+    summary.eventsWithRecordedCosts
+  );
+
+  renderFinancialsSummary(summary);
+  renderFinancialsDonut(categories, summary.totalRecordedEventCost);
+  renderFinancialsCategoryList(categories, summary.totalRecordedEventCost);
+  renderFinancialsVendorSection(eventsForRange, range);
+
+  const emptyEl = document.getElementById('financials-empty-message');
+  if (emptyEl) {
+    emptyEl.textContent = emptyMessage;
+    emptyEl.hidden = !emptyMessage;
+  }
+}
+
+function setupFinancials() {
+  const period = document.getElementById('financials-period');
+  if (!period) return;
+
+  period.addEventListener('change', () => {
+    updateFinancialsCustomDateFields();
+    renderFinancials();
+  });
+
+  ['financials-program', 'financials-start-date', 'financials-end-date'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', renderFinancials);
+  });
+
+  document.querySelectorAll('#view-financials .financials-vendor-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      setFinancialsVendorType(tab.dataset.vendorType);
+      renderFinancials();
+    });
+  });
+
+  updateFinancialsVendorTabs();
+  updateFinancialsCustomDateFields();
+}
+
 function switchView(viewName) {
   if (currentView === 'reports' && reportsTab === 'aar') {
     captureAarFilterState();
@@ -9180,6 +9929,7 @@ function switchView(viewName) {
     calendar: 'view-calendar',
     reports: 'view-reports',
     trends: 'view-trends',
+    financials: 'view-financials',
     team: 'view-team',
     settings: 'view-settings',
   };
@@ -9194,6 +9944,8 @@ function switchView(viewName) {
     switchReportsTab(reportsTab);
   } else if (viewName === 'trends') {
     renderTrends();
+  } else if (viewName === 'financials') {
+    renderFinancials();
   } else if (viewName === 'team') {
     renderTeam();
   } else if (viewName === 'settings') {
@@ -9424,6 +10176,8 @@ function render() {
     }
   } else if (currentView === 'trends') {
     renderTrends();
+  } else if (currentView === 'financials') {
+    renderFinancials();
   } else if (currentView === 'team') {
     renderTeam();
   } else if (currentView === 'settings') {
@@ -9751,6 +10505,7 @@ export async function initApp() {
   setupNavigation();
   setupDateFilter();
   setupTrends();
+  setupFinancials();
   setupReports();
   setupReportsSubnav();
   setupAarSearch();
