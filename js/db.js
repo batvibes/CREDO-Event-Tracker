@@ -1167,6 +1167,86 @@ function referenceNameConflictError(name) {
   return error;
 }
 
+function mapRenameReferenceError(error, fallbackName = 'that name') {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '');
+  const quoted = message.match(/named\s+[“"]([^”"]+)[”"]/i);
+  const conflictName = quoted?.[1] || fallbackName;
+
+  if (
+    error?.code === 'P0001'
+    || hint === 'REFERENCE_NAME_EXISTS'
+    || /already exists/i.test(message)
+  ) {
+    return referenceNameConflictError(conflictName);
+  }
+
+  return error;
+}
+
+function mapRemoveReferenceError(error) {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '');
+
+  if (error?.code === 'P0002' || hint === 'REFERENCE_NOT_FOUND' || /was not found/i.test(message)) {
+    const notFound = new Error('That roster entry was not found.');
+    notFound.code = 'REFERENCE_NOT_FOUND';
+    return notFound;
+  }
+
+  if (error?.code === '22023' || hint === 'REFERENCE_TYPE_INVALID' || /invalid reference type/i.test(message)) {
+    const invalid = new Error('Invalid roster type.');
+    invalid.code = 'REFERENCE_TYPE_INVALID';
+    return invalid;
+  }
+
+  return error;
+}
+
+function namedReferenceFromRenameResult(data, mapRow = namedReferenceFromRow) {
+  const row = {
+    id: data.id,
+    name: data.name,
+    normalized_name: data.normalized_name,
+    active: data.active,
+    email: data.email ?? null,
+    phone: data.phone ?? null,
+    created_at: data.created_at ?? null,
+    updated_at: data.updated_at ?? null,
+  };
+  const mapped = mapRow(row);
+  mapped.previousName = data.previous_name ?? null;
+  mapped.kind = data.kind ?? null;
+  return mapped;
+}
+
+async function renameReferenceEntry(kind, id, newName, mapRow = namedReferenceFromRow) {
+  if (!id) throw new Error('REFERENCE_ID_REQUIRED');
+
+  const { data, error } = await supabase.rpc('rename_reference_entry', {
+    p_kind: kind,
+    p_id: id,
+    p_new_name: newName,
+  });
+
+  if (error) throw mapRenameReferenceError(error, newName);
+  if (!data) throw new Error('REFERENCE_RENAME_EMPTY');
+  return namedReferenceFromRenameResult(data, mapRow);
+}
+
+async function removeReferenceEntry(kind, id) {
+  if (!id) throw new Error('REFERENCE_ID_REQUIRED');
+
+  const { data, error } = await supabase.rpc('remove_reference_entry', {
+    p_reference_type: kind,
+    p_reference_id: id,
+  });
+
+  if (error) throw mapRemoveReferenceError(error);
+  if (!data?.removed) throw new Error('REFERENCE_REMOVE_EMPTY');
+  return data;
+}
+
 async function updateNamedReference(table, id, updates, mapRow = namedReferenceFromRow) {
   if (!id) throw new Error('REFERENCE_ID_REQUIRED');
 
@@ -1210,37 +1290,61 @@ async function updateNamedReference(table, id, updates, mapRow = namedReferenceF
 }
 
 export async function updateCommand(id, updates) {
+  if (updates?.name !== undefined) {
+    return renameReferenceEntry('command', id, updates.name);
+  }
   return updateNamedReference('commands', id, updates);
 }
 
 export async function updateLocation(id, updates) {
+  if (updates?.name !== undefined) {
+    return renameReferenceEntry('location', id, updates.name);
+  }
   return updateNamedReference('locations', id, updates);
 }
 
 export async function updateVenue(id, updates) {
+  if (updates?.name !== undefined) {
+    return renameReferenceEntry('venue', id, updates.name);
+  }
   return updateNamedReference('venues', id, updates);
 }
 
 export async function updateCaterer(id, updates) {
+  if (updates?.name !== undefined) {
+    return renameReferenceEntry('caterer', id, updates.name);
+  }
   return updateNamedReference('caterers', id, updates);
 }
 
+export async function removeCommand(id) {
+  return removeReferenceEntry('command', id);
+}
+
+export async function removeLocation(id) {
+  return removeReferenceEntry('location', id);
+}
+
+export async function removeVenue(id) {
+  return removeReferenceEntry('venue', id);
+}
+
+export async function removeCaterer(id) {
+  return removeReferenceEntry('caterer', id);
+}
+
+export async function removePerson(id) {
+  return removeReferenceEntry('person', id);
+}
+
 export async function updatePerson(id, updates = {}) {
+  if (updates.name !== undefined) {
+    return renameReferenceEntry('person', id, updates.name, personFromRow);
+  }
+
   if (!id) throw new Error('REFERENCE_ID_REQUIRED');
 
   const payload = {};
-
-  if (updates.name !== undefined) {
-    const cleaned = cleanReferenceDisplayName(updates.name);
-    if (!cleaned) throw new Error('REFERENCE_NAME_REQUIRED');
-    const normalizedName = normalizeReferenceName(cleaned);
-    const existing = await findNamedReferenceByNormalizedName('people', normalizedName, personFromRow);
-    if (existing && existing.id !== id) {
-      throw referenceNameConflictError(existing.name);
-    }
-    payload.name = cleaned;
-    payload.normalized_name = normalizedName;
-  }
 
   if (updates.active !== undefined) {
     payload.active = Boolean(updates.active);

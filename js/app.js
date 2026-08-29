@@ -41,6 +41,11 @@ import {
   updatePerson,
   updateTeamMember,
   updateVenue,
+  removeCaterer,
+  removeCommand,
+  removeLocation,
+  removePerson,
+  removeVenue,
 } from './db.js';
 import { initEventReferenceFields } from './event-reference-fields.js';
 import {
@@ -448,6 +453,17 @@ async function persistNewEvent(event) {
     console.error(err);
     alert('Failed to create event.');
     return false;
+  }
+}
+
+async function reloadEventsAfterCanonicalRename() {
+  try {
+    const loaded = await fetchEvents();
+    events = loaded.map(normalizeEvent);
+    render();
+    refreshOpenAarDocumentIfNeeded();
+  } catch (err) {
+    console.error(err);
   }
 }
 
@@ -10299,6 +10315,10 @@ function applyReferenceUpdate(list, updated) {
   return upsertReferenceItem(list, updated);
 }
 
+function removeReferenceItem(list, id) {
+  return list.filter((entry) => entry.id !== id);
+}
+
 function resetEventForm(form) {
   form.reset();
   form.querySelector('[name="dateType"][value="single"]').checked = true;
@@ -10475,27 +10495,57 @@ function setupModal() {
     updateCommand: async (id, updates) => {
       const updated = await updateCommand(id, updates);
       referenceCommands = applyReferenceUpdate(referenceCommands, updated);
+      if (updates?.name) await reloadEventsAfterCanonicalRename();
       return updated;
     },
     updateLocation: async (id, updates) => {
       const updated = await updateLocation(id, updates);
       referenceLocations = applyReferenceUpdate(referenceLocations, updated);
+      if (updates?.name) await reloadEventsAfterCanonicalRename();
       return updated;
     },
     updateVenue: async (id, updates) => {
       const updated = await updateVenue(id, updates);
       referenceVenues = applyReferenceUpdate(referenceVenues, updated);
+      if (updates?.name) await reloadEventsAfterCanonicalRename();
       return updated;
     },
     updateCaterer: async (id, updates) => {
       const updated = await updateCaterer(id, updates);
       referenceCaterers = applyReferenceUpdate(referenceCaterers, updated);
+      if (updates?.name) await reloadEventsAfterCanonicalRename();
       return updated;
     },
     updatePerson: async (id, updates) => {
       const updated = await updatePerson(id, updates);
       referencePeople = applyReferenceUpdate(referencePeople, updated);
+      if (updates?.name) await reloadEventsAfterCanonicalRename();
       return updated;
+    },
+    removeCommand: async (id) => {
+      const removed = await removeCommand(id);
+      referenceCommands = removeReferenceItem(referenceCommands, id);
+      return removed;
+    },
+    removeLocation: async (id) => {
+      const removed = await removeLocation(id);
+      referenceLocations = removeReferenceItem(referenceLocations, id);
+      return removed;
+    },
+    removeVenue: async (id) => {
+      const removed = await removeVenue(id);
+      referenceVenues = removeReferenceItem(referenceVenues, id);
+      return removed;
+    },
+    removeCaterer: async (id) => {
+      const removed = await removeCaterer(id);
+      referenceCaterers = removeReferenceItem(referenceCaterers, id);
+      return removed;
+    },
+    removePerson: async (id) => {
+      const removed = await removePerson(id);
+      referencePeople = removeReferenceItem(referencePeople, id);
+      return removed;
     },
     onPeopleChanged: () => {
       eventReferenceFields?.refreshPeople();

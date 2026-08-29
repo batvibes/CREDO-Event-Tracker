@@ -225,6 +225,38 @@ function referenceConflictMessage(error, fallbackName = 'that name') {
   return null;
 }
 
+function renameConfirmMarkup(oldName, newName) {
+  return `
+    <div class="ref-manage-panel">
+      <div class="ref-manage-header">
+        <button type="button" class="ref-manage-back" data-action="manage-back">← Back</button>
+        <div class="ref-manage-title">Rename</div>
+      </div>
+      <p class="ref-rename-confirm-lead">Rename “${escapeHtml(oldName)}” to “${escapeHtml(newName)}”?</p>
+      <p class="ref-rename-confirm-copy">This will update this name everywhere it is currently used in Events and AARs.</p>
+      <div class="ref-inline-add-actions">
+        <button type="button" class="btn btn-secondary" data-action="rename-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="rename-everywhere">Rename Everywhere</button>
+      </div>
+    </div>`;
+}
+
+function removeConfirmMarkup(name) {
+  return `
+    <div class="ref-manage-panel">
+      <div class="ref-manage-header">
+        <button type="button" class="ref-manage-back" data-action="manage-back">← Back</button>
+        <div class="ref-manage-title">Remove from list</div>
+      </div>
+      <p class="ref-rename-confirm-lead">Remove “${escapeHtml(name)}” from the list?</p>
+      <p class="ref-rename-confirm-copy">This removes it from future selections. Existing Events and AARs will not be changed.</p>
+      <div class="ref-inline-add-actions">
+        <button type="button" class="btn btn-secondary" data-action="remove-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="remove-confirm">Remove</button>
+      </div>
+    </div>`;
+}
+
 function mountNamedCombobox(root, options) {
   const {
     name,
@@ -236,6 +268,7 @@ function mountNamedCombobox(root, options) {
     canManage,
     onCreate,
     onUpdate,
+    onRemove,
   } = options;
 
   const hidden = document.createElement('input');
@@ -273,8 +306,10 @@ function mountNamedCombobox(root, options) {
   let selected = null;
   let orphanValue = '';
   let unbindOutside = null;
-  let menuMode = 'search'; // search | manage | rename
+  let menuMode = 'search'; // search | manage | rename | rename-confirm | remove-confirm
   let renameTarget = null;
+  let pendingRenameName = '';
+  let removeTarget = null;
 
   function syncHidden() {
     hidden.value = selected?.name || orphanValue || '';
@@ -292,6 +327,8 @@ function mountNamedCombobox(root, options) {
     input.setAttribute('aria-expanded', 'false');
     menuMode = 'search';
     renameTarget = null;
+    pendingRenameName = '';
+    removeTarget = null;
   }
 
   function setSelection(item, orphan = '') {
@@ -311,6 +348,88 @@ function mountNamedCombobox(root, options) {
       .slice(0, 50);
   }
 
+  function applyCanonicalRename(oldName, updated) {
+    if (!updated?.name) return;
+    const oldNorm = normalizeReferenceName(oldName || updated.previousName);
+    const current = selected?.name || orphanValue || '';
+    if (selected?.id === updated.id || (oldNorm && normalizeReferenceName(current) === oldNorm)) {
+      selected = updated;
+      orphanValue = '';
+      syncHidden();
+      syncInputDisplay();
+    }
+  }
+
+  async function commitRename(nextName) {
+    try {
+      const previousName = renameTarget.name;
+      const updated = await onUpdate(renameTarget.id, { name: nextName });
+      applyCanonicalRename(previousName, updated);
+      menuMode = 'manage';
+      pendingRenameName = '';
+      renderMenu();
+    } catch (error) {
+      console.error(error);
+      alert(referenceConflictMessage(error, nextName) || 'Failed to rename roster entry.');
+    }
+  }
+
+  async function commitRemove() {
+    const item = removeTarget;
+    if (!item) return;
+    try {
+      menuMode = 'manage';
+      await onRemove(item.id);
+      if (selected?.id === item.id) {
+        // Preserve the stored/selected display value; do not erase history.
+        selected = null;
+        orphanValue = item.name;
+        syncHidden();
+        syncInputDisplay();
+      }
+      removeTarget = null;
+      renderManagePanel();
+    } catch (error) {
+      console.error(error);
+      menuMode = 'remove-confirm';
+      alert('Failed to remove roster entry from the list.');
+    }
+  }
+
+  function renderRemoveConfirmPanel() {
+    menu.innerHTML = removeConfirmMarkup(removeTarget?.name || '');
+
+    menu.querySelector('[data-action="manage-back"]')?.addEventListener('click', () => {
+      menuMode = 'manage';
+      removeTarget = null;
+      renderManagePanel();
+    });
+    menu.querySelector('[data-action="remove-cancel"]')?.addEventListener('click', () => {
+      menuMode = 'manage';
+      removeTarget = null;
+      renderManagePanel();
+    });
+    menu.querySelector('[data-action="remove-confirm"]')?.addEventListener('click', () => {
+      commitRemove();
+    });
+  }
+
+  function renderRenameConfirmPanel() {
+    menu.innerHTML = renameConfirmMarkup(renameTarget?.name || '', pendingRenameName);
+
+    menu.querySelector('[data-action="manage-back"]')?.addEventListener('click', () => {
+      menuMode = 'rename';
+      renderRenamePanel();
+    });
+    menu.querySelector('[data-action="rename-cancel"]')?.addEventListener('click', () => {
+      menuMode = 'rename';
+      renderRenamePanel();
+    });
+    menu.querySelector('[data-action="rename-everywhere"]')?.addEventListener('click', () => {
+      commitRename(pendingRenameName);
+    });
+  }
+
   function renderRenamePanel() {
     const currentName = renameTarget?.name || '';
     menu.innerHTML = `
@@ -321,7 +440,7 @@ function mountNamedCombobox(root, options) {
         </div>
         <label class="ref-inline-add-label">
           Name
-          <input type="text" class="ref-rename-input" value="${escapeHtml(currentName)}" maxlength="200">
+          <input type="text" class="ref-rename-input" value="${escapeHtml(pendingRenameName || currentName)}" maxlength="200">
         </label>
         <div class="ref-inline-add-actions">
           <button type="button" class="btn btn-secondary" data-action="rename-cancel">Cancel</button>
@@ -335,34 +454,31 @@ function mountNamedCombobox(root, options) {
 
     menu.querySelector('[data-action="manage-back"]')?.addEventListener('click', () => {
       menuMode = 'manage';
+      pendingRenameName = '';
       renderMenu();
     });
     menu.querySelector('[data-action="rename-cancel"]')?.addEventListener('click', () => {
       menuMode = 'manage';
+      pendingRenameName = '';
       renderMenu();
     });
-    menu.querySelector('[data-action="rename-save"]')?.addEventListener('click', async () => {
+    menu.querySelector('[data-action="rename-save"]')?.addEventListener('click', () => {
       const nextName = cleanReferenceDisplayName(renameInput?.value);
       if (!nextName) {
         alert('Name is required.');
         return;
       }
-      try {
-        const previousName = renameTarget.name;
-        const updated = await onUpdate(renameTarget.id, { name: nextName });
-        if (selected?.id === updated.id) {
-          // Keep the current form value; renaming the roster is for future picks only.
-          selected = null;
-          orphanValue = previousName;
-          syncHidden();
-          syncInputDisplay();
+      if (normalizeReferenceName(nextName) === normalizeReferenceName(renameTarget?.name)) {
+        if (nextName === renameTarget.name) {
+          menuMode = 'manage';
+          pendingRenameName = '';
+          renderMenu();
+          return;
         }
-        menuMode = 'manage';
-        renderMenu();
-      } catch (error) {
-        console.error(error);
-        alert(referenceConflictMessage(error, nextName) || 'Failed to rename roster entry.');
       }
+      pendingRenameName = nextName;
+      menuMode = 'rename-confirm';
+      renderRenameConfirmPanel();
     });
   }
 
@@ -400,30 +516,18 @@ function mountNamedCombobox(root, options) {
       button.addEventListener('click', () => {
         renameTarget = (getItems() || []).find((entry) => entry.id === button.dataset.id) || null;
         if (!renameTarget) return;
+        pendingRenameName = '';
         menuMode = 'rename';
         renderRenamePanel();
       });
     });
 
     menu.querySelectorAll('[data-action="remove"]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const item = (getItems() || []).find((entry) => entry.id === button.dataset.id);
-        if (!item) return;
-        if (!window.confirm(`Remove “${item.name}” from the list?`)) return;
-        try {
-          await onUpdate(item.id, { active: false });
-          if (selected?.id === item.id) {
-            // Preserve the stored/selected display value; do not erase history.
-            selected = null;
-            orphanValue = item.name;
-            syncHidden();
-            syncInputDisplay();
-          }
-          renderManagePanel();
-        } catch (error) {
-          console.error(error);
-          alert('Failed to remove roster entry from the list.');
-        }
+      button.addEventListener('click', () => {
+        removeTarget = (getItems() || []).find((entry) => entry.id === button.dataset.id) || null;
+        if (!removeTarget) return;
+        menuMode = 'remove-confirm';
+        renderRemoveConfirmPanel();
       });
     });
   }
@@ -435,6 +539,14 @@ function mountNamedCombobox(root, options) {
     }
     if (menuMode === 'rename') {
       renderRenamePanel();
+      return;
+    }
+    if (menuMode === 'rename-confirm') {
+      renderRenameConfirmPanel();
+      return;
+    }
+    if (menuMode === 'remove-confirm') {
+      renderRemoveConfirmPanel();
       return;
     }
 
@@ -514,7 +626,7 @@ function mountNamedCombobox(root, options) {
 
   function openMenu() {
     closeAllMenus(menu);
-    if (menuMode !== 'manage' && menuMode !== 'rename') menuMode = 'search';
+    if (menuMode !== 'manage' && menuMode !== 'rename' && menuMode !== 'rename-confirm' && menuMode !== 'remove-confirm') menuMode = 'search';
     renderMenu(input.value);
     menu.hidden = false;
     input.setAttribute('aria-expanded', 'true');
@@ -596,20 +708,16 @@ function mountNamedCombobox(root, options) {
           orphanValue = preserved;
           syncHidden();
           syncInputDisplay();
-        } else if (normalizeReferenceName(latest.name) !== normalizeReferenceName(selected.name)) {
-          const preserved = selected.name;
-          selected = null;
-          orphanValue = preserved;
-          syncHidden();
-          syncInputDisplay();
         } else {
           selected = latest;
+          orphanValue = '';
           syncHidden();
           syncInputDisplay();
         }
       }
       if (!menu.hidden) renderMenu(input.value);
     },
+    applyCanonicalRename,
   };
 }
 
@@ -622,6 +730,7 @@ function mountPeopleMulti(root, options) {
     canManage,
     onCreatePerson,
     onUpdatePerson,
+    onRemovePerson,
     serialize,
     parse,
   } = options;
@@ -655,8 +764,10 @@ function mountPeopleMulti(root, options) {
   let legacyRaw = '';
   let mode = 'empty';
   let unbindOutside = null;
-  let menuMode = 'search'; // search | manage | rename | add
+  let menuMode = 'search'; // search | manage | rename | rename-confirm | remove-confirm | add
   let renameTarget = null;
+  let pendingRenameName = '';
+  let removeTarget = null;
   let skipOpenOnFocus = false;
 
   function syncHidden() {
@@ -676,6 +787,8 @@ function mountPeopleMulti(root, options) {
     menu.hidden = true;
     menuMode = 'search';
     renameTarget = null;
+    pendingRenameName = '';
+    removeTarget = null;
   }
 
   function renderChips() {
@@ -783,6 +896,94 @@ function mountPeopleMulti(root, options) {
     return parts.join(' · ');
   }
 
+  function applyCanonicalRename(oldName, updated) {
+    if (!updated?.name) return;
+    const oldNorm = normalizeReferenceName(oldName || updated.previousName);
+    tokens = tokens.map((token) => {
+      if (token.id === updated.id || (oldNorm && normalizeReferenceName(token.name) === oldNorm)) {
+        return {
+          ...token,
+          id: updated.id,
+          name: updated.name,
+          orphan: false,
+        };
+      }
+      return token;
+    });
+    renderChips();
+    syncHidden();
+  }
+
+  async function commitRename(nextName) {
+    try {
+      const previousName = renameTarget.name;
+      const updated = await onUpdatePerson(renameTarget.id, { name: nextName });
+      applyCanonicalRename(previousName, updated);
+      menuMode = 'manage';
+      pendingRenameName = '';
+      renderManagePanel();
+    } catch (error) {
+      console.error(error);
+      alert(referenceConflictMessage(error, nextName) || 'Failed to rename person.');
+    }
+  }
+
+  async function commitRemove() {
+    const person = removeTarget;
+    if (!person) return;
+    try {
+      menuMode = 'manage';
+      await onRemovePerson(person.id);
+      // Keep already-selected chips/historical text; only future picks hide this person.
+      tokens = tokens.map((token) => {
+        if (token.id !== person.id) return token;
+        return { ...token, id: null, orphan: true };
+      });
+      renderChips();
+      syncHidden();
+      removeTarget = null;
+      renderManagePanel();
+    } catch (error) {
+      console.error(error);
+      menuMode = 'remove-confirm';
+      alert('Failed to remove person from the list.');
+    }
+  }
+
+  function renderRemoveConfirmPanel() {
+    menu.innerHTML = removeConfirmMarkup(removeTarget?.name || '');
+
+    menu.querySelector('[data-action="manage-back"]')?.addEventListener('click', () => {
+      menuMode = 'manage';
+      removeTarget = null;
+      renderManagePanel();
+    });
+    menu.querySelector('[data-action="remove-cancel"]')?.addEventListener('click', () => {
+      menuMode = 'manage';
+      removeTarget = null;
+      renderManagePanel();
+    });
+    menu.querySelector('[data-action="remove-confirm"]')?.addEventListener('click', () => {
+      commitRemove();
+    });
+  }
+
+  function renderRenameConfirmPanel() {
+    menu.innerHTML = renameConfirmMarkup(renameTarget?.name || '', pendingRenameName);
+
+    menu.querySelector('[data-action="manage-back"]')?.addEventListener('click', () => {
+      menuMode = 'rename';
+      renderRenamePanel();
+    });
+    menu.querySelector('[data-action="rename-cancel"]')?.addEventListener('click', () => {
+      menuMode = 'rename';
+      renderRenamePanel();
+    });
+    menu.querySelector('[data-action="rename-everywhere"]')?.addEventListener('click', () => {
+      commitRename(pendingRenameName);
+    });
+  }
+
   function renderRenamePanel() {
     menu.innerHTML = `
       <div class="ref-manage-panel">
@@ -792,7 +993,7 @@ function mountPeopleMulti(root, options) {
         </div>
         <label class="ref-inline-add-label">
           Name
-          <input type="text" class="ref-rename-input" value="${escapeHtml(renameTarget?.name || '')}" maxlength="200">
+          <input type="text" class="ref-rename-input" value="${escapeHtml(pendingRenameName || renameTarget?.name || '')}" maxlength="200">
         </label>
         <div class="ref-inline-add-actions">
           <button type="button" class="btn btn-secondary" data-action="rename-cancel">Cancel</button>
@@ -806,27 +1007,29 @@ function mountPeopleMulti(root, options) {
 
     menu.querySelector('[data-action="manage-back"]')?.addEventListener('click', () => {
       menuMode = 'manage';
+      pendingRenameName = '';
       renderManagePanel();
     });
     menu.querySelector('[data-action="rename-cancel"]')?.addEventListener('click', () => {
       menuMode = 'manage';
+      pendingRenameName = '';
       renderManagePanel();
     });
-    menu.querySelector('[data-action="rename-save"]')?.addEventListener('click', async () => {
+    menu.querySelector('[data-action="rename-save"]')?.addEventListener('click', () => {
       const nextName = cleanReferenceDisplayName(renameInput?.value);
       if (!nextName) {
         alert('Name is required.');
         return;
       }
-      try {
-        await onUpdatePerson(renameTarget.id, { name: nextName });
-        // Keep already-selected chips as they are; the renamed roster name is for future picks.
+      if (nextName === renameTarget?.name) {
         menuMode = 'manage';
+        pendingRenameName = '';
         renderManagePanel();
-      } catch (error) {
-        console.error(error);
-        alert(referenceConflictMessage(error, nextName) || 'Failed to rename person.');
+        return;
       }
+      pendingRenameName = nextName;
+      menuMode = 'rename-confirm';
+      renderRenameConfirmPanel();
     });
   }
 
@@ -864,24 +1067,18 @@ function mountPeopleMulti(root, options) {
       button.addEventListener('click', () => {
         renameTarget = (getPeople() || []).find((entry) => entry.id === button.dataset.id) || null;
         if (!renameTarget) return;
+        pendingRenameName = '';
         menuMode = 'rename';
         renderRenamePanel();
       });
     });
 
     menu.querySelectorAll('[data-action="remove"]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const person = (getPeople() || []).find((entry) => entry.id === button.dataset.id);
-        if (!person) return;
-        if (!window.confirm(`Remove “${person.name}” from the list?`)) return;
-        try {
-          await onUpdatePerson(person.id, { active: false });
-          // Keep any already-selected chips/historical text; only future picks hide this person.
-          renderManagePanel();
-        } catch (error) {
-          console.error(error);
-          alert('Failed to remove person from the list.');
-        }
+      button.addEventListener('click', () => {
+        removeTarget = (getPeople() || []).find((entry) => entry.id === button.dataset.id) || null;
+        if (!removeTarget) return;
+        menuMode = 'remove-confirm';
+        renderRemoveConfirmPanel();
       });
     });
   }
@@ -893,6 +1090,14 @@ function mountPeopleMulti(root, options) {
     }
     if (menuMode === 'rename') {
       renderRenamePanel();
+      return;
+    }
+    if (menuMode === 'rename-confirm') {
+      renderRenameConfirmPanel();
+      return;
+    }
+    if (menuMode === 'remove-confirm') {
+      renderRemoveConfirmPanel();
       return;
     }
     if (menuMode === 'add') {
@@ -975,7 +1180,7 @@ function mountPeopleMulti(root, options) {
 
   function openMenu() {
     closeAllMenus(menu);
-    if (menuMode !== 'manage' && menuMode !== 'rename' && menuMode !== 'add') {
+    if (menuMode !== 'manage' && menuMode !== 'rename' && menuMode !== 'rename-confirm' && menuMode !== 'remove-confirm' && menuMode !== 'add') {
       menuMode = 'search';
     }
     renderMenu();
@@ -1048,15 +1253,13 @@ function mountPeopleMulti(root, options) {
         if (!latest || !activeIds.has(token.id)) {
           return { ...token, id: null, orphan: true };
         }
-        if (normalizeReferenceName(latest.name) !== normalizeReferenceName(token.name)) {
-          return { ...token, id: null, orphan: true };
-        }
         return { ...token, name: latest.name, orphan: false };
       });
       renderChips();
       syncHidden();
       if (!menu.hidden) renderMenu();
     },
+    applyCanonicalRename,
   };
 }
 
@@ -1220,6 +1423,11 @@ export function initEventReferenceFields(form, adapters) {
     updateVenue,
     updateCaterer,
     updatePerson,
+    removeCommand,
+    removeLocation,
+    removeVenue,
+    removeCaterer,
+    removePerson,
     onPeopleChanged,
     onNamedListsChanged,
   } = adapters;
@@ -1240,6 +1448,11 @@ export function initEventReferenceFields(form, adapters) {
       onNamedListsChanged?.('commands');
       return updated;
     },
+    onRemove: async (id) => {
+      const removed = await removeCommand(id);
+      onNamedListsChanged?.('commands');
+      return removed;
+    },
   });
 
   const location = mountNamedCombobox(form.querySelector('[data-ref-field="location"]'), {
@@ -1255,6 +1468,11 @@ export function initEventReferenceFields(form, adapters) {
       const updated = await updateLocation(id, updates);
       onNamedListsChanged?.('locations');
       return updated;
+    },
+    onRemove: async (id) => {
+      const removed = await removeLocation(id);
+      onNamedListsChanged?.('locations');
+      return removed;
     },
   });
 
@@ -1272,6 +1490,11 @@ export function initEventReferenceFields(form, adapters) {
       onNamedListsChanged?.('venues');
       return updated;
     },
+    onRemove: async (id) => {
+      const removed = await removeVenue(id);
+      onNamedListsChanged?.('venues');
+      return removed;
+    },
   });
 
   const cateringVendor = mountNamedCombobox(form.querySelector('[data-ref-field="cateringVendor"]'), {
@@ -1288,6 +1511,11 @@ export function initEventReferenceFields(form, adapters) {
       onNamedListsChanged?.('caterers');
       return updated;
     },
+    onRemove: async (id) => {
+      const removed = await removeCaterer(id);
+      onNamedListsChanged?.('caterers');
+      return removed;
+    },
   });
 
   const facilitators = mountPeopleMulti(form.querySelector('[data-ref-field="facilitators"]'), {
@@ -1302,9 +1530,19 @@ export function initEventReferenceFields(form, adapters) {
       return created;
     },
     onUpdatePerson: async (id, updates) => {
+      const previousName = (getPeople() || []).find((entry) => entry.id === id)?.name;
       const updated = await updatePerson(id, updates);
+      if (updates?.name) {
+        facilitators.applyCanonicalRename(previousName, updated);
+        poc.applyCanonicalRename(previousName, updated);
+      }
       onPeopleChanged?.(updated);
       return updated;
+    },
+    onRemovePerson: async (id) => {
+      const removed = await removePerson(id);
+      onPeopleChanged?.(removed);
+      return removed;
     },
     serialize: serializeFacilitators,
     parse: parseFacilitatorTokens,
@@ -1322,9 +1560,19 @@ export function initEventReferenceFields(form, adapters) {
       return created;
     },
     onUpdatePerson: async (id, updates) => {
+      const previousName = (getPeople() || []).find((entry) => entry.id === id)?.name;
       const updated = await updatePerson(id, updates);
+      if (updates?.name) {
+        facilitators.applyCanonicalRename(previousName, updated);
+        poc.applyCanonicalRename(previousName, updated);
+      }
       onPeopleChanged?.(updated);
       return updated;
+    },
+    onRemovePerson: async (id) => {
+      const removed = await removePerson(id);
+      onPeopleChanged?.(removed);
+      return removed;
     },
     serialize: serializePoc,
     parse: parsePocTokens,
@@ -1366,6 +1614,10 @@ export function initEventReferenceFields(form, adapters) {
     },
     refreshStaff() {
       credoStaff.refresh();
+    },
+    applyPersonRename(oldName, updated) {
+      facilitators.applyCanonicalRename(oldName, updated);
+      poc.applyCanonicalRename(oldName, updated);
     },
   };
 }

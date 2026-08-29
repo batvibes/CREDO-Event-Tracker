@@ -3464,6 +3464,27 @@ body:has(#new-event-modal[open]) {
   color: var(--text-secondary);
 }
 
+#new-event-modal .ref-rename-confirm-lead,
+#new-event-modal .ref-rename-confirm-copy {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#new-event-modal .ref-rename-confirm-lead {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+#new-event-modal .ref-rename-confirm-copy {
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
 #new-event-modal .ref-menu-option.is-orphan .ref-menu-option-name {
   font-style: italic;
 }
