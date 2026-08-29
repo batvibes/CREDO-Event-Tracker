@@ -989,6 +989,294 @@ export async function deleteTeamMember(id) {
   if (error) throw error;
 }
 
+// Event-entry reference lists (foundation).
+// CREDO Staff will later use existing team_members — no separate staff table here.
+
+function cleanReferenceDisplayName(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function normalizeReferenceName(value) {
+  return cleanReferenceDisplayName(value).toLowerCase();
+}
+
+function isReferenceUniqueViolation(error) {
+  return error?.code === '23505';
+}
+
+function namedReferenceFromRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    normalizedName: row.normalized_name,
+    active: booleanFromDb(row.active),
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
+  };
+}
+
+function personFromRow(row) {
+  return {
+    ...namedReferenceFromRow(row),
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+  };
+}
+
+async function fetchActiveNamedReferences(table) {
+  const { data, error } = await supabase
+    .from(table)
+    .select('id, name, normalized_name, active, created_at, updated_at')
+    .eq('active', true)
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(namedReferenceFromRow);
+}
+
+async function findNamedReferenceByNormalizedName(table, normalizedName, mapRow = namedReferenceFromRow) {
+  const { data, error } = await supabase
+    .from(table)
+    .select('*')
+    .eq('normalized_name', normalizedName)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapRow(data) : null;
+}
+
+async function createNamedReference(table, name) {
+  const cleaned = cleanReferenceDisplayName(name);
+  if (!cleaned) {
+    throw new Error('REFERENCE_NAME_REQUIRED');
+  }
+
+  const normalizedName = normalizeReferenceName(cleaned);
+  const existing = await findNamedReferenceByNormalizedName(table, normalizedName);
+  if (existing) return existing;
+
+  const { data, error } = await supabase
+    .from(table)
+    .insert({
+      name: cleaned,
+      normalized_name: normalizedName,
+    })
+    .select('id, name, normalized_name, active, created_at, updated_at')
+    .single();
+
+  if (error) {
+    if (isReferenceUniqueViolation(error)) {
+      const raced = await findNamedReferenceByNormalizedName(table, normalizedName);
+      if (raced) return raced;
+    }
+    throw error;
+  }
+
+  return namedReferenceFromRow(data);
+}
+
+export async function fetchCommands() {
+  return fetchActiveNamedReferences('commands');
+}
+
+export async function createCommand(name) {
+  return createNamedReference('commands', name);
+}
+
+export async function fetchLocations() {
+  return fetchActiveNamedReferences('locations');
+}
+
+export async function createLocation(name) {
+  return createNamedReference('locations', name);
+}
+
+export async function fetchVenues() {
+  return fetchActiveNamedReferences('venues');
+}
+
+export async function createVenue(name) {
+  return createNamedReference('venues', name);
+}
+
+export async function fetchCaterers() {
+  return fetchActiveNamedReferences('caterers');
+}
+
+export async function createCaterer(name) {
+  return createNamedReference('caterers', name);
+}
+
+export async function fetchPeople() {
+  const { data, error } = await supabase
+    .from('people')
+    .select('id, name, normalized_name, email, phone, active, created_at, updated_at')
+    .eq('active', true)
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(personFromRow);
+}
+
+export async function createPerson(person) {
+  const cleaned = cleanReferenceDisplayName(person?.name ?? person);
+  if (!cleaned) {
+    throw new Error('REFERENCE_NAME_REQUIRED');
+  }
+
+  const normalizedName = normalizeReferenceName(cleaned);
+  const existing = await findNamedReferenceByNormalizedName('people', normalizedName, personFromRow);
+  if (existing) return existing;
+
+  const payload = {
+    name: cleaned,
+    normalized_name: normalizedName,
+  };
+
+  if (person && typeof person === 'object' && !Array.isArray(person)) {
+    if (person.email !== undefined) {
+      const email = String(person.email ?? '').trim();
+      payload.email = email || null;
+    }
+    if (person.phone !== undefined) {
+      const phone = String(person.phone ?? '').trim();
+      payload.phone = phone || null;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('people')
+    .insert(payload)
+    .select('id, name, normalized_name, email, phone, active, created_at, updated_at')
+    .single();
+
+  if (error) {
+    if (isReferenceUniqueViolation(error)) {
+      const raced = await findNamedReferenceByNormalizedName('people', normalizedName, personFromRow);
+      if (raced) return raced;
+    }
+    throw error;
+  }
+
+  return personFromRow(data);
+}
+
+function referenceNameConflictError(name) {
+  const error = new Error(`A roster entry named “${name}” already exists.`);
+  error.code = 'REFERENCE_NAME_EXISTS';
+  return error;
+}
+
+async function updateNamedReference(table, id, updates, mapRow = namedReferenceFromRow) {
+  if (!id) throw new Error('REFERENCE_ID_REQUIRED');
+
+  const payload = {};
+
+  if (updates.name !== undefined) {
+    const cleaned = cleanReferenceDisplayName(updates.name);
+    if (!cleaned) throw new Error('REFERENCE_NAME_REQUIRED');
+    const normalizedName = normalizeReferenceName(cleaned);
+    const existing = await findNamedReferenceByNormalizedName(table, normalizedName, mapRow);
+    if (existing && existing.id !== id) {
+      throw referenceNameConflictError(existing.name);
+    }
+    payload.name = cleaned;
+    payload.normalized_name = normalizedName;
+  }
+
+  if (updates.active !== undefined) {
+    payload.active = Boolean(updates.active);
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error('REFERENCE_UPDATE_EMPTY');
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    if (isReferenceUniqueViolation(error)) {
+      throw referenceNameConflictError(payload.name || 'that name');
+    }
+    throw error;
+  }
+
+  return mapRow(data);
+}
+
+export async function updateCommand(id, updates) {
+  return updateNamedReference('commands', id, updates);
+}
+
+export async function updateLocation(id, updates) {
+  return updateNamedReference('locations', id, updates);
+}
+
+export async function updateVenue(id, updates) {
+  return updateNamedReference('venues', id, updates);
+}
+
+export async function updateCaterer(id, updates) {
+  return updateNamedReference('caterers', id, updates);
+}
+
+export async function updatePerson(id, updates = {}) {
+  if (!id) throw new Error('REFERENCE_ID_REQUIRED');
+
+  const payload = {};
+
+  if (updates.name !== undefined) {
+    const cleaned = cleanReferenceDisplayName(updates.name);
+    if (!cleaned) throw new Error('REFERENCE_NAME_REQUIRED');
+    const normalizedName = normalizeReferenceName(cleaned);
+    const existing = await findNamedReferenceByNormalizedName('people', normalizedName, personFromRow);
+    if (existing && existing.id !== id) {
+      throw referenceNameConflictError(existing.name);
+    }
+    payload.name = cleaned;
+    payload.normalized_name = normalizedName;
+  }
+
+  if (updates.active !== undefined) {
+    payload.active = Boolean(updates.active);
+  }
+
+  if (updates.email !== undefined) {
+    const email = String(updates.email ?? '').trim();
+    payload.email = email || null;
+  }
+
+  if (updates.phone !== undefined) {
+    const phone = String(updates.phone ?? '').trim();
+    payload.phone = phone || null;
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error('REFERENCE_UPDATE_EMPTY');
+  }
+
+  const { data, error } = await supabase
+    .from('people')
+    .update(payload)
+    .eq('id', id)
+    .select('id, name, normalized_name, email, phone, active, created_at, updated_at')
+    .single();
+
+  if (error) {
+    if (isReferenceUniqueViolation(error)) {
+      throw referenceNameConflictError(payload.name || 'that name');
+    }
+    throw error;
+  }
+
+  return personFromRow(data);
+}
+
 export async function fetchCommandHighlightsNotes() {
   const { data, error } = await supabase
     .from('command_highlights_notes')

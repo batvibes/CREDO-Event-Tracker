@@ -1289,33 +1289,33 @@
             <select name="eventType"></select>
             <span class="field-error" id="event-type-error" hidden>Please select an event type.</span>
           </label>
-          <label>
-            Command
-            <input type="text" name="command" placeholder="e.g. MCI West">
-          </label>
-          <label>
-            Location
-            <input type="text" name="location" placeholder="e.g. Camp Pendleton">
-          </label>
+          <div class="event-form-field">
+            <span class="event-form-field-label">Command</span>
+            <div class="ref-field-shell" data-ref-field="command"></div>
+          </div>
+          <div class="event-form-field">
+            <span class="event-form-field-label">Location</span>
+            <div class="ref-field-shell" data-ref-field="location"></div>
+          </div>
           <label>
             Expected Participants
             <input type="number" name="participants" min="0">
           </label>
           <div class="event-form-paired-fields">
-            <label>
-              Venue
-              <input type="text" name="venue" placeholder="e.g. Eagle's Landing">
-            </label>
+            <div class="event-form-field">
+              <span class="event-form-field-label">Venue</span>
+              <div class="ref-field-shell" data-ref-field="venue"></div>
+            </div>
             <label>
               Venue Cost
               <input type="text" name="venueCost" inputmode="decimal" placeholder="e.g. 1250.00">
             </label>
           </div>
           <div class="event-form-paired-fields">
-            <label>
-              Catering
-              <input type="text" name="cateringVendor" placeholder="e.g. ABC Catering">
-            </label>
+            <div class="event-form-field">
+              <span class="event-form-field-label">Catering</span>
+              <div class="ref-field-shell" data-ref-field="cateringVendor"></div>
+            </div>
             <label>
               Catering Cost
               <input type="text" name="cateringCost" inputmode="decimal" placeholder="e.g. 850.00">
@@ -1354,18 +1354,18 @@
 
         <fieldset class="event-form-section">
           <legend class="event-form-section-title">Operational</legend>
-          <label>
-            Facilitator(s)
-            <input type="text" name="facilitators" placeholder="e.g. LT Smith, CH Jones">
-          </label>
-          <label>
-            CREDO Staff
-            <input type="text" name="credoStaff" placeholder="e.g. Director, LPO">
-          </label>
-          <label>
-            Point(s) of Contact
-            <input type="text" name="poc" placeholder="e.g. Jane Doe, jane.doe@navy.mil">
-          </label>
+          <div class="event-form-field">
+            <span class="event-form-field-label">Facilitator(s)</span>
+            <div class="ref-field-shell" data-ref-field="facilitators"></div>
+          </div>
+          <div class="event-form-field">
+            <span class="event-form-field-label">CREDO Staff</span>
+            <div class="ref-field-shell" data-ref-field="credoStaff"></div>
+          </div>
+          <div class="event-form-field">
+            <span class="event-form-field-label">Point(s) of Contact</span>
+            <div class="ref-field-shell" data-ref-field="poc"></div>
+          </div>
         </fieldset>
       </div>
       <div class="modal-footer">

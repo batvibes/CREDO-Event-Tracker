@@ -1,22 +1,34 @@
 import {
+  createCaterer,
+  createCommand,
+  createLocation,
+  createPerson,
   createTeamMember,
+  createVenue,
   deleteEventById,
   deleteEventType,
   deleteMonthlyReport,
   deleteTeamMember,
   fetchAarGlobalTemplates,
+  fetchCaterers,
   fetchCommandHighlightsNotes,
+  fetchCommands,
   fetchEventTypes,
   fetchEvents,
+  fetchLocations,
   fetchMonthlyReport,
   fetchMonthlyReports,
+  fetchPeople,
   fetchTeam,
   fetchTeamMembers,
+  fetchVenues,
   insertEvent,
   insertEventType,
   renameEventTypeInEvents,
   saveMonthlyReport,
   updateAarGlobalTemplates,
+  updateCaterer,
+  updateCommand,
   updateCommandHighlightsNotes,
   updateEvent,
   updateEventAarFields,
@@ -25,8 +37,12 @@ import {
   fetchAarAuditLog,
   insertAarAuditEntry,
   updateEventType,
+  updateLocation,
+  updatePerson,
   updateTeamMember,
+  updateVenue,
 } from './db.js';
+import { initEventReferenceFields } from './event-reference-fields.js';
 import {
   exportMonthlyImpactReportPptx,
   generateMirPresentationBlob,
@@ -94,6 +110,12 @@ let aarGlobalTemplates = {
 };
 let team = { ...DEFAULT_TEAM };
 let teamMembers = [];
+let referenceCommands = [];
+let referenceLocations = [];
+let referenceVenues = [];
+let referenceCaterers = [];
+let referencePeople = [];
+let eventReferenceFields = null;
 let commandHighlightsNotes = '';
 let currentView = 'events';
 let reportsTab = 'event-reports';
@@ -10257,6 +10279,26 @@ function setAdditionalEventCostsExpanded(expanded) {
   if (section) section.open = Boolean(expanded);
 }
 
+function sortReferenceByName(list) {
+  return [...list].sort((left, right) =>
+    String(left.name || '').localeCompare(String(right.name || ''), 'en', { sensitivity: 'base' })
+  );
+}
+
+function upsertReferenceItem(list, item) {
+  const next = list.filter((entry) => entry.id !== item.id);
+  next.push(item);
+  return sortReferenceByName(next);
+}
+
+function applyReferenceUpdate(list, updated) {
+  if (!updated) return list;
+  if (updated.active === false) {
+    return list.filter((entry) => entry.id !== updated.id);
+  }
+  return upsertReferenceItem(list, updated);
+}
+
 function resetEventForm(form) {
   form.reset();
   form.querySelector('[name="dateType"][value="single"]').checked = true;
@@ -10267,6 +10309,7 @@ function resetEventForm(form) {
   setAdditionalEventCostsExpanded(false);
   updateEventDateFieldsVisibility(form);
   updateEventTotalRecordedCost(form);
+  eventReferenceFields?.reset();
 }
 
 function populateEventFormFromRecord(form, event) {
@@ -10288,15 +10331,9 @@ function populateEventFormFromRecord(form, event) {
   }
 
   form.querySelector('[name="eventType"]').value = event.eventType;
-  form.querySelector('[name="command"]').value =
-    isTbd(event.command) ? '' : event.command;
   form.querySelector('[name="participants"]').value =
     isTbd(event.participants) ? '' : String(event.participants);
-  form.querySelector('[name="location"]').value =
-    isTbd(event.location) ? '' : event.location;
-  form.querySelector('[name="venue"]').value = event.venue || '';
   form.querySelector('[name="venueCost"]').value = event.venueCost || '';
-  form.querySelector('[name="cateringVendor"]').value = event.cateringVendor || '';
   form.querySelector('[name="cateringCost"]').value = event.cateringCost || '';
   form.querySelector('[name="lodgingCost"]').value = event.lodgingCost || '';
   form.querySelector('[name="transportationCost"]').value = event.transportationCost || '';
@@ -10305,10 +10342,17 @@ function populateEventFormFromRecord(form, event) {
   form.querySelector('[name="otherCostDescription"]').value = event.otherCostDescription || '';
   setAdditionalEventCostsExpanded(hasAdditionalEventCostData(event));
   updateEventTotalRecordedCost(form);
-  form.querySelector('[name="facilitators"]').value = event.facilitators || '';
-  form.querySelector('[name="credoStaff"]').value = event.credoStaff || '';
   form.querySelector('[name="time"]').value = event.time || '';
-  form.querySelector('[name="poc"]').value = event.poc || '';
+
+  eventReferenceFields?.setFromEvent({
+    command: isTbd(event.command) ? '' : event.command,
+    location: isTbd(event.location) ? '' : event.location,
+    venue: event.venue || '',
+    cateringVendor: event.cateringVendor || '',
+    facilitators: event.facilitators || '',
+    credoStaff: event.credoStaff || '',
+    poc: event.poc || '',
+  });
 }
 
 function readEventFieldsFromForm(form) {
@@ -10395,6 +10439,72 @@ function setupModal() {
   const typeSelect = form.querySelector('[name="eventType"]');
   const eventTypeError = document.getElementById('event-type-error');
 
+  eventReferenceFields = initEventReferenceFields(form, {
+    getCommands: () => referenceCommands,
+    getLocations: () => referenceLocations,
+    getVenues: () => referenceVenues,
+    getCaterers: () => referenceCaterers,
+    getPeople: () => referencePeople,
+    getTeamMembers: () => teamMembers,
+    canCreateReferences: () => canEditEvents(),
+    createCommand: async (name) => {
+      const created = await createCommand(name);
+      referenceCommands = upsertReferenceItem(referenceCommands, created);
+      return created;
+    },
+    createLocation: async (name) => {
+      const created = await createLocation(name);
+      referenceLocations = upsertReferenceItem(referenceLocations, created);
+      return created;
+    },
+    createVenue: async (name) => {
+      const created = await createVenue(name);
+      referenceVenues = upsertReferenceItem(referenceVenues, created);
+      return created;
+    },
+    createCaterer: async (name) => {
+      const created = await createCaterer(name);
+      referenceCaterers = upsertReferenceItem(referenceCaterers, created);
+      return created;
+    },
+    createPerson: async (person) => {
+      const created = await createPerson(person);
+      referencePeople = upsertReferenceItem(referencePeople, created);
+      return created;
+    },
+    updateCommand: async (id, updates) => {
+      const updated = await updateCommand(id, updates);
+      referenceCommands = applyReferenceUpdate(referenceCommands, updated);
+      return updated;
+    },
+    updateLocation: async (id, updates) => {
+      const updated = await updateLocation(id, updates);
+      referenceLocations = applyReferenceUpdate(referenceLocations, updated);
+      return updated;
+    },
+    updateVenue: async (id, updates) => {
+      const updated = await updateVenue(id, updates);
+      referenceVenues = applyReferenceUpdate(referenceVenues, updated);
+      return updated;
+    },
+    updateCaterer: async (id, updates) => {
+      const updated = await updateCaterer(id, updates);
+      referenceCaterers = applyReferenceUpdate(referenceCaterers, updated);
+      return updated;
+    },
+    updatePerson: async (id, updates) => {
+      const updated = await updatePerson(id, updates);
+      referencePeople = applyReferenceUpdate(referencePeople, updated);
+      return updated;
+    },
+    onPeopleChanged: () => {
+      eventReferenceFields?.refreshPeople();
+    },
+    onNamedListsChanged: () => {
+      eventReferenceFields?.refreshNamed();
+    },
+  });
+
   populateModalEventTypeSelect(typeSelect);
 
   form.querySelectorAll('[name="dateType"]').forEach((input) => {
@@ -10471,6 +10581,34 @@ function setupModal() {
   });
 }
 
+async function loadReferenceLists() {
+  const settled = await Promise.allSettled([
+    fetchCommands(),
+    fetchLocations(),
+    fetchVenues(),
+    fetchCaterers(),
+    fetchPeople(),
+    fetchTeamMembers(),
+  ]);
+
+  const [commandsResult, locationsResult, venuesResult, caterersResult, peopleResult, teamMembersResult] = settled;
+
+  settled.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error('Failed to load reference list', index, result.reason);
+    }
+  });
+
+  referenceCommands = sortReferenceByName(commandsResult.status === 'fulfilled' ? commandsResult.value : []);
+  referenceLocations = sortReferenceByName(locationsResult.status === 'fulfilled' ? locationsResult.value : []);
+  referenceVenues = sortReferenceByName(venuesResult.status === 'fulfilled' ? venuesResult.value : []);
+  referenceCaterers = sortReferenceByName(caterersResult.status === 'fulfilled' ? caterersResult.value : []);
+  referencePeople = sortReferenceByName(peopleResult.status === 'fulfilled' ? peopleResult.value : []);
+  teamMembers = teamMembersResult.status === 'fulfilled' ? teamMembersResult.value : [];
+  eventReferenceFields?.refreshStaff();
+  eventReferenceFields?.refreshPeople();
+}
+
 async function loadAllData() {
   const generation = ++dataLoadGeneration;
 
@@ -10490,6 +10628,9 @@ async function loadAllData() {
   aarGlobalTemplates = globalTemplates;
   resetTableSortState();
   syncAarStateAfterDataLoad();
+
+  await loadReferenceLists();
+  if (generation !== dataLoadGeneration) return;
 }
 
 export async function refreshApp() {
