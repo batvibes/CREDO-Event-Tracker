@@ -839,61 +839,6 @@ function setupMirHistoryTableSorting() {
   );
 }
 
-function renderCalendar() {
-  const container = document.getElementById('calendar-content');
-  const sorted = sortEvents(events);
-
-  if (sorted.length === 0) {
-    container.innerHTML = '<p class="empty-state">No events scheduled.</p>';
-    return;
-  }
-
-  const months = new Map();
-
-  sorted.forEach((event) => {
-    const isoDate = getEventStartDate(event);
-    const date = new Date(isoDate + 'T12:00:00');
-    const monthKey = isTbd(isoDate)
-      ? 'Date TBD'
-      : date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    if (!months.has(monthKey)) months.set(monthKey, new Map());
-    const days = months.get(monthKey);
-    const dateKey = isTbd(isoDate) ? TBD : isoDate;
-    if (!days.has(dateKey)) days.set(dateKey, []);
-    days.get(dateKey).push(event);
-  });
-
-  container.innerHTML = [...months.entries()]
-    .map(([monthLabel, days]) => {
-      const dayBlocks = [...days.entries()]
-        .map(([dateKey, dayEvents]) => {
-          const eventsList = dayEvents
-            .map(
-              (event) => `
-              <li class="calendar-event">
-                <span class="calendar-event-type">${event.eventType}</span>
-                <span class="calendar-event-meta">${displayValue(event.location, 'location')} · ${displayValue(event.participants, 'participants')}${isTbd(event.participants) ? '' : ' participants'}</span>
-              </li>`
-            )
-            .join('');
-
-          return `
-            <div class="calendar-day">
-              <h4 class="calendar-day-label">${formatEventDateDisplay(dayEvents[0])}</h4>
-              <ul class="calendar-event-list">${eventsList}</ul>
-            </div>`;
-        })
-        .join('');
-
-      return `
-        <div class="calendar-month">
-          <h3 class="calendar-month-label">${monthLabel}</h3>
-          ${dayBlocks}
-        </div>`;
-    })
-    .join('');
-}
-
 function getReportYears() {
   const years = getEventYears();
   if (years.length === 0) {
@@ -9964,7 +9909,6 @@ function switchView(viewName) {
 
   const viewMap = {
     events: 'view-events',
-    calendar: 'view-calendar',
     reports: 'view-reports',
     trends: 'view-trends',
     financials: 'view-financials',
@@ -9976,8 +9920,6 @@ function switchView(viewName) {
 
   if (TRACKER_VIEWS.includes(viewName)) {
     renderDashboard();
-  } else if (viewName === 'calendar') {
-    renderCalendar();
   } else if (viewName === 'reports') {
     switchReportsTab(reportsTab);
   } else if (viewName === 'trends') {
@@ -10202,8 +10144,6 @@ function renderTable() {
 function render() {
   if (TRACKER_VIEWS.includes(currentView)) {
     renderDashboard();
-  } else if (currentView === 'calendar') {
-    renderCalendar();
   } else if (currentView === 'reports') {
     if (reportsTab === 'event-reports') {
       renderReports();

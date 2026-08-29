@@ -256,7 +256,7 @@ The CREDO Event Tracker is an **interactive Navy report**, not a SaaS dashboard.
 
 - Dark navy/slate background (existing) — **chrome only**, not report content.
 - Logo + “CREDO / MCI West” at top.
-- Nav items: Events, Calendar, Reports, Team, Settings (+ future MIR, AAR when added).
+- Nav items: Events, Reports, Trends, Financials, Team, Settings.
 - Active item: CREDO green accent — acceptable as app chrome; report pages themselves stay white document.
 - User email + Log out at bottom; minimal, not prominent.
 
