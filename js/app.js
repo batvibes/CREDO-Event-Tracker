@@ -2364,23 +2364,25 @@ function aarPlainField(value) {
   return trimmed === '' ? TBD : trimmed;
 }
 
-function setAarCostTextElement(element, text, emptyPlaceholder) {
+const AAR_EMPTY_DISPLAY = '—';
+
+function setAarCostTextElement(element, text) {
   if (!element) return;
   if (!hasAarFieldData(text)) {
-    element.textContent = emptyPlaceholder;
-    element.classList.add('aar-report-placeholder');
+    element.textContent = AAR_EMPTY_DISPLAY;
+    element.classList.remove('aar-report-placeholder');
     return;
   }
   element.textContent = formatAarCost(text);
   element.classList.remove('aar-report-placeholder');
 }
 
-function setAarTextElement(element, text, emptyPlaceholder) {
+function setAarTextElement(element, text) {
   if (!element) return;
   const trimmed = String(text ?? '').trim();
   if (!trimmed || trimmed === TBD) {
-    element.textContent = emptyPlaceholder;
-    element.classList.add('aar-report-placeholder');
+    element.textContent = AAR_EMPTY_DISPLAY;
+    element.classList.remove('aar-report-placeholder');
     return;
   }
   element.textContent = trimmed;
@@ -2480,10 +2482,14 @@ function setAarSequenceDisplay(event, root) {
     root
   );
 
-  const footerSeq = getAarReportRoot(root)?.querySelector('.aar-report-footer-seq');
+  const reportRoot = getAarReportRoot(root);
+  const footerNote = reportRoot?.querySelector('.aar-report-footer-note');
+  setAarTextElement(footerNote, '');
+
+  const footerSeq = reportRoot?.querySelector('.aar-report-footer-seq');
   const valueSpan = footerSeq?.querySelector('span:last-child');
   if (valueSpan) {
-    setAarTextElement(valueSpan, sequence, 'Sequence number will appear here.');
+    setAarTextElement(valueSpan, sequence);
   }
 }
 
