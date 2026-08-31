@@ -261,6 +261,190 @@ function drawChart(pdf, y, chart) {
   return y + chartHeight + 0.12;
 }
 
+function formatAnalysisDelta(delta) {
+  const number = Math.round(Number(delta) || 0);
+  if (number > 0) return `+${number}`;
+  return String(number);
+}
+
+function analysisDeltaColor(delta) {
+  const number = Math.round(Number(delta) || 0);
+  if (number > 0) return COLORS.up;
+  if (number < 0) return COLORS.down;
+  return COLORS.neutral;
+}
+
+function getHistoricalAnalysisPdfRows(analysis) {
+  return [...(analysis?.rows || [])].reverse();
+}
+
+function getHistoricalAnalysisExplanation(row) {
+  return String(row?.primarySentence || '').trim();
+}
+
+function estimateAnalysisRowHeight(pdf, row, contentWidth, mode) {
+  let height = 0.2;
+  if (mode !== 'drivers') return height + 0.16;
+  if (row.comparisonPeriodLabel) height += 0.12;
+  const explanation = getHistoricalAnalysisExplanation(row);
+  if (explanation) {
+    const lines = pdf.splitTextToSize(pdfSafeText(explanation), contentWidth);
+    height += Math.min(2, lines.length) * 0.13;
+  }
+  return height + 0.16;
+}
+
+function drawHistoricalAnalysisColumnBand(pdf, y, contentWidth, compareColumnLabel) {
+  const x = PAGE.marginX;
+  const bandHeight = 0.22;
+  pdf.setFillColor(...COLORS.stripe);
+  pdf.setDrawColor(...COLORS.border);
+  pdf.setLineWidth(0.006);
+  pdf.rect(x, y - 0.12, contentWidth, bandHeight, 'FD');
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(6.7);
+  pdf.setTextColor(...COLORS.muted);
+  const currentX = x + 3.15;
+  const compareX = x + 5.15;
+  const deltaX = x + contentWidth;
+  pdf.text('PERIOD', x + 0.06, y);
+  pdf.text('CURRENT', currentX, y, { align: 'right' });
+  pdf.text(pdfSafeText(compareColumnLabel, 'COMPARISON').toUpperCase(), compareX, y, { align: 'right' });
+  pdf.text('DELTA', deltaX - 0.02, y, { align: 'right' });
+  return y + 0.16;
+}
+
+function drawHistoricalAnalysisRow(pdf, y, row, contentWidth, mode) {
+  const x = PAGE.marginX;
+  const currentX = x + 3.15;
+  const compareX = x + 5.15;
+  const deltaX = x + contentWidth;
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(...COLORS.navy);
+  const periodLines = pdf.splitTextToSize(pdfSafeText(row.periodLabel, '-'), 2.35);
+  pdf.text(periodLines, x + 0.06, y);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8.5);
+  pdf.setTextColor(...COLORS.text);
+  pdf.text(String(Math.round(Number(row.currentValue) || 0)), currentX, y, { align: 'right' });
+  pdf.text(String(Math.round(Number(row.comparisonValue) || 0)), compareX, y, { align: 'right' });
+
+  const delta = Math.round(Number(row.delta) || 0);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8.8);
+  pdf.setTextColor(...analysisDeltaColor(delta));
+  pdf.text(formatAnalysisDelta(delta), deltaX - 0.02, y, { align: 'right' });
+  y += Math.max(0.16, periodLines.length * 0.13);
+
+  if (mode === 'drivers' && row.comparisonPeriodLabel) {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(6.8);
+    pdf.setTextColor(...COLORS.muted);
+    pdf.text(pdfSafeText(row.comparisonPeriodLabel), compareX, y, { align: 'right' });
+    y += 0.12;
+  }
+
+  if (mode === 'drivers') {
+    const explanation = getHistoricalAnalysisExplanation(row);
+    if (explanation) {
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(...COLORS.text);
+      const sentenceLines = pdf.splitTextToSize(pdfSafeText(explanation), contentWidth - 0.08).slice(0, 2);
+      pdf.text(sentenceLines, x + 0.06, y);
+      y += sentenceLines.length * 0.13;
+    }
+  }
+
+  y += 0.1;
+  pdf.setDrawColor(...COLORS.divider);
+  pdf.setLineWidth(0.006);
+  pdf.line(x, y, x + contentWidth, y);
+  return y + 0.16;
+}
+
+function drawHistoricalComparisonAnalysis(ctx, analysis) {
+  if (!analysis || analysis.mode === 'omit' || !analysis.rows?.length) {
+    return ctx.y;
+  }
+
+  const { pdf, ensureSpace, contentWidth } = ctx;
+  let y = ctx.y;
+  const rows = getHistoricalAnalysisPdfRows(analysis);
+  const compareColumnLabel = analysis.compareColumnLabel || 'Comparison';
+  const firstRowHeight = estimateAnalysisRowHeight(pdf, rows[0], contentWidth, analysis.mode);
+  const introHeight = 0.18 + 0.28 + 0.16 + 0.22 + firstRowHeight;
+
+  const space = (height) => {
+    ctx.y = y;
+    const before = y;
+    ensureSpace(height);
+    y = ctx.y;
+    return y !== before;
+  };
+
+  const drawContinuationHeader = () => {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(7.4);
+    pdf.setTextColor(...COLORS.navy);
+    pdf.text('HISTORICAL COMPARISON ANALYSIS (CONTINUED)', PAGE.marginX, y);
+    y += 0.16;
+    y = drawHistoricalAnalysisColumnBand(pdf, y, contentWidth, compareColumnLabel);
+  };
+
+  space(Math.max(introHeight, 3.4));
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(8);
+  pdf.setTextColor(...COLORS.navy);
+  pdf.text('HISTORICAL COMPARISON ANALYSIS', PAGE.marginX, y);
+  y += 0.16;
+
+  const subtitle = `Explains Current Period versus ${analysis.subtitleCompare || compareColumnLabel} for each historical chart period.`;
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor(...COLORS.text);
+  const subtitleLines = pdf.splitTextToSize(pdfSafeText(subtitle), contentWidth);
+  pdf.text(subtitleLines, PAGE.marginX, y);
+  y += subtitleLines.length * 0.13 + 0.02;
+
+  pdf.setFont('helvetica', 'italic');
+  pdf.setFontSize(7.1);
+  pdf.setTextColor(...COLORS.secondary);
+  const scopeLines = pdf.splitTextToSize(
+    'This analysis applies to historical activity and does not explain Outlook or Scheduled projections.',
+    contentWidth
+  );
+  pdf.text(scopeLines, PAGE.marginX, y);
+  y += scopeLines.length * 0.12 + 0.08;
+
+  y = drawHistoricalAnalysisColumnBand(pdf, y, contentWidth, compareColumnLabel);
+
+  rows.forEach((row) => {
+    const rowHeight = estimateAnalysisRowHeight(pdf, row, contentWidth, analysis.mode);
+    if (space(rowHeight + 0.28)) {
+      drawContinuationHeader();
+    }
+    y = drawHistoricalAnalysisRow(pdf, y, row, contentWidth, analysis.mode);
+  });
+
+  if (analysis.note) {
+    const noteLines = pdf.splitTextToSize(pdfSafeText(analysis.note), contentWidth);
+    space(0.16 + noteLines.length * 0.12);
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(7.4);
+    pdf.setTextColor(...COLORS.secondary);
+    pdf.text(noteLines, PAGE.marginX, y);
+    y += noteLines.length * 0.12 + 0.08;
+  }
+
+  ctx.y = y + 0.04;
+  return ctx.y;
+}
+
 function drawProjectionSection(pdf, startY, ensureSpace, summary) {
   if (!summary) return startY;
   const pageWidth = pdf.internal.pageSize.getWidth();
@@ -378,6 +562,7 @@ export async function exportTrendsOutlookReportPdf(payload) {
     payload.legendHint
   );
   ctx.y = drawNote(ctx.pdf, ctx.y, payload.note);
+  ctx.y = drawHistoricalComparisonAnalysis(ctx, payload.historicalAnalysis);
 
   if (payload.projectionEnabled) {
     ctx.y = drawProjectionSection(ctx.pdf, ctx.y, ctx.ensureSpace, payload.projectionSummary);

@@ -11,6 +11,219 @@ export function getTrendsDriverComparePhrase(mode) {
   return mode === 'last-year' ? 'Last Year' : 'Previous Period';
 }
 
+export const TRENDS_HISTORICAL_EQUAL_SENTENCE = 'Current and comparison activity were equal.';
+export const TRENDS_HISTORICAL_SIMILAR_SENTENCE = 'Activity was broadly similar; the difference was distributed across multiple programs.';
+export const TRENDS_HISTORICAL_AVERAGE_NOTE = 'Driver analysis is not shown for multi-year averages.';
+
+export function countTrendsHistoricalActualSeries(seriesList) {
+  return (Array.isArray(seriesList) ? seriesList : [])
+    .filter((entry) => entry?.kind === 'actual').length;
+}
+
+export function resolveTrendsHistoricalAnalysisMode(compareMode, selectionMode, seriesList) {
+  const actualCount = countTrendsHistoricalActualSeries(seriesList);
+  const isMultiOverlay = actualCount > 1 || (selectionMode === 'multi' && actualCount !== 1);
+  if (isMultiOverlay) return 'omit';
+  if (compareMode === 'avg-2' || compareMode === 'avg-3') return 'values-only';
+  if (isTrendsDriverCompareMode(compareMode)) return 'drivers';
+  return 'omit';
+}
+
+export function getTrendsHistoricalAnalysisColumnLabel(compareMode) {
+  if (compareMode === 'last-year') return 'Last Year';
+  if (compareMode === 'avg-2' || compareMode === 'avg-3') return 'Average';
+  if (compareMode === 'previous') return 'Previous Period';
+  return 'Comparison';
+}
+
+export function getTrendsHistoricalAnalysisSubtitleCompare(compareMode) {
+  if (compareMode === 'avg-2') return '2-Year Average';
+  if (compareMode === 'avg-3') return '3-Year Average';
+  return getTrendsDriverComparePhrase(compareMode);
+}
+
+export function formatTrendsHistoricalDelta(value) {
+  const number = Math.round(Number(value) || 0);
+  if (number > 0) return `+${number}`;
+  return String(number);
+}
+
+export function collectTrendsDriverEventsForInterval(interval, {
+  filters,
+  programKeys = [],
+  getEventsForRange,
+  filterByProgramKeys,
+} = {}) {
+  if (!interval || typeof getEventsForRange !== 'function') return [];
+  const list = getEventsForRange(interval, filters);
+  if (programKeys?.length && typeof filterByProgramKeys === 'function') {
+    return filterByProgramKeys(list, programKeys);
+  }
+  return list;
+}
+
+export function pickTrendsHistoricalAnalysisSeries(seriesList) {
+  const list = Array.isArray(seriesList) ? seriesList : [];
+  const actual = list.find((entry) => entry?.kind === 'actual');
+  const compare = list.find((entry) => entry?.kind === 'compare');
+  return {
+    actualPoints: Array.isArray(actual?.points) ? actual.points : [],
+    comparePoints: Array.isArray(compare?.points) ? compare.points : [],
+  };
+}
+
+function isTrendsHistoricalAnalysisPoint(point) {
+  if (!point || point.isAnchor) return false;
+  if (point.kind === 'projection' || point.kind === 'scheduled') return false;
+  return true;
+}
+
+function toPlainHistoricalContributor(entry) {
+  return {
+    eventType: String(entry?.label || entry?.eventType || ''),
+    currentValue: Number(entry?.currentValue) || 0,
+    comparisonValue: Number(entry?.compareValue ?? entry?.comparisonValue) || 0,
+    delta: Number(entry?.delta) || 0,
+  };
+}
+
+export function formatTrendsContributorSupportLine(contributions) {
+  const extra = (contributions || [])
+    .filter((entry) => Number(entry?.delta) !== 0)
+    .slice(1, 3);
+  if (!extra.length) return '';
+  return extra
+    .map((entry) => `${shortenEventType(entry.label || entry.eventType)} ${formatTrendsHistoricalDelta(entry.delta)}`)
+    .join(' · ');
+}
+
+export function formatTrendsDominantEventLine(dominantEvent) {
+  if (!dominantEvent) return '';
+  const label = String(dominantEvent.label || '').trim();
+  const reach = Math.round(Number(dominantEvent.reach) || 0);
+  if (!label || reach <= 0) return '';
+  return `Single-event driver: ${label} — ${reach} participants.`;
+}
+
+function shouldShowContributorSupportLine(primarySentence, contributions) {
+  const nonzero = (contributions || []).filter((entry) => Number(entry?.delta) !== 0);
+  if (nonzero.length < 2) return false;
+  const sentence = String(primarySentence || '');
+  if (sentence.includes('spread across')) return false;
+  if (sentence.includes(' and ') && /more|fewer/.test(sentence)) return false;
+  return true;
+}
+
+export function assembleTrendsHistoricalAnalysisRows({
+  compareMode,
+  metricKey,
+  selectionMode = 'all',
+  seriesList,
+  actualPoints = [],
+  comparePoints = [],
+  loadBucketEvents,
+  getParticipantCount = countTrendsDriverParticipants,
+} = {}) {
+  const picked = seriesList ? pickTrendsHistoricalAnalysisSeries(seriesList) : null;
+  const currentPoints = picked ? picked.actualPoints : actualPoints;
+  const baselinePoints = picked ? picked.comparePoints : comparePoints;
+  const mode = resolveTrendsHistoricalAnalysisMode(compareMode, selectionMode, seriesList);
+  const compareColumnLabel = getTrendsHistoricalAnalysisColumnLabel(compareMode);
+  const subtitleCompare = getTrendsHistoricalAnalysisSubtitleCompare(compareMode);
+
+  if (mode === 'omit') {
+    return {
+      mode,
+      rows: [],
+      compareColumnLabel,
+      subtitleCompare,
+      note: '',
+    };
+  }
+
+  const count = Math.min(currentPoints.length, baselinePoints.length);
+  const rows = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const currentPoint = currentPoints[index];
+    const comparePoint = baselinePoints[index];
+    if (!isTrendsHistoricalAnalysisPoint(currentPoint) || !isTrendsHistoricalAnalysisPoint(comparePoint)) {
+      continue;
+    }
+
+    const currentValue = Math.round(Number(currentPoint.value) || 0);
+    const comparisonValue = Math.round(Number(comparePoint.value) || 0);
+    const delta = currentValue - comparisonValue;
+    const row = {
+      periodLabel: String(currentPoint.tooltipLabel || currentPoint.axisLabel || ''),
+      comparisonPeriodLabel: String(comparePoint.tooltipLabel || comparePoint.axisLabel || ''),
+      currentValue,
+      comparisonValue,
+      delta,
+      primarySentence: '',
+      contributors: [],
+      contributorLine: '',
+      dominantEventLine: '',
+    };
+
+    if (mode === 'values-only') {
+      rows.push(row);
+      continue;
+    }
+
+    if (delta === 0) {
+      row.primarySentence = TRENDS_HISTORICAL_EQUAL_SENTENCE;
+      rows.push(row);
+      continue;
+    }
+
+    const loaded = typeof loadBucketEvents === 'function'
+      ? loadBucketEvents(index)
+      : { currentEvents: [], compareEvents: [] };
+    const currentEvents = loaded?.currentEvents || [];
+    const compareEvents = loaded?.compareEvents || [];
+
+    const explanation = buildTrendsDifferenceExplanation({
+      metricKey,
+      compareMode,
+      currentEvents,
+      compareEvents,
+      getParticipantCount,
+    });
+
+    row.primarySentence = explanation?.sentence || TRENDS_HISTORICAL_SIMILAR_SENTENCE;
+    row.contributors = (explanation?.contributions || [])
+      .slice(0, 3)
+      .map(toPlainHistoricalContributor);
+
+    if (shouldShowContributorSupportLine(row.primarySentence, explanation?.contributions || row.contributors)) {
+      row.contributorLine = formatTrendsContributorSupportLine(explanation?.contributions || row.contributors);
+    }
+
+    if (metricKey === TRENDS_DRIVER_METRIC_REACH) {
+      const dominantEvent = findTrendsDominantEvent(
+        currentEvents,
+        compareEvents,
+        delta,
+        getParticipantCount
+      );
+      if (dominantEvent) {
+        row.dominantEventLine = formatTrendsDominantEventLine(dominantEvent);
+      }
+    }
+
+    rows.push(row);
+  }
+
+  return {
+    mode,
+    rows,
+    compareColumnLabel,
+    subtitleCompare,
+    note: mode === 'values-only' ? TRENDS_HISTORICAL_AVERAGE_NOTE : '',
+  };
+}
+
 export function countTrendsDriverParticipants(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'string' && value.trim().toUpperCase() === TBD_TOKEN) return 0;
@@ -137,9 +350,7 @@ export function findTrendsDominantEvent(
 }
 
 function formatSigned(value) {
-  const number = Math.round(Number(value) || 0);
-  if (number > 0) return `+${number}`;
-  return String(number);
+  return formatTrendsHistoricalDelta(value);
 }
 
 function buildOneTypeSentence(entry, metricKey, comparePhrase, totalDelta) {

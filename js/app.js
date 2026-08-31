@@ -82,9 +82,13 @@ import {
   resolveOutlookBucketValue,
 } from './trends-outlook-scheduled.js';
 import {
+  assembleTrendsHistoricalAnalysisRows,
   buildTrendsDifferenceExplanation,
+  collectTrendsDriverEventsForInterval,
   getTrendsDriverComparePhrase,
   isTrendsDriverCompareMode,
+  pickTrendsHistoricalAnalysisSeries,
+  resolveTrendsHistoricalAnalysisMode,
 } from './trends-difference-drivers.js';
 import {
   SETTINGS_PEOPLE_NOTE,
@@ -6095,11 +6099,60 @@ function formatTrendsDriverUnitValue(metricKey, value) {
 
 function collectTrendsDriverEvents(interval, context) {
   if (!interval || !context) return [];
-  const list = getTrendsEventsForRange(interval, context.filters);
-  if (context.programKeys?.length) {
-    return filterTrendsEventsByProgramKeys(list, context.programKeys);
+  return collectTrendsDriverEventsForInterval(interval, {
+    filters: context.filters,
+    programKeys: context.programKeys,
+    getEventsForRange: getTrendsEventsForRange,
+    filterByProgramKeys: filterTrendsEventsByProgramKeys,
+  });
+}
+
+function loadTrendsHistoricalAnalysisBucketEvents(index, context) {
+  if (!context?.enabled || !context.buckets?.[index]) {
+    return { currentEvents: [], compareEvents: [] };
   }
-  return list;
+  const bucket = context.buckets[index];
+  const effective = getTrendsChartEffectiveBucketRange(bucket, context.currentRange, context.bucketSize);
+  const historicalIntervals = getTrendsChartHistoricalIntervals(
+    effective,
+    context.period,
+    context.compareMode,
+    context.currentRange
+  );
+  const compareInterval = historicalIntervals[0];
+  return {
+    currentEvents: collectTrendsDriverEvents(effective, context),
+    compareEvents: collectTrendsDriverEvents(compareInterval, context),
+  };
+}
+
+function buildTrendsHistoricalAnalysisRows(driverContext, seriesList, selectionMode, compareMode, metricKey) {
+  const mode = resolveTrendsHistoricalAnalysisMode(compareMode, selectionMode, seriesList);
+  return assembleTrendsHistoricalAnalysisRows({
+    compareMode,
+    metricKey,
+    selectionMode,
+    seriesList,
+    loadBucketEvents: mode === 'drivers'
+      ? (index) => loadTrendsHistoricalAnalysisBucketEvents(index, driverContext)
+      : undefined,
+    getParticipantCount: getTrendsParticipantCount,
+  });
+}
+
+function getTrendsHistoricalAnalysisForExport(snapshot) {
+  const selection = getTrendsOutlookSelection();
+  const seriesList = snapshot?.chart?.seriesList || trendsChartDrawState?.seriesList || [];
+  const compareMode = snapshot?.context?.compareMode || getTrendsOutlookCompareMode(selection);
+  const selectionMode = snapshot?.context?.selectionMode || selection.mode;
+  const metricKey = snapshot?.chart?.metricKey || getTrendsChartMetricKey();
+  return buildTrendsHistoricalAnalysisRows(
+    trendsChartDrawState?.driverContext,
+    seriesList,
+    selectionMode,
+    compareMode,
+    metricKey
+  );
 }
 
 function buildTrendsChartDriverContext({
@@ -6872,6 +6925,16 @@ function buildTrendsOutlookReportContext(selection = getTrendsOutlookSelection()
   };
 }
 
+function createEmptyTrendsHistoricalAnalysis() {
+  return {
+    mode: 'omit',
+    rows: [],
+    compareColumnLabel: '',
+    subtitleCompare: '',
+    note: '',
+  };
+}
+
 function updateTrendsOutlookReportSnapshot(partial = {}) {
   const context = partial.context || buildTrendsOutlookReportContext();
   trendsOutlookReportSnapshot = {
@@ -6884,6 +6947,7 @@ function updateTrendsOutlookReportSnapshot(partial = {}) {
     note: partial.note || '',
     projectionEnabled: Boolean(context.projectionEnabled),
     projectionSummary: partial.projectionSummary || null,
+    historicalAnalysis: partial.historicalAnalysis || createEmptyTrendsHistoricalAnalysis(),
   };
 }
 
@@ -6902,6 +6966,7 @@ async function exportTrendsOutlookReport() {
     const generatedAt = new Date();
     const payload = {
       ...structuredClone(snapshot),
+      historicalAnalysis: getTrendsHistoricalAnalysisForExport(snapshot),
       generatedAt,
       filename: buildTrendsOutlookPdfFilename(generatedAt),
     };
@@ -7764,9 +7829,18 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     legendHint: '',
     note: noteParts.filter(Boolean).join(' '),
     projectionSummary,
+    historicalAnalysis: buildTrendsHistoricalAnalysisRows(
+      trendsChartDrawState.driverContext,
+      seriesList,
+      selection.mode,
+      compareMode,
+      metricKey
+    ),
     context: {
       ...buildTrendsOutlookReportContext(selection),
       metricLabel,
+      compareMode,
+      selectionMode: selection.mode,
     },
   });
 }
