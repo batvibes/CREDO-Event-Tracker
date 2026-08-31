@@ -73,6 +73,11 @@ import {
   sortReportsSearchResults,
 } from './reports-text-search.js';
 import {
+  buildFinancialsPdfFilename,
+  buildFinancialsReportPayload,
+  exportFinancialsReportPdf,
+} from './financials-pdf-export.js';
+import {
   buildTrendsOutlookPdfFilename,
   exportTrendsOutlookReportPdf,
 } from './trends-outlook-pdf-export.js';
@@ -11002,6 +11007,78 @@ function renderFinancials() {
   }
 }
 
+function formatFinancialsDateRangeLabel(range) {
+  if (!range?.start || !range?.end) return '';
+  const start = parseLocalIsoDate(range.start);
+  const end = parseLocalIsoDate(range.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+  const options = { month: 'short', day: 'numeric', year: 'numeric' };
+  return `${start.toLocaleDateString('en-US', options)} – ${end.toLocaleDateString('en-US', options)}`;
+}
+
+function getFinancialsPeriodLabel() {
+  const select = document.getElementById('financials-period');
+  return select?.options[select.selectedIndex]?.text || 'Selected period';
+}
+
+function getFinancialsProgramLabel() {
+  const value = getFinancialsProgramValue();
+  if (!value) return 'All Programs';
+  const select = document.getElementById('financials-program');
+  return select?.options[select.selectedIndex]?.text || value;
+}
+
+function buildFinancialsClickPayload() {
+  const range = getFinancialsCurrentRange();
+  const programValue = getFinancialsProgramValue();
+  const eventsForRange = getFinancialsEvents(range, programValue);
+  const categories = getFinancialsCategoryTotals(eventsForRange);
+  const summary = calculateFinancialsSummary(eventsForRange, categories);
+  const venues = aggregateFinancialsVendors(eventsForRange, 'venues');
+  const caterers = aggregateFinancialsVendors(eventsForRange, 'caterers');
+  const venueTotal = eventsForRange.reduce((sum, event) => sum + resolveTrendsVenueCost(event), 0);
+  const catererTotal = eventsForRange.reduce((sum, event) => sum + resolveTrendsCateringCost(event), 0);
+
+  return buildFinancialsReportPayload({
+    periodLabel: getFinancialsPeriodLabel(),
+    dateRangeLabel: formatFinancialsDateRangeLabel(range),
+    programLabel: getFinancialsProgramLabel(),
+    matchingFinalizedAars: eventsForRange.length,
+    range,
+    summary,
+    categories,
+    venues,
+    caterers,
+    venueTotal,
+    catererTotal,
+  });
+}
+
+async function exportFinancialsReport() {
+  const button = document.getElementById('financials-export-btn');
+  const previousLabel = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Exporting…';
+  }
+
+  try {
+    const generatedAt = new Date();
+    await exportFinancialsReportPdf({
+      ...buildFinancialsClickPayload(),
+      generatedAt,
+      filename: buildFinancialsPdfFilename(generatedAt),
+    });
+  } catch (error) {
+    console.error('Financials report export failed.', error);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousLabel || 'Export Report';
+    }
+  }
+}
+
 function setupFinancials() {
   const period = document.getElementById('financials-period');
   if (!period) return;
@@ -11020,6 +11097,10 @@ function setupFinancials() {
       setFinancialsVendorType(tab.dataset.vendorType);
       renderFinancials();
     });
+  });
+
+  document.getElementById('financials-export-btn')?.addEventListener('click', () => {
+    exportFinancialsReport();
   });
 
   updateFinancialsVendorTabs();
