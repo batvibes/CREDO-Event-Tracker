@@ -82,6 +82,11 @@ import {
   resolveOutlookBucketValue,
 } from './trends-outlook-scheduled.js';
 import {
+  buildTrendsDifferenceExplanation,
+  getTrendsDriverComparePhrase,
+  isTrendsDriverCompareMode,
+} from './trends-difference-drivers.js';
+import {
   SETTINGS_PEOPLE_NOTE,
   SETTINGS_REFERENCE_CATEGORIES,
   SETTINGS_STAFF_NOTE,
@@ -6076,30 +6081,165 @@ function hideTrendsChartTooltip() {
   if (tooltip) {
     tooltip.hidden = true;
     tooltip.textContent = '';
+    tooltip.classList.remove('trends-chart-tooltip-driver');
   }
 }
 
-function showTrendsChartTooltip(anchor, point, metricLabel) {
+function formatTrendsDriverUnitValue(metricKey, value) {
+  const count = Math.round(Number(value) || 0);
+  if (metricKey === 'completedEvents') {
+    return `${count} event${count === 1 ? '' : 's'}`;
+  }
+  return `${count.toLocaleString('en-US')} participant${count === 1 ? '' : 's'}`;
+}
+
+function collectTrendsDriverEvents(interval, context) {
+  if (!interval || !context) return [];
+  const list = getTrendsEventsForRange(interval, context.filters);
+  if (context.programKeys?.length) {
+    return filterTrendsEventsByProgramKeys(list, context.programKeys);
+  }
+  return list;
+}
+
+function buildTrendsChartDriverContext({
+  selection,
+  compareMode,
+  metricKey,
+  currentRange,
+  period,
+  bucketSize,
+  currentBuckets,
+}) {
+  const supported = Boolean(
+    selection?.mode !== 'multi'
+    && isTrendsDriverCompareMode(compareMode)
+    && (metricKey === 'completedEvents' || metricKey === 'participantReach')
+    && currentRange
+    && currentBuckets?.length
+  );
+  if (!supported) return { enabled: false };
+
+  const program = selection.mode === 'single' ? selection.programs[0] : null;
+  return {
+    enabled: true,
+    metricKey,
+    compareMode,
+    comparePhrase: getTrendsDriverComparePhrase(compareMode),
+    currentRange,
+    period,
+    bucketSize,
+    buckets: currentBuckets,
+    bucketCount: currentBuckets.length,
+    filters: program ? { ...getTrendsOutlookBaseFilters() } : { ...getTrendsFilterState() },
+    programKeys: program ? [program.key] : [],
+  };
+}
+
+function getTrendsDifferenceDriverTooltipModel(point, meta, state) {
+  const context = state?.driverContext;
+  if (!context?.enabled) return null;
+
+  const seriesKind = meta?.seriesKind || point?.kind;
+  if (seriesKind !== 'actual' && seriesKind !== 'compare') return null;
+
+  const bucketIndex = Number(meta?.bucketIndex);
+  if (!Number.isInteger(bucketIndex) || bucketIndex < 0 || bucketIndex >= context.bucketCount) {
+    return null;
+  }
+
+  const actualSeries = (state.seriesList || []).find((entry) => entry.kind === 'actual');
+  const compareSeries = (state.seriesList || []).find((entry) => entry.kind === 'compare');
+  const currentPoint = actualSeries?.points?.[bucketIndex];
+  const comparePoint = compareSeries?.points?.[bucketIndex];
+  if (!currentPoint || !comparePoint) return null;
+
+  const bucket = context.buckets[bucketIndex];
+  const effective = getTrendsChartEffectiveBucketRange(bucket, context.currentRange, context.bucketSize);
+  const historicalIntervals = getTrendsChartHistoricalIntervals(
+    effective,
+    context.period,
+    context.compareMode,
+    context.currentRange
+  );
+  const compareInterval = historicalIntervals[0];
+  if (!effective || !compareInterval) return null;
+
+  const currentValue = Number(currentPoint.value) || 0;
+  const compareValue = Number(comparePoint.value) || 0;
+  const explanation = Math.abs(currentValue - compareValue) < 1
+    ? null
+    : buildTrendsDifferenceExplanation({
+      metricKey: context.metricKey,
+      compareMode: context.compareMode,
+      currentEvents: collectTrendsDriverEvents(effective, context),
+      compareEvents: collectTrendsDriverEvents(compareInterval, context),
+      getParticipantCount: getTrendsParticipantCount,
+    });
+
+  return {
+    heading: currentPoint.tooltipLabel || point?.tooltipLabel || '',
+    currentValue,
+    compareValue,
+    comparePhrase: context.comparePhrase,
+    compareLabel: comparePoint.tooltipLabel || '',
+    metricKey: context.metricKey,
+    explanation: explanation?.sentence || '',
+  };
+}
+
+function showTrendsChartTooltip(anchor, point, metricLabel, meta = {}) {
   const tooltip = document.getElementById('trends-chart-tooltip');
   const body = document.querySelector('#view-trends .trends-chart-body');
   if (!tooltip || !body) return;
 
   tooltip.hidden = false;
   tooltip.textContent = '';
-  const labelLine = document.createElement('div');
-  labelLine.textContent = point.tooltipLabel;
-  const valueLine = document.createElement('div');
-  valueLine.textContent = `${metricLabel}: ${point.formattedValue}`;
-  tooltip.append(labelLine, valueLine);
-  if (point.seriesLabel) {
-    const seriesLine = document.createElement('div');
-    seriesLine.textContent = point.seriesLabel;
-    tooltip.append(seriesLine);
-  }
-  if (point.extraLabel) {
-    const extraLine = document.createElement('div');
-    extraLine.textContent = point.extraLabel;
-    tooltip.append(extraLine);
+  tooltip.classList.remove('trends-chart-tooltip-driver');
+
+  const driverModel = getTrendsDifferenceDriverTooltipModel(point, meta, trendsChartDrawState);
+  if (driverModel) {
+    tooltip.classList.add('trends-chart-tooltip-driver');
+    const heading = document.createElement('div');
+    heading.className = 'trends-chart-tooltip-heading';
+    heading.textContent = driverModel.heading;
+
+    const currentLine = document.createElement('div');
+    currentLine.textContent = `Current Period: ${formatTrendsDriverUnitValue(driverModel.metricKey, driverModel.currentValue)}`;
+
+    const compareLine = document.createElement('div');
+    const compareSuffix = driverModel.compareLabel ? ` (${driverModel.compareLabel})` : '';
+    compareLine.textContent = `${driverModel.comparePhrase}${compareSuffix}: ${formatTrendsDriverUnitValue(driverModel.metricKey, driverModel.compareValue)}`;
+    tooltip.append(heading, currentLine, compareLine);
+
+    if (driverModel.explanation) {
+      const divider = document.createElement('div');
+      divider.className = 'trends-chart-tooltip-driver-block';
+      const why = document.createElement('div');
+      why.className = 'trends-chart-tooltip-driver-label';
+      why.textContent = 'Why the difference?';
+      const sentence = document.createElement('div');
+      sentence.className = 'trends-chart-tooltip-driver-text';
+      sentence.textContent = driverModel.explanation;
+      divider.append(why, sentence);
+      tooltip.append(divider);
+    }
+  } else {
+    const labelLine = document.createElement('div');
+    labelLine.textContent = point.tooltipLabel;
+    const valueLine = document.createElement('div');
+    valueLine.textContent = `${metricLabel}: ${point.formattedValue}`;
+    tooltip.append(labelLine, valueLine);
+    if (point.seriesLabel) {
+      const seriesLine = document.createElement('div');
+      seriesLine.textContent = point.seriesLabel;
+      tooltip.append(seriesLine);
+    }
+    if (point.extraLabel) {
+      const extraLine = document.createElement('div');
+      extraLine.textContent = point.extraLabel;
+      tooltip.append(extraLine);
+    }
   }
 
   const bodyRect = body.getBoundingClientRect();
@@ -6952,7 +7092,7 @@ function drawTrendsChartSvg(state) {
     svg.appendChild(label);
   });
 
-  function appendSeriesPath(points, style) {
+  function appendSeriesPath(points, style, seriesKind) {
     const plotted = points
       .map((point, index) => ({
         point,
@@ -7009,7 +7149,10 @@ function drawTrendsChartSvg(state) {
         'stroke-width': style.markerStrokeWidth || 1.5,
         'pointer-events': 'none',
       });
-      const show = () => showTrendsChartTooltip(hit, entry.point, metricLabel);
+      const show = () => showTrendsChartTooltip(hit, entry.point, metricLabel, {
+        seriesKind,
+        bucketIndex: entry.index,
+      });
       hit.addEventListener('mouseenter', show);
       hit.addEventListener('focus', show);
       hit.addEventListener('mouseleave', hideTrendsChartTooltip);
@@ -7021,7 +7164,7 @@ function drawTrendsChartSvg(state) {
 
   seriesList.forEach((entry) => {
     if (!entry.points?.length) return;
-    appendSeriesPath(entry.points, entry.style);
+    appendSeriesPath(entry.points, entry.style, entry.kind);
   });
 
   wrap.appendChild(svg);
@@ -7596,6 +7739,15 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     metricKey,
     metricLabel,
     ariaLabel: `Trend and outlook for ${metricLabel}`,
+    driverContext: buildTrendsChartDriverContext({
+      selection,
+      compareMode,
+      metricKey,
+      currentRange,
+      period,
+      bucketSize,
+      currentBuckets,
+    }),
   };
   drawTrendsChartSvg(trendsChartDrawState);
   updateTrendsOutlookReportSnapshot({

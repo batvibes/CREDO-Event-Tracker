@@ -5235,6 +5235,35 @@ body:has(#new-event-modal[open]) {
   pointer-events: none;
 }
 
+#view-trends .trends-chart-tooltip-driver {
+  max-width: 280px;
+}
+
+#view-trends .trends-chart-tooltip-heading {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #00205b;
+}
+
+#view-trends .trends-chart-tooltip-driver-block {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+#view-trends .trends-chart-tooltip-driver-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+#view-trends .trends-chart-tooltip-driver-text {
+  color: var(--text-secondary);
+}
+
 #view-trends .trends-chart-point:focus {
   outline: none;
 }
