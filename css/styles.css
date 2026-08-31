@@ -2574,6 +2574,10 @@ body:has(#new-event-modal[open]) {
   gap: 16px;
 }
 
+#view-settings .settings-panel[hidden] {
+  display: none;
+}
+
 #view-settings .settings-subnav {
   display: flex;
   gap: 0;
