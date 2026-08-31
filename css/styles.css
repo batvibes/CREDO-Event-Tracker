@@ -1748,6 +1748,12 @@ body:has(#new-event-modal[open]) {
   color: #fff;
 }
 
+#view-reports .aar-action-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
+}
+
 #aar-audit-modal .modal-content {
   max-width: 720px;
 }
@@ -2547,7 +2553,7 @@ body:has(#new-event-modal[open]) {
   font-weight: 500;
 }
 
-#reports-search-panel .col-open {
+#reports-search-panel .col-actions {
   width: 1%;
   white-space: nowrap;
 }

@@ -1412,7 +1412,8 @@ function renderReportsSearchResults() {
     row.appendChild(matchCell);
 
     const actionCell = document.createElement('td');
-    actionCell.className = 'col-open aar-action-cell';
+    actionCell.className = 'col-actions aar-action-cell';
+
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.className = 'aar-action-btn';
@@ -1423,6 +1424,17 @@ function renderReportsSearchResults() {
       openAarDocument(event);
     });
     actionCell.appendChild(openBtn);
+
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'aar-action-btn';
+    exportBtn.textContent = 'Export';
+    exportBtn.addEventListener('click', (clickEvent) => {
+      clickEvent.stopPropagation();
+      void exportAarPdfForEvent(event, exportBtn);
+    });
+    actionCell.appendChild(exportBtn);
+
     row.appendChild(actionCell);
 
     tbody.appendChild(row);
@@ -3158,9 +3170,9 @@ function buildAarExportReportElement(event) {
   return article;
 }
 
-async function exportAarFromHistory(event, triggerBtn) {
+async function exportAarPdfForEvent(event, triggerBtn) {
   if (!event || !isAarFinalized(event)) {
-    alert('Only finalized AARs can be exported from History Log.');
+    alert('Only finalized AARs can be exported.');
     return;
   }
 
@@ -3183,6 +3195,14 @@ async function exportAarFromHistory(event, triggerBtn) {
     host.remove();
     if (triggerBtn) triggerBtn.disabled = false;
   }
+}
+
+async function exportAarFromHistory(event, triggerBtn) {
+  if (!event || !isAarFinalized(event)) {
+    alert('Only finalized AARs can be exported from History Log.');
+    return;
+  }
+  await exportAarPdfForEvent(event, triggerBtn);
 }
 
 function updateAarPreviewToolbar() {
