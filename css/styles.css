@@ -2518,6 +2518,40 @@ body:has(#new-event-modal[open]) {
   color: var(--text-muted);
 }
 
+#reports-search-panel .reports-search-intro {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+#reports-search-panel .reports-search-intro .aar-section-title {
+  margin: 0;
+}
+
+#reports-search-panel .reports-search-intro .aar-section-divider {
+  margin: 12px 0 16px;
+}
+
+#reports-search-panel .reports-search-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+}
+
+#reports-search-panel .reports-search-field .reports-input {
+  width: 100%;
+}
+
+#reports-search-panel .col-match {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+#reports-search-panel .col-open {
+  width: 1%;
+  white-space: nowrap;
+}
+
 .reports-table tbody td {
   color: var(--text-secondary);
 }

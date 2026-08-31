@@ -65,6 +65,14 @@ import { applyMirPhotoSlots, clearMirPhotoSlots, getMirPhotosForSave, setupMirPh
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
 import { exportEventSyncReportPdf } from './event-report-pdf-export.js';
 import {
+  createReportsSearchSortState,
+  formatReportsSearchMatchLabel,
+  normalizeReportsSearchQuery,
+  resolveReportsSearchSortState,
+  searchReportsEvents,
+  sortReportsSearchResults,
+} from './reports-text-search.js';
+import {
   buildTrendsOutlookPdfFilename,
   exportTrendsOutlookReportPdf,
 } from './trends-outlook-pdf-export.js';
@@ -163,6 +171,11 @@ const SORT_DESC = 'desc';
 
 const eventsTableSort = { column: 'date', direction: SORT_DESC };
 const reportsTableSort = { column: null, direction: SORT_ASC };
+const reportsSearchTableSort = createReportsSearchSortState();
+let reportsSearchResults = [];
+let reportsSearchAppliedQuery = '';
+let reportsSearchTimer = null;
+const REPORTS_SEARCH_DEBOUNCE_MS = 200;
 const aarTableSort = { column: null, direction: SORT_ASC };
 const aarHistoryTableSort = { column: null, direction: SORT_ASC };
 const mirHistoryTableSort = { column: null, direction: SORT_ASC };
@@ -185,6 +198,14 @@ const REPORTS_TABLE_SORT_COLUMNS = [
   { key: 'command', index: 2 },
   { key: 'participants', index: 3 },
   { key: 'location', index: 4 },
+];
+
+const REPORTS_SEARCH_TABLE_SORT_COLUMNS = [
+  { key: 'date', index: 0 },
+  { key: 'eventType', index: 1 },
+  { key: 'command', index: 2 },
+  { key: 'location', index: 3 },
+  { key: 'match', index: 4 },
 ];
 
 const AAR_TABLE_SORT_COLUMNS = [
@@ -783,6 +804,8 @@ function resetTableSortState() {
   eventsTableSort.direction = SORT_DESC;
   reportsTableSort.column = null;
   reportsTableSort.direction = SORT_ASC;
+  Object.assign(reportsSearchTableSort, createReportsSearchSortState());
+  reportsSearchAppliedQuery = '';
   aarTableSort.column = null;
   aarTableSort.direction = SORT_ASC;
   aarHistoryTableSort.column = null;
@@ -792,6 +815,7 @@ function resetTableSortState() {
 
   refreshSortHeaderIndicators('#view-events .events-table', EVENTS_TABLE_SORT_COLUMNS, eventsTableSort);
   refreshSortHeaderIndicators('#reports-event-panel .reports-table', REPORTS_TABLE_SORT_COLUMNS, reportsTableSort);
+  refreshSortHeaderIndicators('#reports-search-table', REPORTS_SEARCH_TABLE_SORT_COLUMNS, reportsSearchTableSort);
   refreshSortHeaderIndicators('#view-reports .aar-table:not(.aar-history-table)', AAR_TABLE_SORT_COLUMNS, aarTableSort);
   refreshSortHeaderIndicators('#aar-history-view .aar-history-table', AAR_HISTORY_TABLE_SORT_COLUMNS, aarHistoryTableSort);
   refreshSortHeaderIndicators('#mir-history-view .mir-history-table', MIR_HISTORY_TABLE_SORT_COLUMNS, mirHistoryTableSort);
@@ -812,6 +836,15 @@ function setupReportsTableSorting() {
     REPORTS_TABLE_SORT_COLUMNS,
     reportsTableSort,
     () => renderReportTable()
+  );
+}
+
+function setupReportsSearchTableSorting() {
+  bindSortableTableHeaders(
+    '#reports-search-table',
+    REPORTS_SEARCH_TABLE_SORT_COLUMNS,
+    reportsSearchTableSort,
+    () => renderReportsSearchResults()
   );
 }
 
@@ -1287,7 +1320,133 @@ function setupReports() {
   document.getElementById('report-export-btn').addEventListener('click', exportReportPdf);
 
   setupReportsTableSorting();
+  setupReportsSearch();
   renderReportTable();
+}
+
+function getReportsSearchInputValue() {
+  return document.getElementById('reports-search-input')?.value ?? '';
+}
+
+function applyReportsSearchQuery(query) {
+  const nextSort = resolveReportsSearchSortState(
+    reportsSearchAppliedQuery,
+    query,
+    reportsSearchTableSort
+  );
+  reportsSearchTableSort.column = nextSort.column;
+  reportsSearchTableSort.direction = nextSort.direction;
+  reportsSearchAppliedQuery = normalizeReportsSearchQuery(query);
+  reportsSearchResults = searchReportsEvents(events, query);
+  refreshSortHeaderIndicators(
+    '#reports-search-table',
+    REPORTS_SEARCH_TABLE_SORT_COLUMNS,
+    reportsSearchTableSort
+  );
+  renderReportsSearchResults();
+}
+
+function scheduleReportsSearch() {
+  clearTimeout(reportsSearchTimer);
+  reportsSearchTimer = setTimeout(() => {
+    applyReportsSearchQuery(getReportsSearchInputValue());
+  }, REPORTS_SEARCH_DEBOUNCE_MS);
+}
+
+function renderReportsSearchResults() {
+  const tbody = document.getElementById('reports-search-body');
+  const countEl = document.getElementById('reports-search-count');
+  const countWrap = document.getElementById('reports-search-count-wrap');
+  if (!tbody) return;
+
+  const query = reportsSearchAppliedQuery;
+  if (!query) {
+    if (countWrap) countWrap.hidden = true;
+    if (countEl) countEl.textContent = '';
+    tbody.innerHTML =
+      '<tr><td colspan="6"><div class="empty-state">Enter a search to find events and AARs.</div></td></tr>';
+    return;
+  }
+
+  const sorted = sortReportsSearchResults(reportsSearchResults, reportsSearchTableSort);
+  if (countWrap) countWrap.hidden = false;
+  if (countEl) {
+    const count = sorted.length;
+    countEl.textContent = `${count} result${count === 1 ? '' : 's'}`;
+  }
+
+  if (!sorted.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="6"><div class="empty-state">No events match this search.</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  sorted.forEach((result) => {
+    const event = result.event;
+    const row = document.createElement('tr');
+
+    const dateCell = document.createElement('td');
+    dateCell.className = 'col-date';
+    dateCell.textContent = formatEventDateDisplay(event);
+    row.appendChild(dateCell);
+
+    const typeCell = document.createElement('td');
+    typeCell.className = 'col-type';
+    typeCell.textContent = event.eventType;
+    row.appendChild(typeCell);
+
+    const commandCell = document.createElement('td');
+    commandCell.className = 'col-command';
+    commandCell.textContent = displayValue(event.command, 'command');
+    row.appendChild(commandCell);
+
+    const locationCell = document.createElement('td');
+    locationCell.className = 'col-location';
+    locationCell.textContent = displayValue(event.location, 'location');
+    row.appendChild(locationCell);
+
+    const matchCell = document.createElement('td');
+    matchCell.className = 'col-match';
+    matchCell.textContent = formatReportsSearchMatchLabel(result.matches);
+    row.appendChild(matchCell);
+
+    const actionCell = document.createElement('td');
+    actionCell.className = 'col-open aar-action-cell';
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'aar-action-btn';
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', (clickEvent) => {
+      clickEvent.stopPropagation();
+      switchReportsTab('aar');
+      openAarDocument(event);
+    });
+    actionCell.appendChild(openBtn);
+    row.appendChild(actionCell);
+
+    tbody.appendChild(row);
+  });
+}
+
+function renderReportsSearch() {
+  applyReportsSearchQuery(getReportsSearchInputValue());
+}
+
+function setupReportsSearch() {
+  const input = document.getElementById('reports-search-input');
+  if (!input) return;
+
+  input.addEventListener('input', scheduleReportsSearch);
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    clearTimeout(reportsSearchTimer);
+    applyReportsSearchQuery(input.value);
+  });
+
+  setupReportsSearchTableSorting();
+  renderReportsSearchResults();
 }
 
 function setupReportsSubnav() {
@@ -1310,6 +1469,8 @@ function switchReportsTab(tab) {
   });
 
   document.getElementById('reports-event-panel').hidden = tab !== 'event-reports';
+  const searchPanel = document.getElementById('reports-search-panel');
+  if (searchPanel) searchPanel.hidden = tab !== 'search';
   document.getElementById('reports-aar-panel').hidden = tab !== 'aar';
   document.getElementById('reports-mir-panel').hidden = tab !== 'mir';
 
@@ -1317,6 +1478,7 @@ function switchReportsTab(tab) {
   if (subtitle) {
     const subtitles = {
       'event-reports': 'Event Reports',
+      search: 'Search',
       aar: 'After Action Reports',
       mir: 'Monthly Impact Report',
     };
@@ -1325,6 +1487,8 @@ function switchReportsTab(tab) {
 
   if (tab === 'event-reports') {
     renderReports();
+  } else if (tab === 'search') {
+    renderReportsSearch();
   } else if (tab === 'aar') {
     renderAarSearch();
   } else if (tab === 'mir') {
@@ -10278,6 +10442,8 @@ function render() {
   } else if (currentView === 'reports') {
     if (reportsTab === 'event-reports') {
       renderReports();
+    } else if (reportsTab === 'search') {
+      renderReportsSearch();
     } else if (reportsTab === 'aar') {
       renderAarSearch();
     } else if (reportsTab === 'mir') {

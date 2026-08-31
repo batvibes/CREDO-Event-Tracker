@@ -175,6 +175,7 @@
         </header>
         <nav class="reports-subnav" aria-label="Report sections">
           <button type="button" class="reports-subtab reports-subtab-active" data-reports-tab="event-reports">Event Reports</button>
+          <button type="button" class="reports-subtab" data-reports-tab="search">Search</button>
           <button type="button" class="reports-subtab" data-reports-tab="aar">After Action Reports</button>
           <button type="button" class="reports-subtab" data-reports-tab="mir">Monthly Impact Report</button>
         </nav>
@@ -244,6 +245,43 @@
                   </tr>
                 </thead>
                 <tbody id="report-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <section id="reports-search-panel" class="content-section reports-panel" hidden>
+          <div class="reports-search-intro">
+            <h2 class="aar-section-title">Search Events &amp; AARs</h2>
+            <div class="aar-section-divider" aria-hidden="true"></div>
+            <label class="reports-search-field">
+              <span class="reports-filter-label">Search</span>
+              <input
+                type="search"
+                id="reports-search-input"
+                class="reports-input"
+                placeholder="Search events, AARs, lessons learned, commands, locations..."
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </label>
+          </div>
+          <div class="reports-results">
+            <div class="reports-results-header" id="reports-search-count-wrap" hidden>
+              <span id="reports-search-count"></span>
+            </div>
+            <div class="table-wrap">
+              <table class="events-table reports-table" id="reports-search-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Event Type</th>
+                    <th>Command</th>
+                    <th>Location</th>
+                    <th>Match</th>
+                    <th>Open</th>
+                  </tr>
+                </thead>
+                <tbody id="reports-search-body"></tbody>
               </table>
             </div>
           </div>
