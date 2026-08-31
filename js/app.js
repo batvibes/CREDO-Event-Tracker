@@ -69,6 +69,11 @@ import {
   exportTrendsOutlookReportPdf,
 } from './trends-outlook-pdf-export.js';
 import {
+  filterTrendsScheduledEvents,
+  getTrendsScheduledFloorForEvents,
+  resolveOutlookBucketValue,
+} from './trends-outlook-scheduled.js';
+import {
   buildCommandReachPdfFilename,
   buildImpactExplorerPdfFilename,
   buildProgramDemandPdfFilename,
@@ -4530,6 +4535,17 @@ function getTrendsEventsForRange(range, filters) {
   });
 }
 
+function getTrendsScheduledEventsForRange(range, filters) {
+  return filterTrendsScheduledEvents(events, {
+    todayIso: formatLocalIsoDate(new Date()),
+    range,
+    eventType: filters?.eventType || '',
+    command: filters?.command || '',
+    getEventDate: getTrendsEventDate,
+    getCommandKey: getTrendsCommandKey,
+  });
+}
+
 function calculateTrendsMetrics(eventsForRange) {
   const commands = new Set();
   let participantReach = 0;
@@ -4916,6 +4932,7 @@ const TRENDS_OUTLOOK_STABLE_RATIO = 0.10;
 const TRENDS_OUTLOOK_ALL_COLOR = '#00205b';
 const TRENDS_OUTLOOK_COMPARE_COLOR = '#4b5563';
 const TRENDS_OUTLOOK_PROJECTION_COLOR = '#6b5ca5';
+const TRENDS_OUTLOOK_SCHEDULED_COLOR = '#0f766e';
 const TRENDS_OUTLOOK_PROGRAM_COLORS = ['#2f6f4e', '#1d4ed8', '#a16207', '#0f766e'];
 
 let trendsChartDrawState = null;
@@ -5591,7 +5608,7 @@ function classifyTrendsOutlookDirectionLabel(direction) {
   return 'Insufficient History';
 }
 
-function getTrendsOutlookDirectionSentence(direction, metricLabel) {
+function getTrendsOutlookDirectionSentence(direction, metricLabel, options = {}) {
   if (direction === 'increasing') {
     return `Recent ${metricLabel.toLowerCase()} shows an upward trend. The projection extends that observed direction forward.`;
   }
@@ -5601,7 +5618,45 @@ function getTrendsOutlookDirectionSentence(direction, metricLabel) {
   if (direction === 'stable') {
     return 'Recent activity has varied but does not show a strong sustained upward or downward trend.';
   }
+  if (options.scheduledOnly) {
+    return 'Not enough historical activity to estimate a directional trend. The outlook shown is based on events already scheduled.';
+  }
   return 'Not enough historical activity to estimate an outlook for this selection.';
+}
+
+function getTrendsOutlookScheduledFloorMethodLines(metricKey) {
+  const lines = [
+    'Known scheduled events are used as a floor for the outlook. They are not added on top of the historical projection.',
+  ];
+  if (metricKey === 'participantReach') {
+    lines.push('Scheduled participant reach uses only Expected Participant counts actually entered on events.');
+  }
+  return lines;
+}
+
+function getTrendsOutlookMethodLines(windows, {
+  metricKey,
+  scheduledOnly = false,
+  includeScheduledFloor = false,
+  multiProgram = false,
+} = {}) {
+  const lines = [];
+  if (scheduledOnly) {
+    lines.push('Not enough recent finalized activity to establish a directional trend.');
+    lines.push('The outlook shown is based on currently scheduled events.');
+  } else if (multiProgram) {
+    lines.push('Each program outlook extends that program’s own recent directional trend from finalized activity over the previous 12 months.');
+  } else {
+    lines.push('Outlook extends the recent directional trend from finalized CREDO activity over the previous 12 months.');
+  }
+  if (includeScheduledFloor) {
+    lines.push(...getTrendsOutlookScheduledFloorMethodLines(metricKey));
+  }
+  if (windows) {
+    lines.push(`Trend basis: ${formatTrendsProjectionRange(windows.basis)}`);
+    lines.push(`Projection: ${formatTrendsProjectionRange(windows.projection)}`);
+  }
+  return lines;
 }
 
 function roundTrendsOutlookValue(metricKey, value) {
@@ -5640,48 +5695,35 @@ function buildTrendsOutlookDirectionalProjection({
     getTrendsEventsForRange(windows.basis, queryFilters),
     programKeys
   );
+  const scheduledEvents = filterTrendsEventsByProgramKeys(
+    getTrendsScheduledEventsForRange(windows.projection, queryFilters),
+    programKeys
+  );
   const projectionLabel = seriesLabel
     ? `${seriesLabel} · ${getTrendsOutlookProjectionHorizonLabel(months)}`
     : getTrendsOutlookProjectionHorizonLabel(months);
 
-  if (!basisEvents.length) {
-    return {
-      months,
-      windows,
-      projectionLabel,
-      projectionSeries: null,
-      futureAxisLabels: [],
-      boundaryIndex: null,
-      projectedTotal: null,
-      direction: 'insufficient',
-      error: programKeys?.length
-        ? 'Not enough historical activity to estimate an outlook for this program.'
-        : 'No finalized historical data is available to estimate an outlook.',
-    };
-  }
+  const insufficientError = programKeys?.length
+    ? 'Not enough historical activity to estimate an outlook for this program.'
+    : (basisEvents.length
+      ? 'Not enough historical activity to estimate an outlook.'
+      : 'No finalized historical data is available to estimate an outlook.');
 
-  const basisBuckets = aggregateTrendsChartBuckets(
-    generateTrendsChartBuckets(windows.basis, bucketSize),
-    basisEvents,
-    bucketSize
-  );
-  const basisValues = basisBuckets.map((bucket) => getTrendsChartSeriesValue(bucket.metrics, metricKey));
-  const trend = fitTrendsOutlookLinearTrend(basisValues);
-  if (!trend.ok) {
-    return {
-      months,
-      windows,
-      projectionLabel,
-      projectionSeries: null,
-      futureAxisLabels: [],
-      boundaryIndex: null,
-      projectedTotal: null,
-      direction: 'insufficient',
-      trend,
-      error: programKeys?.length
-        ? 'Not enough historical activity to estimate an outlook for this program.'
-        : 'Not enough historical activity to estimate an outlook.',
-    };
+  let trend = {
+    ok: false,
+    slope: 0,
+    intercept: 0,
+    direction: 'insufficient',
+    mean: 0,
+  };
+  if (basisEvents.length) {
+    const basisBuckets = aggregateTrendsChartBuckets(
+      generateTrendsChartBuckets(windows.basis, bucketSize),
+      basisEvents,
+      bucketSize
+    );
+    const basisValues = basisBuckets.map((bucket) => getTrendsChartSeriesValue(bucket.metrics, metricKey));
+    trend = fitTrendsOutlookLinearTrend(basisValues);
   }
 
   const lastHistoricalKey = currentBuckets[currentBuckets.length - 1]?.key;
@@ -5689,7 +5731,38 @@ function buildTrendsOutlookDirectionalProjection({
     .filter((bucket) => !lastHistoricalKey || bucket.key > lastHistoricalKey);
   const lastSeriesPoint = actualSeries[actualSeries.length - 1];
   const lastIndex = actualSeries.length - 1;
+
+  const scheduledByBucket = new Map(futureBuckets.map((bucket) => [bucket.key, []]));
+  scheduledEvents.forEach((event) => {
+    const isoDate = getTrendsEventDate(event);
+    if (!isoDate) return;
+    const bucketKey = getTrendsChartBucketKey(isoDate, bucketSize);
+    if (!scheduledByBucket.has(bucketKey)) return;
+    scheduledByBucket.get(bucketKey).push(event);
+  });
+  const hasScheduled = [...scheduledByBucket.values()].some((list) => list.length > 0);
+  const scheduledOnly = !trend.ok && hasScheduled;
+
+  if (!trend.ok && !hasScheduled) {
+    return {
+      months,
+      windows,
+      projectionLabel,
+      projectionSeries: null,
+      scheduledSeries: [],
+      futureAxisLabels: [],
+      boundaryIndex: null,
+      projectedTotal: null,
+      direction: 'insufficient',
+      scheduledOnly: false,
+      trend,
+      error: insufficientError,
+      color,
+    };
+  }
+
   const projectionSeries = [];
+  const scheduledSeries = [];
   const futureAxisLabels = [];
 
   if (lastSeriesPoint && lastSeriesPoint.value != null && Number.isFinite(lastSeriesPoint.value)) {
@@ -5697,6 +5770,7 @@ function buildTrendsOutlookDirectionalProjection({
       ...lastSeriesPoint,
       index: lastIndex,
       seriesLabel: projectionLabel,
+      extraLabel: lastSeriesPoint.extraLabel || '',
       isAnchor: true,
     });
   }
@@ -5704,20 +5778,50 @@ function buildTrendsOutlookDirectionalProjection({
   let nextIndex = lastIndex + 1;
   let projectedTotal = 0;
   futureBuckets.forEach((bucket, offset) => {
-    const raw = Number(lastSeriesPoint?.value || 0) + (trend.slope * (offset + 1));
-    const value = roundTrendsOutlookValue(metricKey, raw);
+    const bucketEvents = scheduledByBucket.get(bucket.key) || [];
+    const scheduledFloor = getTrendsScheduledFloorForEvents(bucketEvents, metricKey);
+    const rawForecast = Number(lastSeriesPoint?.value || 0) + (trend.slope * (offset + 1));
+    const historicalForecast = trend.ok ? roundTrendsOutlookValue(metricKey, rawForecast) : 0;
+    const value = roundTrendsOutlookValue(
+      metricKey,
+      resolveOutlookBucketValue({
+        trendOk: trend.ok,
+        historicalForecast,
+        scheduledFloor,
+      })
+    );
     projectedTotal += value;
     futureAxisLabels.push(bucket.axisLabel);
+
+    const extraLabel = scheduledFloor > 0
+      ? `Scheduled: ${formatTrendsChartValue(metricKey, scheduledFloor)}`
+      : (scheduledOnly
+        ? 'Outlook based on currently scheduled activity'
+        : 'Directional outlook from recent finalized history');
+
     projectionSeries.push({
       index: nextIndex,
       axisLabel: bucket.axisLabel,
       tooltipLabel: bucket.tooltipLabel,
       seriesLabel: projectionLabel,
-      extraLabel: 'Directional outlook from recent finalized history',
+      extraLabel,
       value,
       formattedValue: formatTrendsChartValue(metricKey, value),
       isAnchor: false,
     });
+
+    if (scheduledFloor > 0) {
+      scheduledSeries.push({
+        index: nextIndex,
+        axisLabel: bucket.axisLabel,
+        tooltipLabel: bucket.tooltipLabel,
+        seriesLabel: 'Scheduled',
+        extraLabel: `Scheduled: ${formatTrendsChartValue(metricKey, scheduledFloor)}`,
+        value: scheduledFloor,
+        formattedValue: formatTrendsChartValue(metricKey, scheduledFloor),
+        isAnchor: false,
+      });
+    }
     nextIndex += 1;
   });
 
@@ -5727,10 +5831,12 @@ function buildTrendsOutlookDirectionalProjection({
       windows,
       projectionLabel,
       projectionSeries: null,
+      scheduledSeries: [],
       futureAxisLabels: [],
       boundaryIndex: null,
       projectedTotal: null,
-      direction: trend.direction,
+      direction: trend.ok ? trend.direction : 'insufficient',
+      scheduledOnly: false,
       trend,
       error: 'Not enough future time buckets are available to draw this projection.',
       color,
@@ -5742,10 +5848,12 @@ function buildTrendsOutlookDirectionalProjection({
     windows,
     projectionLabel,
     projectionSeries,
+    scheduledSeries,
     futureAxisLabels,
     boundaryIndex: lastIndex,
     projectedTotal,
-    direction: trend.direction,
+    direction: trend.ok ? trend.direction : 'insufficient',
+    scheduledOnly,
     trend,
     error: '',
     color,
@@ -6445,6 +6553,26 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
         const todayIso = formatLocalIsoDate(new Date());
         boundaryLabel = currentRange.end >= todayIso ? 'Today' : 'Projection begins';
         const projectionColor = selection.mode === 'single' ? color : TRENDS_OUTLOOK_PROJECTION_COLOR;
+        const scheduledColor = selection.mode === 'single' ? color : TRENDS_OUTLOOK_SCHEDULED_COLOR;
+        if (projection.scheduledSeries?.length) {
+          seriesList.push({
+            kind: 'scheduled',
+            points: projection.scheduledSeries,
+            style: {
+              stroke: scheduledColor,
+              width: 1.85,
+              dash: '2 4',
+              markerRadius: 3,
+              markerFill: scheduledColor,
+            },
+          });
+          legendItems.push({
+            label: 'Scheduled',
+            color: scheduledColor,
+            dotted: true,
+            swatchClass: 'trends-chart-legend-swatch-scheduled',
+          });
+        }
         seriesList.push({
           kind: 'projection',
           points: projection.projectionSeries,
@@ -6470,13 +6598,15 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
           resultBlocks: [{
             title: formatTrendsOutlookProjectedTotal(metricKey, projection.months, projection.projectedTotal),
             outlook: classifyTrendsOutlookDirectionLabel(projection.direction),
-            sentence: getTrendsOutlookDirectionSentence(projection.direction, metricLabel),
+            sentence: getTrendsOutlookDirectionSentence(projection.direction, metricLabel, {
+              scheduledOnly: projection.scheduledOnly,
+            }),
           }],
-          methodLines: [
-            'Outlook extends the recent directional trend from finalized CREDO activity over the previous 12 months.',
-            `Trend basis: ${formatTrendsProjectionRange(projection.windows.basis)}`,
-            `Projection: ${formatTrendsProjectionRange(projection.windows.projection)}`,
-          ],
+          methodLines: getTrendsOutlookMethodLines(projection.windows, {
+            metricKey,
+            scheduledOnly: projection.scheduledOnly,
+            includeScheduledFloor: true,
+          }),
         };
       } else {
         noteParts.push(projection.error || 'Not enough historical activity to estimate an outlook.');
@@ -6640,23 +6770,25 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
 
       if (projectionResults.length) {
         legendItems.push({
-          label: 'Dashed = Projection',
+          label: 'Dashed = Outlook',
           color: '#6b7280',
           dash: true,
           swatchClass: 'trends-chart-legend-swatch-projection',
         });
       }
 
+      const anyScheduledOnly = projectionResults.some((entry) => entry.scheduledOnly);
       projectionSummary = {
         resultBlocks: [{
           title: `Projected ${metricLabel} — ${getTrendsOutlookProjectionHorizonLabel(sharedMonths).replace('Projected ', '')}`,
           lines: multiLines,
         }],
-        methodLines: sharedWindows ? [
-          'Each program outlook extends that program’s own recent directional trend from finalized activity over the previous 12 months.',
-          `Trend basis: ${formatTrendsProjectionRange(sharedWindows.basis)}`,
-          `Projection: ${formatTrendsProjectionRange(sharedWindows.projection)}`,
-        ] : [],
+        methodLines: sharedWindows ? getTrendsOutlookMethodLines(sharedWindows, {
+          metricKey,
+          scheduledOnly: anyScheduledOnly && projectionResults.every((entry) => entry.scheduledOnly),
+          includeScheduledFloor: true,
+          multiProgram: !(anyScheduledOnly && projectionResults.every((entry) => entry.scheduledOnly)),
+        }) : [],
       };
     }
   }
@@ -6668,10 +6800,19 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     ];
   }
 
+  const hasScheduledSeries = seriesList.some((entry) => entry.kind === 'scheduled');
   const legendHint = selection.mode === 'multi'
-    ? 'Solid = Actual · Dashed = Projection · Dotted = Historical Comparison'
+    ? (showProjection
+      ? (compareMode !== TRENDS_COMPARE_NONE
+        ? 'Solid = Actual · Dashed = Outlook · Dotted = Historical Comparison'
+        : 'Solid = Actual · Dashed = Outlook')
+      : (compareMode !== TRENDS_COMPARE_NONE
+        ? 'Solid = Actual · Dotted = Historical Comparison'
+        : ''))
     : (showProjection
-      ? 'Solid = Actual · Dashed = Projection'
+      ? (hasScheduledSeries
+        ? 'Solid = Actual · Dotted = Scheduled · Dashed = Outlook'
+        : 'Solid = Actual · Dashed = Outlook')
       : '');
 
   if (multiComparePaused) {

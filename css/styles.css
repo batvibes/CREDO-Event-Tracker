@@ -3992,6 +3992,10 @@ body:has(#new-event-modal[open]) {
   border-top: 2px dashed #6b5ca5;
 }
 
+#view-trends .trends-chart-legend-swatch-scheduled {
+  border-top: 2px dotted #0f766e;
+}
+
 #view-trends .trends-chart-projection-summary {
   margin: 10px 0 0;
 }
