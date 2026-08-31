@@ -82,6 +82,16 @@ import {
   resolveOutlookBucketValue,
 } from './trends-outlook-scheduled.js';
 import {
+  SETTINGS_PEOPLE_NOTE,
+  SETTINGS_REFERENCE_CATEGORIES,
+  SETTINGS_STAFF_NOTE,
+  canRemoveEventTypeFromSettings,
+  eventTypeMatchesSettingsQuery,
+  filterReferenceEntriesForSettings,
+  isSettingsReferenceCategory,
+  normalizeSettingsSearchQuery,
+} from './settings-reference-lists.js';
+import {
   buildCommandReachPdfFilename,
   buildImpactExplorerPdfFilename,
   buildProgramDemandPdfFilename,
@@ -137,6 +147,11 @@ let eventReferenceFields = null;
 let commandHighlightsNotes = '';
 let currentView = 'events';
 let reportsTab = 'event-reports';
+let settingsTab = 'event-types';
+let settingsEventTypeQuery = '';
+let settingsReferenceCategory = 'commands';
+let settingsReferenceQuery = '';
+let settingsReferenceForm = null;
 let dateFilter = { month: 'all', year: 'all' };
 
 const MONTH_NAMES = [
@@ -1465,6 +1480,14 @@ function setupReportsSubnav() {
   document.querySelectorAll('.reports-subtab').forEach((btn) => {
     btn.addEventListener('click', () => {
       switchReportsTab(btn.dataset.reportsTab);
+    });
+  });
+}
+
+function setupSettingsSubnav() {
+  document.querySelectorAll('.settings-subtab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      switchSettingsTab(btn.dataset.settingsTab);
     });
   });
 }
@@ -4110,25 +4133,20 @@ function ensureEventTypeTemplateStyles() {
   const style = document.createElement('style');
   style.id = 'event-type-template-styles';
   style.textContent = `
-    .event-type-row-expanded {
-      display: block;
-      padding: 14px 0;
-      border-bottom: 1px solid #dde3ea;
-    }
-
-    .event-type-row-expanded:last-child {
-      border-bottom: none;
-    }
-
     .event-type-name-row {
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       gap: 10px;
       margin-bottom: 12px;
     }
 
     .event-type-name-row .event-type-input {
       flex: 1;
+    }
+
+    .event-type-name-field {
+      flex: 1;
+      margin-bottom: 0;
     }
 
     .event-type-template-field {
@@ -4203,6 +4221,149 @@ function ensureEventTypeTemplateStyles() {
   document.head.appendChild(style);
 }
 
+function cleanSettingsReferenceName(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function updateSettingsSubnav() {
+  document.querySelectorAll('.settings-subtab').forEach((btn) => {
+    btn.classList.toggle('settings-subtab-active', btn.dataset.settingsTab === settingsTab);
+  });
+
+  const subtitle = document.getElementById('settings-subtitle');
+  if (subtitle) {
+    subtitle.textContent = settingsTab === 'reference-lists' ? 'Reference Lists' : 'Event Types';
+  }
+
+  const eventPanel = document.getElementById('settings-event-types-panel');
+  const refPanel = document.getElementById('settings-reference-lists-panel');
+  if (eventPanel) eventPanel.hidden = settingsTab !== 'event-types';
+  if (refPanel) refPanel.hidden = settingsTab !== 'reference-lists';
+}
+
+function switchSettingsTab(tab) {
+  settingsTab = tab === 'reference-lists' ? 'reference-lists' : 'event-types';
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  updateSettingsSubnav();
+}
+
+function applySettingsEventTypeFilter() {
+  const list = document.getElementById('event-type-list');
+  const empty = document.getElementById('settings-event-type-empty');
+  if (!list) return;
+
+  let visibleCount = 0;
+  list.querySelectorAll('.event-type-item').forEach((item) => {
+    const record = eventTypeRecords.find((entry) => entry.id === item.dataset.eventTypeId);
+    const matches = eventTypeMatchesSettingsQuery(record, settingsEventTypeQuery);
+    item.hidden = !matches;
+    if (matches) visibleCount += 1;
+  });
+
+  if (empty) {
+    empty.hidden = visibleCount > 0 || !normalizeSettingsSearchQuery(settingsEventTypeQuery);
+  }
+}
+
+function getSettingsReferenceItems(category) {
+  switch (category) {
+    case 'commands':
+      return referenceCommands;
+    case 'locations':
+      return referenceLocations;
+    case 'venues':
+      return referenceVenues;
+    case 'caterers':
+      return referenceCaterers;
+    case 'people':
+      return referencePeople;
+    default:
+      return [];
+  }
+}
+
+function setSettingsReferenceItems(category, list) {
+  switch (category) {
+    case 'commands':
+      referenceCommands = list;
+      break;
+    case 'locations':
+      referenceLocations = list;
+      break;
+    case 'venues':
+      referenceVenues = list;
+      break;
+    case 'caterers':
+      referenceCaterers = list;
+      break;
+    case 'people':
+      referencePeople = list;
+      break;
+    default:
+      return;
+  }
+
+  if (category === 'people') {
+    eventReferenceFields?.refreshPeople();
+  } else {
+    eventReferenceFields?.refreshNamed();
+  }
+}
+
+function settingsReferenceConflictMessage(error, fallbackName = 'that name') {
+  if (error?.code === 'REFERENCE_NAME_EXISTS') {
+    return error.message || `A roster entry named “${fallbackName}” already exists.`;
+  }
+  if (error?.message === 'REFERENCE_NAME_REQUIRED') {
+    return 'Name is required.';
+  }
+  return null;
+}
+
+async function addSettingsReferenceEntry(category, name) {
+  let created;
+  if (category === 'commands') created = await createCommand(name);
+  else if (category === 'locations') created = await createLocation(name);
+  else if (category === 'venues') created = await createVenue(name);
+  else if (category === 'caterers') created = await createCaterer(name);
+  else if (category === 'people') created = await createPerson(name);
+  else throw new Error('Invalid roster type.');
+
+  setSettingsReferenceItems(category, upsertReferenceItem(getSettingsReferenceItems(category), created));
+  return created;
+}
+
+async function renameSettingsReferenceEntry(category, id, name) {
+  let updated;
+  if (category === 'commands') updated = await updateCommand(id, { name });
+  else if (category === 'locations') updated = await updateLocation(id, { name });
+  else if (category === 'venues') updated = await updateVenue(id, { name });
+  else if (category === 'caterers') updated = await updateCaterer(id, { name });
+  else if (category === 'people') updated = await updatePerson(id, { name });
+  else throw new Error('Invalid roster type.');
+
+  setSettingsReferenceItems(category, applyReferenceUpdate(getSettingsReferenceItems(category), updated));
+  await reloadEventsAfterCanonicalRename();
+  return updated;
+}
+
+async function removeSettingsReferenceEntry(category, id) {
+  if (category === 'commands') await removeCommand(id);
+  else if (category === 'locations') await removeLocation(id);
+  else if (category === 'venues') await removeVenue(id);
+  else if (category === 'caterers') await removeCaterer(id);
+  else if (category === 'people') await removePerson(id);
+  else throw new Error('Invalid roster type.');
+
+  setSettingsReferenceItems(category, removeReferenceItem(getSettingsReferenceItems(category), id));
+}
+
+function clearSettingsReferenceForm() {
+  settingsReferenceForm = null;
+}
+
 function renderAarGlobalTemplatesSection(container, editable) {
   const section = document.createElement('div');
   section.className = 'settings-section';
@@ -4261,39 +4422,433 @@ function renderAarGlobalTemplatesSection(container, editable) {
   container.appendChild(section);
 }
 
-function renderSettings() {
+function renderSettingsEventTypesPanel() {
   ensureEventTypeTemplateStyles();
-  const container = document.getElementById('settings-content');
-  const editable = canManageEventTypes();
+  const container = document.getElementById('settings-event-types-panel');
+  if (!container) return;
 
+  const editable = canManageEventTypes();
   container.innerHTML = `
-    <div class="settings-panel">
-      <p class="settings-help">Edit event type names and AAR template text below. Name changes apply to new events and dropdowns.</p>
-      <ul class="event-type-list" id="event-type-list"></ul>
-      ${editable ? '<button type="button" class="btn btn-secondary" id="add-event-type-btn">+ Add Event Type</button>' : ''}
-    </div>`;
+    <p class="settings-help">Edit event type names and AAR template text below. Name changes apply to new events and dropdowns.</p>
+    <label class="settings-search-field">
+      <span class="settings-search-label">Search Event Types</span>
+      <input type="search" id="settings-event-type-search" class="settings-search-input" placeholder="Search by name or series code" autocomplete="off">
+    </label>
+    <ul class="event-type-list" id="event-type-list"></ul>
+    <p class="settings-help" id="settings-event-type-empty" hidden>No event types match this search.</p>
+    ${editable ? '<button type="button" class="btn btn-secondary" id="add-event-type-btn">+ Add Event Type</button>' : ''}
+  `;
 
   const list = container.querySelector('#event-type-list');
   eventTypeRecords.forEach((record, index) => {
     list.appendChild(createEventTypeRow(index, editable));
   });
 
+  const searchInput = container.querySelector('#settings-event-type-search');
+  if (searchInput) {
+    searchInput.value = settingsEventTypeQuery;
+    searchInput.addEventListener('input', () => {
+      settingsEventTypeQuery = searchInput.value;
+      applySettingsEventTypeFilter();
+    });
+  }
+  applySettingsEventTypeFilter();
+
   renderAarGlobalTemplatesSection(container, editable);
 
-  if (editable) {
-    container.querySelector('#add-event-type-btn').addEventListener('click', async () => {
+  const addBtn = container.querySelector('#add-event-type-btn');
+  if (editable && addBtn) {
+    addBtn.addEventListener('click', async () => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       try {
         const sortOrder = eventTypeRecords.length;
         const created = await insertEventType('New Event Type', sortOrder);
         eventTypeRecords.push(created);
         syncEventTypeNames();
-        renderSettings();
+        renderSettingsEventTypesPanel();
       } catch (err) {
         console.error(err);
         alert('Failed to add event type.');
       }
     });
   }
+}
+
+function renderSettingsReferenceAction(container, editable) {
+  if (!editable || !settingsReferenceForm) return;
+
+  const form = settingsReferenceForm;
+  const panel = document.createElement('div');
+  panel.className = 'settings-ref-action';
+
+  const cancelForm = () => {
+    clearSettingsReferenceForm();
+    renderSettingsReferenceListsPanel();
+  };
+
+  if (form.mode === 'add' || form.mode === 'rename') {
+    const title = document.createElement('div');
+    title.className = 'settings-ref-action-title';
+    title.textContent = form.mode === 'add' ? 'Add New' : 'Rename';
+
+    const label = document.createElement('label');
+    label.className = 'settings-ref-action-label';
+    const labelText = document.createElement('span');
+    labelText.textContent = 'Name';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'settings-search-input';
+    input.maxLength = 200;
+    input.value = form.draftName || (form.mode === 'rename' ? form.currentName : '');
+    label.append(labelText, input);
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-ref-action-buttons';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', cancelForm);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn btn-primary';
+    saveBtn.textContent = form.mode === 'add' ? 'Add' : 'Save';
+    saveBtn.addEventListener('click', async () => {
+      const nextName = cleanSettingsReferenceName(input.value);
+      if (!nextName) {
+        alert('Name is required.');
+        return;
+      }
+      if (form.mode === 'add') {
+        saveBtn.disabled = true;
+        try {
+          await addSettingsReferenceEntry(settingsReferenceCategory, nextName);
+          clearSettingsReferenceForm();
+          renderSettingsReferenceListsPanel();
+        } catch (err) {
+          console.error(err);
+          saveBtn.disabled = false;
+          alert(settingsReferenceConflictMessage(err, nextName) || 'Failed to add reference entry.');
+        }
+        return;
+      }
+
+      if (nextName === form.currentName) {
+        cancelForm();
+        return;
+      }
+      settingsReferenceForm = {
+        ...form,
+        mode: 'rename-confirm',
+        draftName: nextName,
+      };
+      renderSettingsReferenceListsPanel();
+    });
+
+    actions.append(cancelBtn, saveBtn);
+    panel.append(title, label, actions);
+    container.appendChild(panel);
+    input.focus();
+    input.select();
+    return;
+  }
+
+  if (form.mode === 'rename-confirm') {
+    const lead = document.createElement('p');
+    lead.className = 'settings-ref-action-lead';
+    lead.textContent = `Rename “${form.currentName}” to “${form.draftName}”?`;
+
+    const copy = document.createElement('p');
+    copy.className = 'settings-help';
+    copy.textContent = 'This will update this name everywhere it is currently used in Events and AARs.';
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-ref-action-buttons';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => {
+      settingsReferenceForm = { ...form, mode: 'rename' };
+      renderSettingsReferenceListsPanel();
+    });
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.textContent = 'Rename Everywhere';
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      const category = settingsReferenceCategory;
+      const itemId = form.itemId;
+      const draftName = form.draftName;
+      clearSettingsReferenceForm();
+      try {
+        await renameSettingsReferenceEntry(category, itemId, draftName);
+        if (currentView === 'settings' && settingsTab === 'reference-lists') {
+          renderSettingsReferenceListsPanel();
+        }
+      } catch (err) {
+        console.error(err);
+        settingsReferenceForm = form;
+        confirmBtn.disabled = false;
+        if (currentView === 'settings' && settingsTab === 'reference-lists') {
+          renderSettingsReferenceListsPanel();
+        }
+        alert(settingsReferenceConflictMessage(err, draftName) || 'Failed to rename roster entry.');
+      }
+    });
+
+    actions.append(cancelBtn, confirmBtn);
+    panel.append(lead, copy, actions);
+    container.appendChild(panel);
+    return;
+  }
+
+  if (form.mode === 'remove') {
+    const lead = document.createElement('p');
+    lead.className = 'settings-ref-action-lead';
+    lead.textContent = `Remove “${form.currentName}” from the list?`;
+
+    const copy = document.createElement('p');
+    copy.className = 'settings-help';
+    copy.textContent = 'This removes it from future selections. Existing Events and AARs will not be changed.';
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-ref-action-buttons';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', cancelForm);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.textContent = 'Remove';
+    confirmBtn.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      try {
+        await removeSettingsReferenceEntry(settingsReferenceCategory, form.itemId);
+        clearSettingsReferenceForm();
+        renderSettingsReferenceListsPanel();
+      } catch (err) {
+        console.error(err);
+        confirmBtn.disabled = false;
+        alert('Failed to remove roster entry from the list.');
+      }
+    });
+
+    actions.append(cancelBtn, confirmBtn);
+    panel.append(lead, copy, actions);
+    container.appendChild(panel);
+  }
+}
+
+function fillSettingsReferenceTableBody(tbody, editable) {
+  tbody.innerHTML = '';
+  const items = getSettingsReferenceItems(settingsReferenceCategory);
+  const visibleItems = filterReferenceEntriesForSettings(items, settingsReferenceQuery);
+
+  if (!visibleItems.length) {
+    const emptyRow = document.createElement('tr');
+    const emptyCell = document.createElement('td');
+    emptyCell.colSpan = editable ? 2 : 1;
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = items.length && normalizeSettingsSearchQuery(settingsReferenceQuery)
+      ? 'No names match this search.'
+      : 'No roster entries in this list.';
+    emptyCell.appendChild(empty);
+    emptyRow.appendChild(emptyCell);
+    tbody.appendChild(emptyRow);
+    return;
+  }
+
+  visibleItems.forEach((item) => {
+    const row = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    nameCell.textContent = item.name;
+    row.appendChild(nameCell);
+
+    if (editable) {
+      const actionCell = document.createElement('td');
+      actionCell.className = 'aar-action-cell settings-ref-actions-col';
+
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'aar-action-btn';
+      renameBtn.textContent = 'Rename';
+      renameBtn.addEventListener('click', () => {
+        settingsReferenceForm = {
+          mode: 'rename',
+          itemId: item.id,
+          currentName: item.name,
+          draftName: item.name,
+        };
+        renderSettingsReferenceListsPanel();
+      });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'aar-action-btn';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', () => {
+        settingsReferenceForm = {
+          mode: 'remove',
+          itemId: item.id,
+          currentName: item.name,
+        };
+        renderSettingsReferenceListsPanel();
+      });
+
+      actionCell.append(renameBtn, removeBtn);
+      row.appendChild(actionCell);
+    }
+
+    tbody.appendChild(row);
+  });
+}
+
+function renderSettingsReferenceListsPanel() {
+  const container = document.getElementById('settings-reference-lists-panel');
+  if (!container) return;
+
+  if (!isSettingsReferenceCategory(settingsReferenceCategory)) {
+    settingsReferenceCategory = 'commands';
+  }
+
+  const editable = canEditEvents();
+  const category = SETTINGS_REFERENCE_CATEGORIES.find((entry) => entry.key === settingsReferenceCategory);
+  const items = getSettingsReferenceItems(settingsReferenceCategory);
+
+  container.innerHTML = '';
+
+  const catNav = document.createElement('div');
+  catNav.className = 'settings-ref-cats';
+  catNav.setAttribute('role', 'tablist');
+  catNav.setAttribute('aria-label', 'Reference list categories');
+  SETTINGS_REFERENCE_CATEGORIES.forEach((entry) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'settings-ref-cat';
+    btn.classList.toggle('settings-ref-cat-active', entry.key === settingsReferenceCategory);
+    btn.textContent = entry.label;
+    btn.addEventListener('click', () => {
+      if (settingsReferenceCategory === entry.key) return;
+      settingsReferenceCategory = entry.key;
+      clearSettingsReferenceForm();
+      renderSettingsReferenceListsPanel();
+    });
+    catNav.appendChild(btn);
+  });
+  container.appendChild(catNav);
+
+  const heading = document.createElement('div');
+  heading.className = 'settings-ref-heading';
+
+  const title = document.createElement('h3');
+  title.className = 'settings-section-title';
+  title.textContent = category?.label || 'Reference Lists';
+
+  const count = document.createElement('span');
+  count.className = 'settings-ref-count';
+  count.textContent = String(items.length);
+
+  heading.append(title, count);
+  container.appendChild(heading);
+
+  if (settingsReferenceCategory === 'people') {
+    const peopleNote = document.createElement('p');
+    peopleNote.className = 'settings-help';
+    peopleNote.textContent = SETTINGS_PEOPLE_NOTE;
+    container.appendChild(peopleNote);
+  }
+
+  const staffNote = document.createElement('p');
+  staffNote.className = 'settings-help settings-staff-note';
+  staffNote.append(document.createTextNode(`${SETTINGS_STAFF_NOTE} `));
+  const teamLink = document.createElement('button');
+  teamLink.type = 'button';
+  teamLink.className = 'settings-inline-link';
+  teamLink.textContent = 'Open Team';
+  teamLink.addEventListener('click', () => switchView('team'));
+  staffNote.appendChild(teamLink);
+  container.appendChild(staffNote);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'settings-ref-toolbar';
+
+  const searchField = document.createElement('label');
+  searchField.className = 'settings-search-field';
+  const searchLabel = document.createElement('span');
+  searchLabel.className = 'settings-search-label';
+  searchLabel.textContent = `Search ${category?.label || 'list'}`;
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.className = 'settings-search-input';
+  searchInput.placeholder = 'Search by name';
+  searchInput.autocomplete = 'off';
+  searchInput.value = settingsReferenceQuery;
+  searchInput.addEventListener('input', () => {
+    settingsReferenceQuery = searchInput.value;
+    const tableBody = container.querySelector('#settings-ref-body');
+    if (tableBody) fillSettingsReferenceTableBody(tableBody, editable);
+  });
+  searchField.append(searchLabel, searchInput);
+  toolbar.appendChild(searchField);
+
+  if (editable) {
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-secondary';
+    addBtn.textContent = 'Add New';
+    addBtn.addEventListener('click', () => {
+      settingsReferenceForm = { mode: 'add', draftName: '' };
+      renderSettingsReferenceListsPanel();
+    });
+    toolbar.appendChild(addBtn);
+  }
+
+  container.appendChild(toolbar);
+  renderSettingsReferenceAction(container, editable);
+
+  const tableWrap = document.createElement('div');
+  tableWrap.className = 'table-wrap';
+  const table = document.createElement('table');
+  table.className = 'events-table settings-ref-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  const nameHead = document.createElement('th');
+  nameHead.textContent = 'Name';
+  headRow.appendChild(nameHead);
+  if (editable) {
+    const actionsHead = document.createElement('th');
+    actionsHead.className = 'settings-ref-actions-col';
+    actionsHead.textContent = 'Actions';
+    headRow.appendChild(actionsHead);
+  }
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  tbody.id = 'settings-ref-body';
+  fillSettingsReferenceTableBody(tbody, editable);
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  container.appendChild(tableWrap);
+}
+
+function renderSettings() {
+  updateSettingsSubnav();
+  renderSettingsEventTypesPanel();
+  renderSettingsReferenceListsPanel();
 }
 
 function createEventTypeTemplateField(labelText, value, editable, onSave) {
@@ -4343,23 +4898,53 @@ function createEventTypeSeriesCodeField(seriesCode) {
 function createEventTypeRow(index, editable) {
   const record = eventTypeRecords[index];
   const li = document.createElement('li');
-  li.className = 'event-type-row event-type-row-expanded';
+  li.className = 'event-type-item';
+  li.dataset.eventTypeId = record.id;
+
+  const details = document.createElement('details');
+  details.className = 'event-type-row';
+
+  const summary = document.createElement('summary');
+  summary.className = 'event-type-summary';
+
+  const codeEl = document.createElement('span');
+  codeEl.className = 'event-type-summary-code';
+  codeEl.textContent = record.seriesCode || '—';
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'event-type-summary-name';
+  nameEl.textContent = record.name;
+
+  const editEl = document.createElement('span');
+  editEl.className = 'event-type-summary-edit';
+  editEl.textContent = 'Edit ▾';
+
+  summary.append(codeEl, nameEl, editEl);
+
+  const body = document.createElement('div');
+  body.className = 'event-type-row-body';
 
   const nameRow = document.createElement('div');
   nameRow.className = 'event-type-name-row';
 
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'event-type-template-field event-type-name-field';
+  const nameLabelText = document.createElement('span');
+  nameLabelText.className = 'event-type-template-label';
+  nameLabelText.textContent = 'Event Type';
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'event-type-input';
   input.value = record.name;
   input.readOnly = !editable;
+  nameLabel.append(nameLabelText, input);
 
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'event-type-remove';
   removeBtn.setAttribute('aria-label', 'Remove event type');
   removeBtn.textContent = '×';
-  removeBtn.disabled = !editable || eventTypeRecords.length <= 1;
+  removeBtn.disabled = !editable || !canRemoveEventTypeFromSettings(eventTypeRecords.length);
 
   const saveName = async () => {
     const trimmed = input.value.trim();
@@ -4374,6 +4959,8 @@ function createEventTypeRow(index, editable) {
       const saved = await updateEventType(record.id, { name: trimmed });
       await renameEventTypeInEvents(previous, trimmed);
       record.name = saved.name;
+      input.value = saved.name;
+      nameEl.textContent = saved.name;
       events.forEach((event) => {
         if (event.eventType === previous) event.eventType = trimmed;
       });
@@ -4433,12 +5020,16 @@ function createEventTypeRow(index, editable) {
     });
 
     removeBtn.addEventListener('click', async () => {
-      if (eventTypeRecords.length <= 1) return;
+      if (!canRemoveEventTypeFromSettings(eventTypeRecords.length)) return;
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       try {
         await deleteEventType(record.id);
-        eventTypeRecords.splice(index, 1);
+        const recordIndex = eventTypeRecords.findIndex((entry) => entry.id === record.id);
+        if (recordIndex >= 0) eventTypeRecords.splice(recordIndex, 1);
         syncEventTypeNames();
-        renderSettings();
+        renderSettingsEventTypesPanel();
       } catch (err) {
         console.error(err);
         alert('Failed to remove event type.');
@@ -4446,12 +5037,14 @@ function createEventTypeRow(index, editable) {
     });
   }
 
-  nameRow.appendChild(input);
+  nameRow.appendChild(nameLabel);
   nameRow.appendChild(removeBtn);
-  li.appendChild(nameRow);
-  li.appendChild(createEventTypeSeriesCodeField(record.seriesCode));
-  li.appendChild(objectivesField.field);
-  li.appendChild(descriptionField.field);
+  body.appendChild(nameRow);
+  body.appendChild(createEventTypeSeriesCodeField(record.seriesCode));
+  body.appendChild(objectivesField.field);
+  body.appendChild(descriptionField.field);
+  details.append(summary, body);
+  li.appendChild(details);
   return li;
 }
 
@@ -10956,6 +11549,7 @@ export async function initApp() {
   setupFinancials();
   setupReports();
   setupReportsSubnav();
+  setupSettingsSubnav();
   setupAarSearch();
   setupAarHistoryLog();
   setupMirInternalNav();

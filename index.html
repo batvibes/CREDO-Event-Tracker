@@ -1197,10 +1197,15 @@
         <header class="page-header">
           <div class="header-titles">
             <h1>Settings</h1>
-            <h2>Event Types</h2>
+            <h2 id="settings-subtitle">Event Types</h2>
           </div>
         </header>
-        <section class="content-section" id="settings-content"></section>
+        <nav class="settings-subnav" aria-label="Settings sections">
+          <button type="button" class="settings-subtab settings-subtab-active" data-settings-tab="event-types">Event Types</button>
+          <button type="button" class="settings-subtab" data-settings-tab="reference-lists">Reference Lists</button>
+        </nav>
+        <section id="settings-event-types-panel" class="content-section settings-panel"></section>
+        <section id="settings-reference-lists-panel" class="content-section settings-panel" hidden></section>
       </div>
     </main>
   </div>
