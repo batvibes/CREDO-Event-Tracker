@@ -86,15 +86,21 @@ function drawLegend(pdf, x, y, width, items, hint) {
       cursorY += lineHeight;
     }
     const rgb = hexToRgb(item.color);
-    pdf.setDrawColor(...rgb);
-    pdf.setLineWidth(0.018);
-    if (item.dash || item.dotted) {
-      pdf.setLineDashPattern(item.dotted ? [0.02, 0.035] : dashPattern(item.dash === true ? '5 4' : item.dash), 0);
+    if (item.marker) {
+      pdf.setFillColor(...rgb);
+      pdf.setDrawColor(...rgb);
+      pdf.circle(cursorX + 0.055, cursorY - 0.025, 0.032, 'F');
     } else {
+      pdf.setDrawColor(...rgb);
+      pdf.setLineWidth(0.018);
+      if (item.dash || item.dotted) {
+        pdf.setLineDashPattern(item.dotted ? [0.02, 0.035] : dashPattern(item.dash === true ? '5 4' : item.dash), 0);
+      } else {
+        pdf.setLineDashPattern([], 0);
+      }
+      pdf.line(cursorX, cursorY - 0.03, cursorX + 0.16, cursorY - 0.03);
       pdf.setLineDashPattern([], 0);
     }
-    pdf.line(cursorX, cursorY - 0.03, cursorX + 0.16, cursorY - 0.03);
-    pdf.setLineDashPattern([], 0);
     pdf.setTextColor(...COLORS.text);
     pdf.text(label, cursorX + 0.2, cursorY);
     cursorX += labelWidth;
@@ -206,35 +212,37 @@ function drawChart(pdf, y, chart) {
     if (!plotted.length) return;
 
     const rgb = hexToRgb(style.stroke);
-    pdf.setDrawColor(...rgb);
-    pdf.setLineWidth((style.width || 2) * 0.009);
-    if (style.dash) {
-      pdf.setLineDashPattern(dashPattern(style.dash), 0);
-    } else {
+    if (!style.markersOnly) {
+      pdf.setDrawColor(...rgb);
+      pdf.setLineWidth((style.width || 2) * 0.009);
+      if (style.dash) {
+        pdf.setLineDashPattern(dashPattern(style.dash), 0);
+      } else {
+        pdf.setLineDashPattern([], 0);
+      }
+
+      let segment = [];
+      const flushSegment = () => {
+        if (segment.length > 1) {
+          for (let i = 1; i < segment.length; i += 1) {
+            pdf.line(
+              xAt(segment[i - 1].index),
+              yAt(segment[i - 1].point.value),
+              xAt(segment[i].index),
+              yAt(segment[i].point.value)
+            );
+          }
+        }
+        segment = [];
+      };
+      plotted.forEach((item, plottedIndex) => {
+        const previous = plotted[plottedIndex - 1];
+        if (previous && item.index !== previous.index + 1) flushSegment();
+        segment.push(item);
+      });
+      flushSegment();
       pdf.setLineDashPattern([], 0);
     }
-
-    let segment = [];
-    const flushSegment = () => {
-      if (segment.length > 1) {
-        for (let i = 1; i < segment.length; i += 1) {
-          pdf.line(
-            xAt(segment[i - 1].index),
-            yAt(segment[i - 1].point.value),
-            xAt(segment[i].index),
-            yAt(segment[i].point.value)
-          );
-        }
-      }
-      segment = [];
-    };
-    plotted.forEach((item, plottedIndex) => {
-      const previous = plotted[plottedIndex - 1];
-      if (previous && item.index !== previous.index + 1) flushSegment();
-      segment.push(item);
-    });
-    flushSegment();
-    pdf.setLineDashPattern([], 0);
 
     plotted.forEach((item) => {
       if (style.skipAnchorMarker && item.point.isAnchor) return;

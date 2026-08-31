@@ -5626,10 +5626,10 @@ function getTrendsOutlookDirectionSentence(direction, metricLabel, options = {})
 
 function getTrendsOutlookScheduledFloorMethodLines(metricKey) {
   const lines = [
-    'Known scheduled events are used as a floor for the outlook. They are not added on top of the historical projection.',
+    'Outlook combines recent historical trends with events already scheduled. Scheduled activity acts as a minimum and is not added twice.',
   ];
   if (metricKey === 'participantReach') {
-    lines.push('Scheduled participant reach uses only Expected Participant counts actually entered on events.');
+    lines.push('Scheduled participant reach uses only Expected Participant counts already entered on events.');
   }
   return lines;
 }
@@ -5638,19 +5638,17 @@ function getTrendsOutlookMethodLines(windows, {
   metricKey,
   scheduledOnly = false,
   includeScheduledFloor = false,
-  multiProgram = false,
 } = {}) {
   const lines = [];
   if (scheduledOnly) {
-    lines.push('Not enough recent finalized activity to establish a directional trend.');
-    lines.push('The outlook shown is based on currently scheduled events.');
-  } else if (multiProgram) {
-    lines.push('Each program outlook extends that program’s own recent directional trend from finalized activity over the previous 12 months.');
+    lines.push('Not enough historical activity to estimate a directional trend. The outlook shown is based on events already scheduled.');
+    if (metricKey === 'participantReach') {
+      lines.push('Scheduled participant reach uses only Expected Participant counts already entered on events.');
+    }
+  } else if (includeScheduledFloor) {
+    lines.push(...getTrendsOutlookScheduledFloorMethodLines(metricKey));
   } else {
     lines.push('Outlook extends the recent directional trend from finalized CREDO activity over the previous 12 months.');
-  }
-  if (includeScheduledFloor) {
-    lines.push(...getTrendsOutlookScheduledFloorMethodLines(metricKey));
   }
   if (windows) {
     lines.push(`Trend basis: ${formatTrendsProjectionRange(windows.basis)}`);
@@ -6185,7 +6183,7 @@ function drawTrendsChartSvg(state) {
       }))
       .filter((entry) => entry.point.value != null && Number.isFinite(entry.point.value));
 
-    if (plotted.length > 1) {
+    if (plotted.length > 1 && !style.markersOnly) {
       let segment = [];
       const flushSegment = () => {
         if (segment.length > 1) {
@@ -6267,9 +6265,13 @@ function updateTrendsChartLegend(items, hint) {
       const swatch = document.createElement('span');
       swatch.className = `trends-chart-legend-swatch ${item.swatchClass || ''}`.trim();
       swatch.setAttribute('aria-hidden', 'true');
-      if (item.color) swatch.style.borderTopColor = item.color;
-      if (item.dash) swatch.style.borderTopStyle = 'dashed';
-      if (item.dotted) swatch.style.borderTopStyle = 'dotted';
+      if (item.marker) {
+        if (item.color) swatch.style.backgroundColor = item.color;
+      } else {
+        if (item.color) swatch.style.borderTopColor = item.color;
+        if (item.dash) swatch.style.borderTopStyle = 'dashed';
+        if (item.dotted) swatch.style.borderTopStyle = 'dotted';
+      }
       const text = document.createElement('span');
       text.textContent = item.label;
       row.append(swatch, text);
@@ -6553,23 +6555,24 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
         const todayIso = formatLocalIsoDate(new Date());
         boundaryLabel = currentRange.end >= todayIso ? 'Today' : 'Projection begins';
         const projectionColor = selection.mode === 'single' ? color : TRENDS_OUTLOOK_PROJECTION_COLOR;
-        const scheduledColor = selection.mode === 'single' ? color : TRENDS_OUTLOOK_SCHEDULED_COLOR;
         if (projection.scheduledSeries?.length) {
           seriesList.push({
             kind: 'scheduled',
             points: projection.scheduledSeries,
             style: {
-              stroke: scheduledColor,
+              stroke: TRENDS_OUTLOOK_SCHEDULED_COLOR,
               width: 1.85,
-              dash: '2 4',
-              markerRadius: 3,
-              markerFill: scheduledColor,
+              markerRadius: 3.5,
+              markerFill: TRENDS_OUTLOOK_SCHEDULED_COLOR,
+              markerStroke: '#ffffff',
+              markerStrokeWidth: 1.5,
+              markersOnly: true,
             },
           });
           legendItems.push({
             label: 'Scheduled',
-            color: scheduledColor,
-            dotted: true,
+            color: TRENDS_OUTLOOK_SCHEDULED_COLOR,
+            marker: true,
             swatchClass: 'trends-chart-legend-swatch-scheduled',
           });
         }
@@ -6588,7 +6591,7 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
           },
         });
         legendItems.push({
-          label: getTrendsOutlookProjectionHorizonLabel(projection.months),
+          label: 'Outlook',
           color: projectionColor,
           dash: true,
           swatchClass: 'trends-chart-legend-swatch-projection',
@@ -6598,9 +6601,6 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
           resultBlocks: [{
             title: formatTrendsOutlookProjectedTotal(metricKey, projection.months, projection.projectedTotal),
             outlook: classifyTrendsOutlookDirectionLabel(projection.direction),
-            sentence: getTrendsOutlookDirectionSentence(projection.direction, metricLabel, {
-              scheduledOnly: projection.scheduledOnly,
-            }),
           }],
           methodLines: getTrendsOutlookMethodLines(projection.windows, {
             metricKey,
@@ -6770,7 +6770,7 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
 
       if (projectionResults.length) {
         legendItems.push({
-          label: 'Dashed = Outlook',
+          label: 'Outlook',
           color: '#6b7280',
           dash: true,
           swatchClass: 'trends-chart-legend-swatch-projection',
@@ -6787,7 +6787,6 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
           metricKey,
           scheduledOnly: anyScheduledOnly && projectionResults.every((entry) => entry.scheduledOnly),
           includeScheduledFloor: true,
-          multiProgram: !(anyScheduledOnly && projectionResults.every((entry) => entry.scheduledOnly)),
         }) : [],
       };
     }
@@ -6800,21 +6799,6 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     ];
   }
 
-  const hasScheduledSeries = seriesList.some((entry) => entry.kind === 'scheduled');
-  const legendHint = selection.mode === 'multi'
-    ? (showProjection
-      ? (compareMode !== TRENDS_COMPARE_NONE
-        ? 'Solid = Actual · Dashed = Outlook · Dotted = Historical Comparison'
-        : 'Solid = Actual · Dashed = Outlook')
-      : (compareMode !== TRENDS_COMPARE_NONE
-        ? 'Solid = Actual · Dotted = Historical Comparison'
-        : ''))
-    : (showProjection
-      ? (hasScheduledSeries
-        ? 'Solid = Actual · Dotted = Scheduled · Dashed = Outlook'
-        : 'Solid = Actual · Dashed = Outlook')
-      : '');
-
   if (multiComparePaused) {
     noteParts.unshift(
       'Historical comparison is paused in multi-program view. Change Compare With to show it for each program.'
@@ -6824,7 +6808,7 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
   empty.hidden = true;
   empty.textContent = '';
   wrap.hidden = false;
-  updateTrendsChartLegend(legendItems, legendHint);
+  updateTrendsChartLegend(legendItems, '');
   updateTrendsChartNote(noteParts.filter(Boolean).join(' '));
   updateTrendsChartProjectionSummary(projectionSummary);
   trendsChartDrawState = {
@@ -6848,7 +6832,7 @@ function renderTrendsChartSection(currentRange, currentEvents, period) {
     },
     emptyMessage: '',
     legendItems,
-    legendHint,
+    legendHint: '',
     note: noteParts.filter(Boolean).join(' '),
     projectionSummary,
     context: {
