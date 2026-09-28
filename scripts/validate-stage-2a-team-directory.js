@@ -230,10 +230,19 @@ try {
 }
 
 assert(diffNames.trim() === '', 'MIR export files are unchanged');
+let migrationDiff = '';
+try {
+  migrationDiff = execFileSync('git', ['diff', '--name-only', '--', 'supabase/migrations'], { cwd: ROOT, encoding: 'utf8' });
+} catch (error) {
+  errors.push(`migration diff failed: ${error.message}`);
+}
+assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
 assert(
-  migrationLines.length === 1 && migrationLines[0].includes('019_personnel_editing.sql') && migrationLines[0].startsWith('??'),
-  'the only migration change is unapplied 019_personnel_editing.sql'
+  migrationLines.length === 1
+    && migrationLines[0].includes('020_facilitator_qualification_foundation.sql')
+    && migrationLines[0].startsWith('??'),
+  'the only unapplied migration is 020_facilitator_qualification_foundation.sql'
 );
 
 const untrackedPptx = [
