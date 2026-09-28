@@ -6729,3 +6729,70 @@ body:has(#new-event-modal[open]) {
     font-size: 0.8125rem;
   }
 }
+
+#view-facilitators .facilitator-toolbar {
+  width: 100%;
+}
+
+#view-facilitators .facilitator-search {
+  width: 220px;
+  max-width: 100%;
+}
+
+#view-facilitators .facilitator-count,
+#view-facilitators td.facilitator-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#view-facilitators .facilitator-personnel-row {
+  cursor: pointer;
+}
+
+#view-facilitators .facilitator-inactive {
+  margin-left: 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-facilitators .facilitator-empty td {
+  padding: 22px 8px;
+  text-align: center;
+  color: #5c6570;
+  font-style: italic;
+}
+
+#facilitator-detail-modal {
+  width: min(860px, calc(100vw - 32px));
+}
+
+#facilitator-detail-modal .facilitator-detail-content {
+  width: 100%;
+}
+
+#facilitator-detail-modal .facilitator-detail-meta,
+#facilitator-detail-modal .facilitator-detail-note {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+#facilitator-detail-modal .facilitator-detail-heading {
+  margin: 16px 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #00205b;
+}
+
+#facilitator-detail-modal .events-table th {
+  white-space: normal;
+}
+
+#facilitator-detail-modal .events-table td:first-child {
+  white-space: nowrap;
+}

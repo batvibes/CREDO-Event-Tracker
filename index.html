@@ -104,6 +104,10 @@
           <span class="nav-icon">☷</span>
           Team
         </a>
+        <a href="#" class="nav-item" data-view="facilitators">
+          <span class="nav-icon">▣</span>
+          Facilitator Management
+        </a>
         <a href="#" class="nav-item" data-view="settings">
           <span class="nav-icon">⚙</span>
           Settings
@@ -1200,6 +1204,46 @@
         <section class="content-section" id="team-content"></section>
       </div>
 
+      <div id="view-facilitators" class="view" hidden>
+        <header class="page-header">
+          <div class="header-titles">
+            <h1>Facilitator Management</h1>
+            <h2>Personnel</h2>
+          </div>
+        </header>
+        <section class="content-section" id="facilitator-personnel-panel" aria-labelledby="facilitator-personnel-heading">
+          <div class="section-header">
+            <div class="section-header-start facilitator-toolbar">
+              <h3 id="facilitator-personnel-heading">Facilitator Personnel</h3>
+              <input type="search" id="facilitator-search" class="settings-search-input facilitator-search" placeholder="Search by name" aria-label="Search facilitators by name">
+              <select id="facilitator-active-filter" class="filter-select" aria-label="Active status">
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <select id="facilitator-product-filter" class="filter-select" aria-label="Product">
+                <option value="">All products</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="events-table" id="facilitator-personnel-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Command / Organization</th>
+                  <th>Installation</th>
+                  <th class="facilitator-count">Products</th>
+                  <th class="facilitator-count">Events Conducted</th>
+                  <th>Most Recent</th>
+                </tr>
+              </thead>
+              <tbody id="facilitator-personnel-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
       <div id="view-settings" class="view" hidden>
         <header class="page-header">
           <div class="header-titles">
@@ -1216,6 +1260,19 @@
       </div>
     </main>
   </div>
+
+  <dialog class="modal" id="facilitator-detail-modal">
+    <div class="modal-content facilitator-detail-content">
+      <div class="modal-header">
+        <h3 id="facilitator-detail-title">Facilitator</h3>
+        <button type="button" class="modal-close" id="facilitator-detail-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="facilitator-detail-body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="facilitator-detail-close-btn">Close</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog class="modal" id="aar-audit-modal">
     <div class="modal-content">

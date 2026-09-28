@@ -13,6 +13,7 @@ import {
   fetchCommands,
   fetchEventTypes,
   fetchEvents,
+  fetchFacilitatorManagementSources,
   fetchLocations,
   fetchMonthlyReport,
   fetchMonthlyReports,
@@ -51,6 +52,17 @@ import {
 } from './db.js';
 import { initEventReferenceFields } from './event-reference-fields.js';
 import { personnelDisplayName } from './personnel-identity.js';
+import {
+  FACILITATOR_EMPTY_EXPERIENCE,
+  FACILITATOR_EMPTY_PERSONNEL,
+  FACILITATOR_NO_QUALIFICATION_RECORD,
+  FACILITATOR_QUALIFICATION_RECORD,
+  facilitatorProductFilterOptions,
+  filterFacilitatorPersonnel,
+  formatRecordedFacilitationDate,
+  sortFacilitatorPersonnel,
+  summarizeFacilitatorPersonnel,
+} from './facilitator-management.js';
 import {
   isCommandHighlightsNotesVisible,
   isTeamDirectoryTab,
@@ -11057,12 +11069,227 @@ function setupFinancials() {
   updateFinancialsCustomDateFields();
 }
 
+const FACILITATOR_SORT_COLUMNS = [
+  { key: 'name', index: 0 },
+  { key: 'command', index: 1 },
+  { key: 'installation', index: 2 },
+  { key: 'products', index: 3 },
+  { key: 'events', index: 4 },
+  { key: 'recent', index: 5 },
+];
+
+let facilitatorPersonnel = [];
+let facilitatorSort = { column: 'name', direction: SORT_ASC };
+let facilitatorLoadGeneration = 0;
+
+function facilitatorFilterState() {
+  return {
+    query: document.getElementById('facilitator-search')?.value ?? '',
+    active: document.getElementById('facilitator-active-filter')?.value ?? 'all',
+    productId: document.getElementById('facilitator-product-filter')?.value ?? '',
+  };
+}
+
+function visibleFacilitatorPersonnel() {
+  return sortFacilitatorPersonnel(
+    filterFacilitatorPersonnel(facilitatorPersonnel, facilitatorFilterState()),
+    facilitatorSort.column,
+    facilitatorSort.direction,
+  );
+}
+
+function syncFacilitatorProductFilter() {
+  const select = document.getElementById('facilitator-product-filter');
+  if (!select) return;
+  const current = select.value;
+  const options = facilitatorProductFilterOptions(facilitatorPersonnel);
+  select.replaceChildren(new Option('All products', ''));
+  for (const option of options) {
+    select.appendChild(new Option(option.name, option.id));
+  }
+  select.value = options.some((option) => option.id === current) ? current : '';
+}
+
+function appendFacilitatorCell(row, text, className) {
+  const cell = document.createElement('td');
+  if (className) cell.className = className;
+  cell.textContent = text || '—';
+  row.appendChild(cell);
+}
+
+function paintFacilitatorPersonnel() {
+  const body = document.getElementById('facilitator-personnel-body');
+  if (!body) return;
+  body.replaceChildren();
+  const visible = visibleFacilitatorPersonnel();
+  if (!visible.length) {
+    const row = document.createElement('tr');
+    row.className = 'facilitator-empty';
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.textContent = FACILITATOR_EMPTY_PERSONNEL;
+    row.appendChild(cell);
+    body.appendChild(row);
+    return;
+  }
+
+  for (const person of visible) {
+    const row = document.createElement('tr');
+    row.className = 'facilitator-personnel-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', person.displayName || 'Facilitator');
+    const open = () => openFacilitatorDetail(person.id);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      open();
+    });
+
+    const nameCell = document.createElement('td');
+    nameCell.textContent = person.displayName || '—';
+    if (person.active !== true) {
+      const marker = document.createElement('span');
+      marker.className = 'facilitator-inactive';
+      marker.textContent = 'Inactive';
+      nameCell.appendChild(marker);
+    }
+    row.appendChild(nameCell);
+    appendFacilitatorCell(row, person.commandOrganization);
+    appendFacilitatorCell(row, person.installation);
+    appendFacilitatorCell(row, String(person.productCount), 'facilitator-count');
+    appendFacilitatorCell(row, String(person.eventsConducted), 'facilitator-count');
+    appendFacilitatorCell(row, formatRecordedFacilitationDate(person.mostRecentOn));
+    body.appendChild(row);
+  }
+}
+
+function appendDetailLine(parent, text, className) {
+  const line = document.createElement('p');
+  line.className = className;
+  line.textContent = text;
+  parent.appendChild(line);
+}
+
+function openFacilitatorDetail(personId) {
+  const person = facilitatorPersonnel.find((record) => record.id === personId);
+  const modal = document.getElementById('facilitator-detail-modal');
+  const title = document.getElementById('facilitator-detail-title');
+  const body = document.getElementById('facilitator-detail-body');
+  if (!person || !modal || !title || !body) return;
+
+  title.textContent = person.displayName || 'Facilitator';
+  body.replaceChildren();
+  const place = [person.commandOrganization, person.installation].filter(Boolean).join(' · ');
+  const status = person.active === true ? '' : 'Inactive';
+  const meta = [place, status].filter(Boolean).join(' · ');
+  if (meta) appendDetailLine(body, meta, 'facilitator-detail-meta');
+  appendDetailLine(
+    body,
+    person.hasQualificationRecord ? FACILITATOR_QUALIFICATION_RECORD : FACILITATOR_NO_QUALIFICATION_RECORD,
+    'facilitator-detail-note',
+  );
+  if (person.qualificationProducts.length) {
+    const list = document.createElement('ul');
+    list.className = 'facilitator-detail-note';
+    for (const product of person.qualificationProducts) {
+      const item = document.createElement('li');
+      item.textContent = product.productName;
+      list.appendChild(item);
+    }
+    body.appendChild(list);
+  }
+
+  const heading = document.createElement('h4');
+  heading.className = 'facilitator-detail-heading';
+  heading.textContent = 'Recorded experience';
+  body.appendChild(heading);
+
+  if (!person.experience.length) {
+    appendDetailLine(body, FACILITATOR_EMPTY_EXPERIENCE, 'facilitator-detail-note');
+  } else {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    const table = document.createElement('table');
+    table.className = 'events-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const label of ['Product', 'Events Conducted', 'First Recorded Facilitation', 'Most Recent Facilitation']) {
+      const cell = document.createElement('th');
+      cell.textContent = label;
+      headRow.appendChild(cell);
+    }
+    head.appendChild(headRow);
+    table.appendChild(head);
+    const tableBody = document.createElement('tbody');
+    for (const row of person.experience) {
+      const line = document.createElement('tr');
+      appendFacilitatorCell(line, row.productName);
+      appendFacilitatorCell(line, String(row.eventsConducted), 'facilitator-count');
+      appendFacilitatorCell(line, formatRecordedFacilitationDate(row.firstRecordedOn));
+      appendFacilitatorCell(line, formatRecordedFacilitationDate(row.mostRecentOn));
+      tableBody.appendChild(line);
+    }
+    table.appendChild(tableBody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+  }
+
+  if (!modal.open) modal.showModal();
+}
+
+function closeFacilitatorDetail() {
+  document.getElementById('facilitator-detail-modal')?.close();
+}
+
+async function renderFacilitatorManagement() {
+  const generation = ++facilitatorLoadGeneration;
+  const body = document.getElementById('facilitator-personnel-body');
+  try {
+    const sources = await fetchFacilitatorManagementSources();
+    if (generation !== facilitatorLoadGeneration) return;
+    facilitatorPersonnel = summarizeFacilitatorPersonnel(
+      sources.people,
+      sources.experience,
+      sources.qualifications,
+      sources.products,
+    );
+    syncFacilitatorProductFilter();
+    paintFacilitatorPersonnel();
+    refreshSortHeaderIndicators('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort);
+  } catch (error) {
+    console.error(error);
+    if (generation !== facilitatorLoadGeneration || !body) return;
+    body.replaceChildren();
+    const row = document.createElement('tr');
+    row.className = 'facilitator-empty';
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.textContent = 'Facilitator personnel could not be loaded.';
+    row.appendChild(cell);
+    body.appendChild(row);
+  }
+}
+
+function setupFacilitatorManagement() {
+  bindSortableTableHeaders('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort, () => {
+    paintFacilitatorPersonnel();
+  });
+  document.getElementById('facilitator-search')?.addEventListener('input', paintFacilitatorPersonnel);
+  document.getElementById('facilitator-active-filter')?.addEventListener('change', paintFacilitatorPersonnel);
+  document.getElementById('facilitator-product-filter')?.addEventListener('change', paintFacilitatorPersonnel);
+  document.getElementById('facilitator-detail-close')?.addEventListener('click', closeFacilitatorDetail);
+  document.getElementById('facilitator-detail-close-btn')?.addEventListener('click', closeFacilitatorDetail);
+}
+
 function switchView(viewName) {
   if (currentView === 'reports' && reportsTab === 'aar') {
     captureAarFilterState();
   }
 
   currentView = viewName;
+  if (viewName !== 'facilitators') closeFacilitatorDetail();
 
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.classList.toggle('active', item.dataset.view === viewName);
@@ -11078,6 +11305,7 @@ function switchView(viewName) {
     trends: 'view-trends',
     financials: 'view-financials',
     team: 'view-team',
+    facilitators: 'view-facilitators',
     settings: 'view-settings',
   };
 
@@ -11093,6 +11321,8 @@ function switchView(viewName) {
     renderFinancials();
   } else if (viewName === 'team') {
     renderTeam();
+  } else if (viewName === 'facilitators') {
+    renderFacilitatorManagement();
   } else if (viewName === 'settings') {
     renderSettings();
   }
@@ -11805,6 +12035,7 @@ export async function initApp() {
   await loadAllData();
   document.getElementById('today-date').textContent = formatToday();
   setupNavigation();
+  setupFacilitatorManagement();
   setupDateFilter();
   setupTrends();
   setupFinancials();

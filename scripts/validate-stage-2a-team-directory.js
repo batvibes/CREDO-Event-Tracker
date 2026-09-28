@@ -238,12 +238,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(
-  migrationLines.length === 1
-    && migrationLines[0].includes('022_facilitator_event_type_product_mappings.sql')
-    && migrationLines[0].startsWith('??'),
-  'the only unapplied migration is 022_facilitator_event_type_product_mappings.sql'
-);
+assert(migrationLines.length === 0, 'Stage 4A adds no unapplied migration');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',

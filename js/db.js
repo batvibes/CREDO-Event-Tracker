@@ -1006,6 +1006,45 @@ const TEAM_DIRECTORY_PERSON_COLUMNS = [
   'staff_display_order',
 ].join(', ');
 
+// Read-only Facilitator Management sources. Does not write people, qualifications, or Events.
+const FACILITATOR_MANAGEMENT_PERSON_COLUMNS = [
+  'id',
+  'name',
+  'rank_title',
+  'command_organization',
+  'installation',
+  'active',
+  'is_facilitator',
+].join(', ');
+
+export async function fetchFacilitatorManagementSources() {
+  const [people, experience, qualifications, products] = await Promise.all([
+    supabase
+      .from('people')
+      .select(FACILITATOR_MANAGEMENT_PERSON_COLUMNS)
+      .order('name', { ascending: true }),
+    supabase
+      .from('facilitator_product_experience')
+      .select('person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on'),
+    supabase
+      .from('facilitator_qualifications')
+      .select('person_id, product_id'),
+    supabase
+      .from('facilitator_products')
+      .select('id, name, code, sort_order')
+      .order('sort_order', { ascending: true }),
+  ]);
+
+  const failure = [people, experience, qualifications, products].find((result) => result.error);
+  if (failure) throw failure.error;
+  return {
+    people: people.data ?? [],
+    experience: experience.data ?? [],
+    qualifications: qualifications.data ?? [],
+    products: products.data ?? [],
+  };
+}
+
 // Read-only Team directory. Does not replace fetchTeamMembers() or fetchPeople().
 export async function fetchTeamDirectoryPersonnel() {
   const { data, error } = await supabase

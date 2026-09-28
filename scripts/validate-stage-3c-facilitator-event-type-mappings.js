@@ -117,19 +117,15 @@ try {
     'js/event-reference-fields.js',
     'js/settings-reference-lists.js',
     'js/personnel-identity.js',
-    'js/db.js',
-    'js/app.js',
-    'index.html',
   ], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
 assert(migrationDiff.trim() === '', 'migrations 020 and 021 are unchanged');
 assert(experienceDiff.trim() === '', 'Stage 3B experience architecture is unchanged');
-assert(protectedDiff.trim() === '', 'MIR, Team, Event, and Settings UI are unchanged');
-assert(!read('js/app.js').includes('facilitator_event_type_products'), 'no mapping UI was added');
-assert(!read('index.html').includes('Facilitator Management'), 'no Facilitator Management screen was added');
-assert(!read('js/db.js').includes('facilitator_event_type_products'), 'no mapping client wrapper was added');
+assert(protectedDiff.trim() === '', 'MIR, Team, Event, and Settings files are unchanged');
+assert(!read('js/app.js').includes('facilitator_event_type_products'), 'Event Type mappings are not rewritten from the application shell');
+assert(!read('js/db.js').includes('facilitator_event_type_products'), 'no mapping write wrapper was added');
 
 if (errors.length) {
   console.error('validate-stage-3c-facilitator-event-type-mappings failed:');
