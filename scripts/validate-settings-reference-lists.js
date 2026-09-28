@@ -123,7 +123,7 @@ assert(!isSettingsReferenceCategory('staff'), 'staff is not a valid reference ca
 assert(isSettingsReferenceCategory('people'), 'people is a valid reference category key');
 assertEqual(
   SETTINGS_PEOPLE_NOTE,
-  'Used for Facilitators and Points of Contact.',
+  'Personnel records are managed on the Team page. This list shows the active roster used by Events and cannot be edited here.',
   'People explanation copy'
 );
 assertEqual(SETTINGS_STAFF_NOTE, 'CREDO Staff is managed under Team.', 'Staff handoff copy');

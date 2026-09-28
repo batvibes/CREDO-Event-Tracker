@@ -1,0 +1,509 @@
+import { fullNameIncludesRank, personnelDisplayName } from './personnel-identity.js';
+
+function clean(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function field(label, input) {
+  const wrap = document.createElement('label');
+  wrap.className = 'personnel-editor-field';
+  const text = document.createElement('span');
+  text.className = 'personnel-editor-label';
+  text.textContent = label;
+  wrap.append(text, input);
+  return wrap;
+}
+
+function textInput(value, options = {}) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'personnel-editor-input';
+  input.value = value || '';
+  input.autocomplete = 'off';
+  if (options.required) input.required = true;
+  if (options.maxLength) input.maxLength = options.maxLength;
+  return input;
+}
+
+export function validatePersonnelEditor(values) {
+  const name = clean(values.name);
+  const rankTitle = clean(values.rankTitle);
+  if (!name) return 'Full Name is required.';
+  if (fullNameIncludesRank(rankTitle, name)) {
+    return 'Full Name should be the personal name. Put the rank in Rank / Title.';
+  }
+  if (values.isCredoStaff && !clean(values.staffBilletOrRole)) {
+    return 'Billet / Role is required for CREDO Staff.';
+  }
+  return '';
+}
+
+export function mountPersonnelEditor({
+  body,
+  footer,
+  person = null,
+  others = [],
+  onSave,
+  onArchive,
+  onReconcile,
+}) {
+  const editing = Boolean(person?.id);
+  let archiveConfirm = false;
+  let reconcileOpen = false;
+  let reconcileQuery = '';
+  let reconcileSelectedId = '';
+  let survivorChoice = '';
+  let reconcileRank = '';
+  let reconcileName = '';
+  let reconcileConfirm = false;
+  let message = '';
+  let busy = false;
+
+  const rankInput = textInput(person?.rankTitle, { maxLength: 40 });
+  const nameInput = textInput(person?.name, { required: true, maxLength: 200 });
+  const commandInput = textInput(person?.commandOrganization, { maxLength: 200 });
+  const installationInput = textInput(person?.installation, { maxLength: 200 });
+  const staffInput = document.createElement('input');
+  staffInput.type = 'checkbox';
+  staffInput.checked = person?.isCredoStaff === true;
+  const facilitatorInput = document.createElement('input');
+  facilitatorInput.type = 'checkbox';
+  facilitatorInput.checked = person?.isFacilitator === true;
+  const pocInput = document.createElement('input');
+  pocInput.type = 'checkbox';
+  pocInput.checked = person?.isPoc === true;
+  const billetInput = textInput(person?.staffBilletOrRole, { maxLength: 200 });
+  const prdInput = textInput(person?.staffPrdEaos, { maxLength: 80 });
+
+  function currentValues() {
+    return {
+      id: person?.id ?? null,
+      rankTitle: clean(rankInput.value),
+      name: clean(nameInput.value),
+      commandOrganization: clean(commandInput.value),
+      installation: clean(installationInput.value),
+      isCredoStaff: staffInput.checked,
+      isFacilitator: facilitatorInput.checked,
+      isPoc: pocInput.checked,
+      staffBilletOrRole: clean(billetInput.value),
+      staffPrdEaos: clean(prdInput.value),
+    };
+  }
+
+  function labelText(text) {
+    const strong = document.createElement('strong');
+    strong.textContent = text;
+    return strong;
+  }
+
+  function checkbox(input, label) {
+    const wrap = document.createElement('label');
+    wrap.className = 'personnel-editor-check';
+    const text = document.createElement('span');
+    text.textContent = label;
+    wrap.append(input, text);
+    return wrap;
+  }
+
+  function render() {
+    body.replaceChildren();
+    footer.replaceChildren();
+
+    const general = document.createElement('div');
+    general.className = 'personnel-editor-section';
+    const generalTitle = document.createElement('h4');
+    generalTitle.textContent = 'General';
+    const nameRow = document.createElement('div');
+    nameRow.className = 'personnel-editor-row personnel-editor-row-name';
+    nameRow.append(field('Rank / Title', rankInput), field('Full Name', nameInput));
+    const placeRow = document.createElement('div');
+    placeRow.className = 'personnel-editor-row personnel-editor-row-place';
+    placeRow.append(field('Command / Organization', commandInput), field('Installation', installationInput));
+    general.append(generalTitle, nameRow, placeRow);
+
+    const roles = document.createElement('div');
+    roles.className = 'personnel-editor-section';
+    const rolesTitle = document.createElement('h4');
+    rolesTitle.textContent = 'Roles';
+    const roleList = document.createElement('div');
+    roleList.className = 'personnel-editor-checks';
+    roleList.append(
+      checkbox(staffInput, 'CREDO Staff'),
+      checkbox(facilitatorInput, 'Facilitator'),
+      checkbox(pocInput, 'Point of Contact'),
+    );
+    roles.append(rolesTitle, roleList);
+
+    const staffFields = document.createElement('div');
+    staffFields.className = 'personnel-editor-section personnel-editor-staff';
+    staffFields.hidden = !staffInput.checked;
+    const staffTitle = document.createElement('h4');
+    staffTitle.textContent = 'CREDO Staff';
+    const staffRow = document.createElement('div');
+    staffRow.className = 'personnel-editor-row personnel-editor-row-staff';
+    staffRow.append(field('Billet / Role', billetInput), field('PRD / EAOS', prdInput));
+    staffFields.append(staffTitle, staffRow);
+
+    body.append(general, roles, staffFields);
+
+    if (message) {
+      const note = document.createElement('p');
+      note.className = 'personnel-editor-message';
+      note.textContent = message;
+      body.appendChild(note);
+    }
+
+    if (editing) {
+      const management = document.createElement('div');
+      management.className = 'personnel-editor-management';
+      management.append(renderArchive(), renderReconcile());
+      body.appendChild(management);
+      const reveal = reconcileConfirm
+        ? '.personnel-editor-reconcile-confirm'
+        : '.personnel-editor-final-identity';
+      if (reconciliationArmed()) body.querySelector(reveal)?.scrollIntoView({ block: 'nearest' });
+    }
+
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-secondary';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => {
+      document.getElementById('personnel-editor-modal')?.close();
+    });
+
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.className = 'btn btn-primary';
+    save.textContent = 'Save';
+    save.disabled = busy || reconciliationArmed();
+    if (reconciliationArmed()) {
+      save.title = 'Clear the reconciliation selection to save this record.';
+    }
+    footer.append(cancel, save);
+  }
+
+  function reconciliationArmed() {
+    return Boolean(editing && reconcileSelectedId && survivorChoice);
+  }
+
+  function retiredRecord(selected) {
+    if (!selected || survivorChoice === 'this') return selected;
+    return person;
+  }
+
+  function renderArchive() {
+    const section = document.createElement('div');
+    section.className = 'personnel-editor-section personnel-editor-archive';
+    if (!archiveConfirm) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'personnel-editor-quiet';
+      button.textContent = 'Archive';
+      button.disabled = busy;
+      button.addEventListener('click', () => {
+        archiveConfirm = true;
+        message = '';
+        render();
+      });
+      section.appendChild(button);
+      return section;
+    }
+
+    const copy = document.createElement('p');
+    copy.className = 'personnel-editor-help';
+    copy.textContent = 'Archive this person? They leave the active directory and current Manning. The personnel record is kept.';
+    const actions = document.createElement('div');
+    actions.className = 'personnel-editor-inline-actions';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'btn btn-secondary';
+    back.textContent = 'Cancel';
+    back.addEventListener('click', () => {
+      archiveConfirm = false;
+      render();
+    });
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'btn btn-primary';
+    confirm.textContent = 'Archive person';
+    confirm.disabled = busy;
+    confirm.addEventListener('click', async () => {
+      busy = true;
+      render();
+      try {
+        await onArchive(person.id);
+        document.getElementById('personnel-editor-modal')?.close();
+      } catch (error) {
+        console.error(error);
+        message = error?.message || 'Failed to archive personnel record.';
+        busy = false;
+        render();
+      }
+    });
+    actions.append(back, confirm);
+    section.append(copy, actions);
+    return section;
+  }
+
+  function renderReconcile() {
+    const details = document.createElement('details');
+    details.className = 'personnel-editor-reconcile';
+    details.open = reconcileOpen;
+    const summary = document.createElement('summary');
+    summary.textContent = 'Reconcile with another record';
+    summary.addEventListener('click', (event) => {
+      event.preventDefault();
+      reconcileOpen = !reconcileOpen;
+      render();
+    });
+    details.appendChild(summary);
+
+    const help = document.createElement('p');
+    help.className = 'personnel-editor-help';
+    help.textContent = 'Use this only when you already know two records are the same person. Event history is not rewritten.';
+    details.appendChild(help);
+
+    const search = textInput(reconcileQuery, { maxLength: 200 });
+    search.placeholder = 'Type the other record’s name';
+    search.addEventListener('input', () => {
+      reconcileQuery = search.value;
+      reconcileSelectedId = '';
+      survivorChoice = '';
+      reconcileConfirm = false;
+      render();
+      const next = body.querySelector('.personnel-editor-reconcile input');
+      next?.focus();
+    });
+    details.appendChild(field('Other record', search));
+
+    const query = clean(reconcileQuery).toLowerCase();
+    const matches = query.length < 2
+      ? []
+      : others
+        .filter((entry) => entry.id !== person.id)
+        .filter((entry) => personnelDisplayName(entry.rankTitle, entry.name).toLowerCase().includes(query))
+        .slice(0, 8);
+
+    if (query.length >= 2 && !matches.length) {
+      const empty = document.createElement('p');
+      empty.className = 'personnel-editor-help';
+      empty.textContent = 'No other record has that name.';
+      details.appendChild(empty);
+    }
+
+    matches.forEach((entry) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'personnel-editor-match';
+      button.textContent = personnelDisplayName(entry.rankTitle, entry.name);
+      if (entry.id === reconcileSelectedId) button.classList.add('is-selected');
+      button.addEventListener('click', () => {
+        reconcileSelectedId = entry.id;
+        survivorChoice = '';
+        reconcileRank = '';
+        reconcileName = '';
+        reconcileConfirm = false;
+        render();
+      });
+      details.appendChild(button);
+    });
+
+    const selected = others.find((entry) => entry.id === reconcileSelectedId);
+    if (selected) {
+      const choice = document.createElement('div');
+      choice.className = 'personnel-editor-choices';
+      [
+        ['this', `Keep this record (${personnelDisplayName(person.rankTitle, person.name)})`],
+        ['other', `Keep the other record (${personnelDisplayName(selected.rankTitle, selected.name)})`],
+      ].forEach(([value, label]) => {
+        const labelEl = document.createElement('label');
+        labelEl.className = 'personnel-editor-check';
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'personnel-survivor';
+        input.checked = survivorChoice === value;
+        input.addEventListener('change', () => {
+          survivorChoice = value;
+          const source = value === 'this' ? person : selected;
+          reconcileRank = source.rankTitle || '';
+          reconcileName = source.name || '';
+          reconcileConfirm = false;
+          render();
+        });
+        const text = document.createElement('span');
+        text.textContent = label;
+        labelEl.append(input, text);
+        choice.appendChild(labelEl);
+      });
+      details.appendChild(choice);
+    }
+
+    if (survivorChoice && selected) {
+      const retiring = retiredRecord(selected);
+      const rank = textInput(reconcileRank, { maxLength: 40 });
+      const fullName = textInput(reconcileName, { maxLength: 200 });
+      const summary = document.createElement('div');
+      summary.className = 'personnel-editor-reconcile-summary';
+
+      function paintSummary() {
+        summary.replaceChildren();
+        const kept = document.createElement('div');
+        const retiredLine = document.createElement('div');
+        kept.append(labelText('Survivor: '), document.createTextNode(personnelDisplayName(reconcileRank, reconcileName) || '—'));
+        retiredLine.append(
+          labelText('Retiring: '),
+          document.createTextNode(personnelDisplayName(retiring?.rankTitle, retiring?.name) || '—'),
+        );
+        summary.append(kept, retiredLine);
+      }
+
+      function clearPendingConfirmation() {
+        reconcileConfirm = false;
+        reconcileButton.disabled = busy;
+        paintSummary();
+        details.querySelector('.personnel-editor-reconcile-confirm')?.remove();
+      }
+      rank.addEventListener('input', () => {
+        reconcileRank = rank.value;
+        clearPendingConfirmation();
+      });
+      fullName.addEventListener('input', () => {
+        reconcileName = fullName.value;
+        clearPendingConfirmation();
+      });
+      paintSummary();
+
+      const identity = document.createElement('div');
+      identity.className = 'personnel-editor-section personnel-editor-final-identity';
+      const identityTitle = document.createElement('h4');
+      identityTitle.textContent = 'Final Identity';
+      const identityNote = document.createElement('p');
+      identityNote.className = 'personnel-editor-help';
+      identityNote.textContent = 'These values are kept as entered. A combined legacy name is not split automatically.';
+      const identityRow = document.createElement('div');
+      identityRow.className = 'personnel-editor-row personnel-editor-row-name';
+      identityRow.append(field('Rank / Title', rank), field('Full Name', fullName));
+      identity.append(identityTitle, identityNote, identityRow);
+
+      const reconcileButton = document.createElement('button');
+      reconcileButton.type = 'button';
+      reconcileButton.className = 'btn btn-primary';
+      reconcileButton.textContent = 'Reconcile Records';
+      reconcileButton.disabled = busy || reconcileConfirm;
+      reconcileButton.addEventListener('click', () => {
+        const nextIdentity = { rankTitle: clean(reconcileRank), name: clean(reconcileName) };
+        const problem = validatePersonnelEditor({
+          ...nextIdentity,
+          isCredoStaff: false,
+          staffBilletOrRole: 'unused',
+        });
+        if (!nextIdentity.name || fullNameIncludesRank(nextIdentity.rankTitle, nextIdentity.name)) {
+          message = problem || 'Full Name is required.';
+          reconcileConfirm = false;
+          render();
+          return;
+        }
+        message = '';
+        reconcileConfirm = true;
+        render();
+      });
+
+      details.append(identity, summary, reconcileButton);
+
+      if (reconcileConfirm) {
+        const survivorId = survivorChoice === 'this' ? person.id : selected.id;
+        const retiredId = survivorChoice === 'this' ? selected.id : person.id;
+        const keptName = personnelDisplayName(reconcileRank, reconcileName);
+        const retiredName = personnelDisplayName(retiring?.rankTitle, retiring?.name);
+        const confirmPanel = document.createElement('div');
+        confirmPanel.className = 'personnel-editor-reconcile-confirm';
+        const confirmTitle = document.createElement('p');
+        confirmTitle.className = 'personnel-editor-reconcile-confirm-title';
+        confirmTitle.textContent = 'Reconcile personnel records?';
+        const keepLine = document.createElement('p');
+        keepLine.textContent = `Keep: ${keptName}`;
+        const retireLine = document.createElement('p');
+        retireLine.textContent = `Retire: ${retiredName}`;
+        const aliasLine = document.createElement('p');
+        aliasLine.className = 'personnel-editor-help';
+        aliasLine.textContent = 'The retired identity will be preserved as an alias.';
+        const historyLine = document.createElement('p');
+        historyLine.className = 'personnel-editor-help';
+        historyLine.textContent = 'Historical Event text will not be rewritten.';
+        const actions = document.createElement('div');
+        actions.className = 'personnel-editor-inline-actions';
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn-secondary';
+        back.textContent = 'Cancel';
+        back.addEventListener('click', () => {
+          reconcileConfirm = false;
+          render();
+        });
+        const commit = document.createElement('button');
+        commit.type = 'button';
+        commit.className = 'btn btn-primary';
+        commit.textContent = 'Reconcile';
+        commit.disabled = busy;
+        commit.addEventListener('click', async () => {
+          const finalIdentity = { rankTitle: clean(reconcileRank), name: clean(reconcileName) };
+          busy = true;
+          message = '';
+          render();
+          try {
+            await onReconcile(survivorId, retiredId, finalIdentity);
+            document.getElementById('personnel-editor-modal')?.close();
+          } catch (error) {
+            console.error(error);
+            message = error?.message || 'Failed to reconcile personnel records.';
+            busy = false;
+            reconcileConfirm = false;
+            render();
+          }
+        });
+        actions.append(back, commit);
+        confirmPanel.append(confirmTitle, keepLine, retireLine, aliasLine, historyLine, actions);
+        details.appendChild(confirmPanel);
+      }
+    }
+
+    return details;
+  }
+
+  staffInput.addEventListener('change', () => {
+    message = '';
+    render();
+  });
+
+  const form = body.closest('form');
+  const onSubmit = async (event) => {
+    event.preventDefault();
+    if (reconciliationArmed()) return;
+    const values = currentValues();
+    const problem = validatePersonnelEditor(values);
+    if (problem) {
+      message = problem;
+      render();
+      return;
+    }
+    busy = true;
+    message = '';
+    render();
+    try {
+      await onSave(values);
+      document.getElementById('personnel-editor-modal')?.close();
+    } catch (error) {
+      console.error(error);
+      message = error?.message || 'Failed to save personnel record.';
+      busy = false;
+      render();
+    }
+  };
+  form?.addEventListener('submit', onSubmit);
+  render();
+
+  return () => {
+    form?.removeEventListener('submit', onSubmit);
+  };
+}

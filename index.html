@@ -1188,9 +1188,15 @@
         <header class="page-header">
           <div class="header-titles">
             <h1>Team</h1>
-            <h2>CREDO MCI West Staff</h2>
+            <h2>Personnel Directory</h2>
           </div>
         </header>
+        <nav class="team-directory-tabs" id="team-directory-tabs" role="tablist" aria-label="Personnel directory">
+          <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="team-tab-all" data-team-tab="all" aria-selected="true" aria-controls="team-directory-panel">All Personnel</button>
+          <button type="button" class="team-directory-tab" role="tab" id="team-tab-staff" data-team-tab="staff" aria-selected="false" aria-controls="team-directory-panel">CREDO Staff</button>
+          <button type="button" class="team-directory-tab" role="tab" id="team-tab-facilitators" data-team-tab="facilitators" aria-selected="false" aria-controls="team-directory-panel">Facilitators</button>
+          <button type="button" class="team-directory-tab" role="tab" id="team-tab-poc" data-team-tab="poc" aria-selected="false" aria-controls="team-directory-panel">Points of Contact</button>
+        </nav>
         <section class="content-section" id="team-content"></section>
       </div>
 
@@ -1266,6 +1272,17 @@
         <button type="button" class="btn btn-primary" id="mir-photo-crop-use-btn" disabled>Use Photo</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog class="modal" id="personnel-editor-modal">
+    <form class="modal-content personnel-editor-content" id="personnel-editor-form">
+      <div class="modal-header">
+        <h3 id="personnel-editor-title">Edit Person</h3>
+        <button type="button" class="modal-close" id="personnel-editor-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="personnel-editor-body"></div>
+      <div class="modal-footer" id="personnel-editor-footer"></div>
+    </form>
   </dialog>
 
   <dialog class="modal" id="new-event-modal">

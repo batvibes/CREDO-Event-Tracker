@@ -1,3 +1,5 @@
+import { findPersonnelByHistoricalName, personnelDisplayName } from './personnel-identity.js';
+
 function cleanReferenceDisplayName(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
 }
@@ -64,19 +66,15 @@ export function parseFacilitatorTokens(raw, people) {
   const parts = splitCommaSeparatedList(raw);
   if (!parts.length) return { mode: 'empty', tokens: [], legacyRaw: '' };
 
-  const peopleByName = new Map(
-    (people || []).map((person) => [normalizeReferenceName(person.name), person])
-  );
-
   return {
     mode: 'tokens',
     tokens: parts.map((part) => {
       const name = cleanReferenceDisplayName(part);
-      const match = peopleByName.get(normalizeReferenceName(name));
+      const match = findPersonnelByHistoricalName(people, name);
       if (match) {
         return {
           id: match.id,
-          name: match.name,
+          name,
           email: match.email || null,
           orphan: false,
         };
@@ -91,10 +89,6 @@ export function parsePocTokens(raw, people) {
   const parts = splitCommaSeparatedList(raw);
   if (!parts.length) return { mode: 'empty', tokens: [], legacyRaw: '' };
 
-  const peopleByName = new Map(
-    (people || []).map((person) => [normalizeReferenceName(person.name), person])
-  );
-
   const tokens = [];
   let safe = true;
 
@@ -107,10 +101,10 @@ export function parsePocTokens(raw, people) {
         safe = false;
         break;
       }
-      const match = peopleByName.get(normalizeReferenceName(name));
+      const match = findPersonnelByHistoricalName(people, name);
       tokens.push({
         id: match?.id ?? null,
-        name: match?.name || name,
+        name,
         email,
         orphan: !match,
       });
@@ -129,11 +123,11 @@ export function parsePocTokens(raw, people) {
       break;
     }
 
-    const match = peopleByName.get(normalizeReferenceName(name));
+    const match = findPersonnelByHistoricalName(people, name);
     if (match) {
       tokens.push({
         id: match.id,
-        name: match.name,
+        name,
         email: match.email || null,
         orphan: false,
       });
@@ -150,7 +144,7 @@ export function parsePocTokens(raw, people) {
   return { mode: 'tokens', tokens, legacyRaw: '' };
 }
 
-export function parseCredoStaffTokens(raw, teamMembers) {
+export function parseCredoStaffTokens(raw, teamMembers, people = []) {
   const parts = splitCommaSeparatedList(raw);
   if (!parts.length) return { mode: 'empty', tokens: [], legacyRaw: '' };
 
@@ -165,9 +159,13 @@ export function parseCredoStaffTokens(raw, teamMembers) {
     tokens: parts.map((part) => {
       const name = cleanReferenceDisplayName(part);
       const match = membersByName.get(normalizeReferenceName(name));
-      if (match) {
-        return { id: match.id, name: match.name, orphan: false };
-      }
+      if (match) return { id: match.id, name, orphan: false };
+      const person = findPersonnelByHistoricalName(people, name);
+      const display = person ? personnelDisplayName(person.rankTitle, person.name) : '';
+      const linked = display
+        ? (teamMembers || []).find((member) => normalizeReferenceName(member.name) === normalizeReferenceName(display))
+        : null;
+      if (linked) return { id: linked.id, name, orphan: false };
       return { id: null, name, orphan: true };
     }),
     legacyRaw: '',
@@ -896,18 +894,10 @@ function mountPeopleMulti(root, options) {
     return parts.join(' · ');
   }
 
-  function applyCanonicalRename(oldName, updated) {
-    if (!updated?.name) return;
-    const oldNorm = normalizeReferenceName(oldName || updated.previousName);
+  function applyCanonicalRename(_oldName, updated) {
+    if (!updated?.id) return;
     tokens = tokens.map((token) => {
-      if (token.id === updated.id || (oldNorm && normalizeReferenceName(token.name) === oldNorm)) {
-        return {
-          ...token,
-          id: updated.id,
-          name: updated.name,
-          orphan: false,
-        };
-      }
+      if (token.id === updated.id) return { ...token, orphan: false };
       return token;
     });
     renderChips();
@@ -1116,13 +1106,14 @@ function mountPeopleMulti(root, options) {
       .filter((person) => {
         if (selected.has(`id:${person.id}`)) return false;
         if (!query) return true;
-        const haystack = `${person.name} ${person.email || ''} ${person.phone || ''}`.toLowerCase();
+        const aliasText = (person.aliases || []).map((alias) => alias.displayName || '').join(' ');
+        const haystack = `${personnelDisplayName(person.rankTitle, person.name)} ${person.name} ${aliasText} ${person.email || ''} ${person.phone || ''}`.toLowerCase();
         return haystack.includes(query);
       })
       .slice(0, 50);
 
     const exactPerson = cleanedQuery
-      ? (getPeople() || []).find((person) => normalizeReferenceName(person.name) === query)
+      ? findPersonnelByHistoricalName(getPeople() || [], cleanedQuery)
       : null;
     const showTypedAdd = canCreate() && cleanedQuery && !exactPerson;
 
@@ -1130,7 +1121,7 @@ function mountPeopleMulti(root, options) {
       const secondary = personSecondaryText(person);
       return `
       <button type="button" class="ref-menu-option" data-id="${escapeHtml(person.id)}">
-        <span class="ref-menu-option-name">${escapeHtml(person.name)}</span>
+        <span class="ref-menu-option-name">${escapeHtml(personnelDisplayName(person.rankTitle, person.name))}</span>
         ${secondary ? `<span class="ref-menu-option-meta">${escapeHtml(secondary)}</span>` : ''}
       </button>`;
     }).join('');
@@ -1161,7 +1152,7 @@ function mountPeopleMulti(root, options) {
         if (!person) return;
         addToken({
           id: person.id,
-          name: person.name,
+          name: personnelDisplayName(person.rankTitle, person.name),
           email: person.email || null,
           orphan: false,
         });
@@ -1253,7 +1244,7 @@ function mountPeopleMulti(root, options) {
         if (!latest || !activeIds.has(token.id)) {
           return { ...token, id: null, orphan: true };
         }
-        return { ...token, name: latest.name, orphan: false };
+        return { ...token, orphan: false };
       });
       renderChips();
       syncHidden();
@@ -1264,7 +1255,7 @@ function mountPeopleMulti(root, options) {
 }
 
 function mountStaffMulti(root, options) {
-  const { name, getTeamMembers } = options;
+  const { name, getTeamMembers, getPeople } = options;
 
   const hidden = document.createElement('input');
   hidden.type = 'hidden';
@@ -1496,7 +1487,7 @@ function mountStaffMulti(root, options) {
         this.reset();
         return;
       }
-      const parsed = parseCredoStaffTokens(cleaned, getTeamMembers());
+      const parsed = parseCredoStaffTokens(cleaned, getTeamMembers(), getPeople?.() || []);
       tokens = parsed.tokens;
       menuMode = 'select';
       renderChips();
@@ -1636,21 +1627,14 @@ export function initEventReferenceFields(form, adapters) {
     placeholder: 'Search people…',
     getPeople,
     canCreate: canCreateReferences,
-    canManage,
+    canManage: () => false,
     onCreatePerson: async (person) => {
       const created = await createPerson(person);
       onPeopleChanged?.(created);
       return created;
     },
-    onUpdatePerson: async (id, updates) => {
-      const previousName = (getPeople() || []).find((entry) => entry.id === id)?.name;
-      const updated = await updatePerson(id, updates);
-      if (updates?.name) {
-        facilitators.applyCanonicalRename(previousName, updated);
-        poc.applyCanonicalRename(previousName, updated);
-      }
-      onPeopleChanged?.(updated);
-      return updated;
+    onUpdatePerson: async () => {
+      throw new Error('PERSONNEL_USE_TEAM');
     },
     onRemovePerson: async (id) => {
       const removed = await removePerson(id);
@@ -1666,21 +1650,14 @@ export function initEventReferenceFields(form, adapters) {
     placeholder: 'Search people…',
     getPeople,
     canCreate: canCreateReferences,
-    canManage,
+    canManage: () => false,
     onCreatePerson: async (person) => {
       const created = await createPerson(person);
       onPeopleChanged?.(created);
       return created;
     },
-    onUpdatePerson: async (id, updates) => {
-      const previousName = (getPeople() || []).find((entry) => entry.id === id)?.name;
-      const updated = await updatePerson(id, updates);
-      if (updates?.name) {
-        facilitators.applyCanonicalRename(previousName, updated);
-        poc.applyCanonicalRename(previousName, updated);
-      }
-      onPeopleChanged?.(updated);
-      return updated;
+    onUpdatePerson: async () => {
+      throw new Error('PERSONNEL_USE_TEAM');
     },
     onRemovePerson: async (id) => {
       const removed = await removePerson(id);
@@ -1694,6 +1671,7 @@ export function initEventReferenceFields(form, adapters) {
   const credoStaff = mountStaffMulti(form.querySelector('[data-ref-field="credoStaff"]'), {
     name: 'credoStaff',
     getTeamMembers,
+    getPeople,
   });
 
   return {

@@ -3,12 +3,10 @@ import {
   createCommand,
   createLocation,
   createPerson,
-  createTeamMember,
   createVenue,
   deleteEventById,
   deleteEventType,
   deleteMonthlyReport,
-  deleteTeamMember,
   fetchAarGlobalTemplates,
   fetchCaterers,
   fetchCommandHighlightsNotes,
@@ -19,12 +17,17 @@ import {
   fetchMonthlyReport,
   fetchMonthlyReports,
   fetchPeople,
+  fetchPersonnelAliases,
   fetchTeam,
+  fetchTeamDirectoryPersonnel,
   fetchTeamMembers,
   fetchVenues,
   insertEvent,
   insertEventType,
   renameEventTypeInEvents,
+  archiveDirectoryPerson,
+  reconcileDirectoryPeople,
+  saveDirectoryPerson,
   saveMonthlyReport,
   updateAarGlobalTemplates,
   updateCaterer,
@@ -39,7 +42,6 @@ import {
   updateEventType,
   updateLocation,
   updatePerson,
-  updateTeamMember,
   updateVenue,
   removeCaterer,
   removeCommand,
@@ -48,6 +50,13 @@ import {
   removeVenue,
 } from './db.js';
 import { initEventReferenceFields } from './event-reference-fields.js';
+import { personnelDisplayName } from './personnel-identity.js';
+import {
+  isCommandHighlightsNotesVisible,
+  isTeamDirectoryTab,
+  renderTeamDirectoryView,
+} from './team-personnel-directory.js';
+import { mountPersonnelEditor } from './team-personnel-editor.js';
 import {
   exportMonthlyImpactReportPptx,
   generateMirPresentationBlob,
@@ -152,6 +161,11 @@ let aarGlobalTemplates = {
 };
 let team = { ...DEFAULT_TEAM };
 let teamMembers = [];
+let teamDirectoryPersonnel = [];
+let teamDirectoryTab = 'all';
+let teamDirectoryTabsBound = false;
+let personnelEditorBound = false;
+let personnelEditorCleanup = null;
 let referenceCommands = [];
 let referenceLocations = [];
 let referenceVenues = [];
@@ -3914,176 +3928,118 @@ function renderReports() {
   renderReportTable();
 }
 
-function createTeamMemberInput(value, placeholder, editable, onBlur, className = 'team-report-field') {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = className;
-  input.value = value || '';
-  input.placeholder = placeholder;
-  input.readOnly = !editable;
-  if (editable) {
-    input.addEventListener('blur', onBlur);
-  }
-  return input;
+function bindTeamDirectoryTabs() {
+  if (teamDirectoryTabsBound) return;
+  const nav = document.getElementById('team-directory-tabs');
+  if (!nav) return;
+  teamDirectoryTabsBound = true;
+  nav.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-team-tab]');
+    if (!button) return;
+    const tab = button.dataset.teamTab;
+    if (!isTeamDirectoryTab(tab) || tab === teamDirectoryTab) return;
+    teamDirectoryTab = tab;
+    updateTeamDirectoryTabs();
+    const panel = document.getElementById('team-directory-panel');
+    if (panel) renderTeamDirectoryPanel(panel);
+    syncCommandHighlightsNotesVisibility();
+  });
 }
 
-function appendTeamMemberDeleteButton(row, anchorCell, memberId, editable) {
-  if (!editable) return;
-
-  row.classList.add('team-row-editable');
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'team-row-delete-btn';
-  btn.setAttribute('aria-label', 'Delete team member');
-  btn.innerHTML = `
-    <svg class="team-row-delete-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path fill="currentColor" d="M5.5 2A1.5 1.5 0 0 1 7 0.5h2A1.5 1.5 0 0 1 10.5 2H13a1 1 0 1 1 0 2h-0.5l-0.6 8.2A1.5 1.5 0 0 1 10.4 14H5.6a1.5 1.5 0 0 1-1.5-1.8L3.5 4H3a1 1 0 1 1 0-2h2.5zM7 2h2l0.2 1H6.8L7 2zm0.5 4a0.5 0.5 0 0 0-1 0v6a0.5 0.5 0 0 0 1 0V6zm3 0a0.5 0.5 0 0 0-1 0v6a0.5 0.5 0 0 0 1 0V6z"/>
-    </svg>`;
-  btn.addEventListener('click', async () => {
-    if (!confirm('Delete this team member?')) return;
-    try {
-      await deleteTeamMember(memberId);
-      teamMembers = teamMembers.filter((member) => member.id !== memberId);
-      renderTeamMembersTable(document.getElementById('team-members-body'), editable);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to delete team member.');
-    }
+function updateTeamDirectoryTabs() {
+  document.querySelectorAll('#team-directory-tabs [data-team-tab]').forEach((button) => {
+    const selected = button.dataset.teamTab === teamDirectoryTab;
+    button.classList.toggle('team-directory-tab-active', selected);
+    button.setAttribute('aria-selected', selected ? 'true' : 'false');
   });
-  anchorCell.appendChild(btn);
 }
 
-function renderTeamMembersTable(tbody, editable) {
-  tbody.innerHTML = '';
-
-  if (teamMembers.length === 0) {
-    const row = document.createElement('tr');
-    row.className = 'team-empty-row';
-    const cell = document.createElement('td');
-    cell.colSpan = 3;
-    cell.textContent = 'No team members yet.';
-    row.appendChild(cell);
-    tbody.appendChild(row);
-    return;
+function attachPersonnelAliases(people, aliases) {
+  const grouped = new Map();
+  for (const alias of aliases || []) {
+    const list = grouped.get(alias.personId) || [];
+    list.push(alias);
+    grouped.set(alias.personId, list);
   }
+  return (people || []).map((person) => ({
+    ...person,
+    aliases: grouped.get(person.id) || [],
+  }));
+}
 
-  teamMembers.forEach((member, index) => {
-    const row = document.createElement('tr');
-    if (index % 2 === 1) row.className = 'team-row-alt';
-
-    const billetCell = document.createElement('td');
-    billetCell.className = 'team-cell-billet';
-    const nameWrap = document.createElement('div');
-    nameWrap.className = 'team-member-name-wrap';
-    nameWrap.appendChild(
-      createTeamMemberInput(member.name, 'Name', editable, async (e) => {
-        const value = e.target.value.trim();
-        if (value === member.name) return;
-        try {
-          member.name = value;
-          await updateTeamMember(member.id, { name: value });
-        } catch (err) {
-          console.error(err);
-          alert('Failed to save team member.');
-          renderTeam();
-        }
-      }, 'team-member-name')
-    );
-    const billetWrap = document.createElement('div');
-    billetWrap.className = 'team-member-billet-wrap';
-    billetWrap.appendChild(
-      createTeamMemberInput(member.billetOrRole, 'Billet / Role', editable, async (e) => {
-        const value = e.target.value.trim();
-        if (value === member.billetOrRole) return;
-        try {
-          member.billetOrRole = value;
-          await updateTeamMember(member.id, { billetOrRole: value });
-        } catch (err) {
-          console.error(err);
-          alert('Failed to save team member.');
-          renderTeam();
-        }
-      }, 'team-member-billet')
-    );
-    billetCell.appendChild(nameWrap);
-    billetCell.appendChild(billetWrap);
-    row.appendChild(billetCell);
-
-    const statusCell = document.createElement('td');
-    statusCell.className = 'team-cell-status';
-    statusCell.appendChild(
-      createTeamMemberInput(member.statusNextAction, 'Status / Next Action', editable, async (e) => {
-        const value = e.target.value.trim();
-        if (value === member.statusNextAction) return;
-        try {
-          member.statusNextAction = value;
-          await updateTeamMember(member.id, { statusNextAction: value });
-        } catch (err) {
-          console.error(err);
-          alert('Failed to save team member.');
-          renderTeam();
-        }
-      }, 'team-report-field team-field-status')
-    );
-    row.appendChild(statusCell);
-
-    const prdCell = document.createElement('td');
-    prdCell.className = 'team-cell-prd';
-    const prdFieldWrap = document.createElement('div');
-    prdFieldWrap.className = 'team-cell-prd-field';
-    prdFieldWrap.appendChild(
-      createTeamMemberInput(member.prdEaos, 'PRD / EAOS', editable, async (e) => {
-        const value = e.target.value.trim();
-        if (value === member.prdEaos) return;
-        try {
-          member.prdEaos = value;
-          await updateTeamMember(member.id, { prdEaos: value });
-        } catch (err) {
-          console.error(err);
-          alert('Failed to save team member.');
-          renderTeam();
-        }
-      }, 'team-report-field team-field-prd')
-    );
-    prdCell.appendChild(prdFieldWrap);
-    appendTeamMemberDeleteButton(row, prdCell, member.id, editable);
-    row.appendChild(prdCell);
-
-    tbody.appendChild(row);
+function bindPersonnelEditorModal() {
+  if (personnelEditorBound) return;
+  const modal = document.getElementById('personnel-editor-modal');
+  if (!modal) return;
+  personnelEditorBound = true;
+  document.getElementById('personnel-editor-close')?.addEventListener('click', () => modal.close());
+  modal.addEventListener('close', () => {
+    personnelEditorCleanup?.();
+    personnelEditorCleanup = null;
   });
+}
+
+function openPersonnelEditor(person = null) {
+  const modal = document.getElementById('personnel-editor-modal');
+  const body = document.getElementById('personnel-editor-body');
+  const footer = document.getElementById('personnel-editor-footer');
+  const title = document.getElementById('personnel-editor-title');
+  if (!modal || !body || !footer || !title) return;
+  title.textContent = person?.id ? 'Edit Person' : 'Add Person';
+  personnelEditorCleanup?.();
+  personnelEditorCleanup = mountPersonnelEditor({
+    body,
+    footer,
+    person,
+    others: teamDirectoryPersonnel,
+    onSave: async (values) => {
+      await saveDirectoryPerson(values);
+      await renderTeam();
+    },
+    onArchive: async (id) => {
+      await archiveDirectoryPerson(id);
+      await renderTeam();
+    },
+    onReconcile: async (survivorId, retiredId, identity) => {
+      await reconcileDirectoryPeople(survivorId, retiredId, identity);
+      await renderTeam();
+    },
+  });
+  modal.showModal();
+}
+
+function renderTeamDirectoryPanel(panel) {
+  const tab = isTeamDirectoryTab(teamDirectoryTab) ? teamDirectoryTab : 'all';
+  const label = document.querySelector(`#team-directory-tabs [data-team-tab="${tab}"]`)?.textContent?.trim()
+    || 'All Personnel';
+  renderTeamDirectoryView(panel, teamDirectoryPersonnel, tab, label, {
+    editable: canEditTeam(),
+    onEdit: openPersonnelEditor,
+  });
+}
+
+function syncCommandHighlightsNotesVisibility() {
+  const section = document.getElementById('command-highlights-notes-section');
+  if (!section) return;
+  section.hidden = !isCommandHighlightsNotesVisible(teamDirectoryTab);
 }
 
 function renderTeamPageContent(container, editable) {
   container.innerHTML = `
     <div class="team-report">
-      <section class="team-report-section">
-        <div class="team-report-section-header">
-          <h2 class="team-report-title">MANPOWER / MANNING</h2>
-          ${editable ? '<button type="button" class="team-report-action-btn" id="add-team-member-btn">+ Add Team Member</button>' : ''}
-        </div>
-        <div class="team-report-divider" aria-hidden="true"></div>
-        <div class="team-report-table-wrap">
-          <table class="team-manpower-table">
-            <thead>
-              <tr>
-                <th class="team-col-billet">Billet / Personnel</th>
-                <th class="team-col-status">Status / Next Action</th>
-                <th class="team-col-prd">PRD / EAOS</th>
-              </tr>
-            </thead>
-            <tbody id="team-members-body"></tbody>
-          </table>
-        </div>
-      </section>
-      <section class="team-report-section team-report-notes-section">
+      ${editable ? '<div class="team-directory-toolbar"><button type="button" class="btn btn-secondary" id="add-person-btn">Add Person</button></div>' : ''}
+      <section class="team-report-section" id="team-directory-panel" aria-labelledby="team-directory-heading"></section>
+      <section class="team-report-section team-report-notes-section" id="command-highlights-notes-section">
         <h2 class="team-report-title">Command Highlights Notes</h2>
         <div class="team-report-divider" aria-hidden="true"></div>
         <textarea id="command-highlights-notes" class="team-report-notes" rows="10" ${editable ? '' : 'readonly'}></textarea>
       </section>
     </div>`;
 
-  renderTeamMembersTable(container.querySelector('#team-members-body'), editable);
+  updateTeamDirectoryTabs();
+  renderTeamDirectoryPanel(container.querySelector('#team-directory-panel'));
+  syncCommandHighlightsNotesVisibility();
+  container.querySelector('#add-person-btn')?.addEventListener('click', () => openPersonnelEditor(null));
 
   const notesEl = container.querySelector('#command-highlights-notes');
   notesEl.value = commandHighlightsNotes;
@@ -4099,37 +4055,29 @@ function renderTeamPageContent(container, editable) {
         renderTeam();
       }
     });
-
-    container.querySelector('#add-team-member-btn').addEventListener('click', async () => {
-      try {
-        const created = await createTeamMember({
-          name: '',
-          billetOrRole: '',
-          statusNextAction: '',
-          prdEaos: '',
-          displayOrder: teamMembers.length,
-        });
-        teamMembers.push(created);
-        renderTeamMembersTable(container.querySelector('#team-members-body'), editable);
-      } catch (err) {
-        console.error(err);
-        alert('Failed to add team member.');
-      }
-    });
   }
 }
 
 async function renderTeam() {
   const container = document.getElementById('team-content');
   const editable = canEditTeam();
+  bindTeamDirectoryTabs();
+  bindPersonnelEditorModal();
 
   container.innerHTML = '<p class="team-report-status">Loading team data…</p>';
 
   try {
-    const [members, notes] = await Promise.all([
+    const [personnel, members, notes, aliases] = await Promise.all([
+      fetchTeamDirectoryPersonnel(),
       fetchTeamMembers(),
       fetchCommandHighlightsNotes(),
+      fetchPersonnelAliases().catch((error) => {
+        console.error(error);
+        return [];
+      }),
     ]);
+    teamDirectoryPersonnel = attachPersonnelAliases(personnel, aliases);
+    referencePeople = attachPersonnelAliases(referencePeople, aliases);
     teamMembers = members;
     commandHighlightsNotes = notes;
   } catch (err) {
@@ -4342,7 +4290,7 @@ async function addSettingsReferenceEntry(category, name) {
   else if (category === 'locations') created = await createLocation(name);
   else if (category === 'venues') created = await createVenue(name);
   else if (category === 'caterers') created = await createCaterer(name);
-  else if (category === 'people') created = await createPerson(name);
+  else if (category === 'people') throw new Error('PERSONNEL_USE_TEAM');
   else throw new Error('Invalid roster type.');
 
   setSettingsReferenceItems(category, upsertReferenceItem(getSettingsReferenceItems(category), created));
@@ -4355,7 +4303,7 @@ async function renameSettingsReferenceEntry(category, id, name) {
   else if (category === 'locations') updated = await updateLocation(id, { name });
   else if (category === 'venues') updated = await updateVenue(id, { name });
   else if (category === 'caterers') updated = await updateCaterer(id, { name });
-  else if (category === 'people') updated = await updatePerson(id, { name });
+  else if (category === 'people') throw new Error('PERSONNEL_USE_TEAM');
   else throw new Error('Invalid roster type.');
 
   setSettingsReferenceItems(category, applyReferenceUpdate(getSettingsReferenceItems(category), updated));
@@ -4368,7 +4316,7 @@ async function removeSettingsReferenceEntry(category, id) {
   else if (category === 'locations') await removeLocation(id);
   else if (category === 'venues') await removeVenue(id);
   else if (category === 'caterers') await removeCaterer(id);
-  else if (category === 'people') await removePerson(id);
+  else if (category === 'people') throw new Error('PERSONNEL_USE_TEAM');
   else throw new Error('Invalid roster type.');
 
   setSettingsReferenceItems(category, removeReferenceItem(getSettingsReferenceItems(category), id));
@@ -4688,7 +4636,9 @@ function fillSettingsReferenceTableBody(tbody, editable) {
   visibleItems.forEach((item) => {
     const row = document.createElement('tr');
     const nameCell = document.createElement('td');
-    nameCell.textContent = item.name;
+    nameCell.textContent = settingsReferenceCategory === 'people'
+      ? personnelDisplayName(item.rankTitle, item.name)
+      : item.name;
     row.appendChild(nameCell);
 
     if (editable) {
@@ -4738,7 +4688,7 @@ function renderSettingsReferenceListsPanel() {
     settingsReferenceCategory = 'commands';
   }
 
-  const editable = canEditEvents();
+  const editable = canEditEvents() && settingsReferenceCategory !== 'people';
   const category = SETTINGS_REFERENCE_CATEGORIES.find((entry) => entry.key === settingsReferenceCategory);
   const items = getSettingsReferenceItems(settingsReferenceCategory);
 
@@ -11796,9 +11746,10 @@ async function loadReferenceLists() {
     fetchCaterers(),
     fetchPeople(),
     fetchTeamMembers(),
+    fetchPersonnelAliases(),
   ]);
 
-  const [commandsResult, locationsResult, venuesResult, caterersResult, peopleResult, teamMembersResult] = settled;
+  const [commandsResult, locationsResult, venuesResult, caterersResult, peopleResult, teamMembersResult, aliasResult] = settled;
 
   settled.forEach((result, index) => {
     if (result.status === 'rejected') {
@@ -11810,7 +11761,10 @@ async function loadReferenceLists() {
   referenceLocations = sortReferenceByName(locationsResult.status === 'fulfilled' ? locationsResult.value : []);
   referenceVenues = sortReferenceByName(venuesResult.status === 'fulfilled' ? venuesResult.value : []);
   referenceCaterers = sortReferenceByName(caterersResult.status === 'fulfilled' ? caterersResult.value : []);
-  referencePeople = sortReferenceByName(peopleResult.status === 'fulfilled' ? peopleResult.value : []);
+  referencePeople = attachPersonnelAliases(
+    sortReferenceByName(peopleResult.status === 'fulfilled' ? peopleResult.value : []),
+    aliasResult.status === 'fulfilled' ? aliasResult.value : [],
+  );
   teamMembers = teamMembersResult.status === 'fulfilled' ? teamMembersResult.value : [];
   eventReferenceFields?.refreshStaff();
   eventReferenceFields?.refreshPeople();

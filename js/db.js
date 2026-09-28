@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { mapTeamDirectoryPerson } from './team-personnel-directory.js';
 
 function booleanFromDb(value) {
   if (value === true || value === 1) return true;
@@ -989,6 +990,34 @@ export async function deleteTeamMember(id) {
   if (error) throw error;
 }
 
+const TEAM_DIRECTORY_PERSON_COLUMNS = [
+  'id',
+  'name',
+  'rank_title',
+  'command_organization',
+  'installation',
+  'active',
+  'is_credo_staff',
+  'is_facilitator',
+  'is_poc',
+  'staff_billet_or_role',
+  'staff_status_next_action',
+  'staff_prd_eaos',
+  'staff_display_order',
+].join(', ');
+
+// Read-only Team directory. Does not replace fetchTeamMembers() or fetchPeople().
+export async function fetchTeamDirectoryPersonnel() {
+  const { data, error } = await supabase
+    .from('people')
+    .select(TEAM_DIRECTORY_PERSON_COLUMNS)
+    .eq('active', true)
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map(mapTeamDirectoryPerson);
+}
+
 // Event-entry reference lists (foundation).
 // CREDO Staff will later use existing team_members — no separate staff table here.
 
@@ -1018,6 +1047,7 @@ function namedReferenceFromRow(row) {
 function personFromRow(row) {
   return {
     ...namedReferenceFromRow(row),
+    rankTitle: row.rank_title ?? null,
     email: row.email ?? null,
     phone: row.phone ?? null,
   };
@@ -1110,7 +1140,7 @@ export async function createCaterer(name) {
 export async function fetchPeople() {
   const { data, error } = await supabase
     .from('people')
-    .select('id, name, normalized_name, email, phone, active, created_at, updated_at')
+    .select('id, name, normalized_name, rank_title, email, phone, active, created_at, updated_at')
     .eq('active', true)
     .order('name', { ascending: true });
 
@@ -1339,7 +1369,9 @@ export async function removePerson(id) {
 
 export async function updatePerson(id, updates = {}) {
   if (updates.name !== undefined) {
-    return renameReferenceEntry('person', id, updates.name, personFromRow);
+    const error = new Error('Personnel identity is edited from the Team directory.');
+    error.code = 'PERSONNEL_USE_TEAM';
+    throw error;
   }
 
   if (!id) throw new Error('REFERENCE_ID_REQUIRED');
@@ -1379,6 +1411,95 @@ export async function updatePerson(id, updates = {}) {
   }
 
   return personFromRow(data);
+}
+
+export async function fetchPersonnelAliases() {
+  const { data, error } = await supabase
+    .from('people_name_aliases')
+    .select('person_id, display_name, normalized_name');
+
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    personId: row.person_id,
+    displayName: row.display_name,
+    normalizedName: row.normalized_name,
+  }));
+}
+
+function personnelRpcError(error, fallbackName = 'that name') {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '');
+  if (hint === 'NAME_REQUIRED' || /full name is required/i.test(message)) {
+    const nameError = new Error('Full name is required.');
+    nameError.code = 'NAME_REQUIRED';
+    return nameError;
+  }
+  if (hint === 'BILLET_REQUIRED' || /billet \/ role is required/i.test(message)) {
+    const billetError = new Error('Billet / Role is required for CREDO Staff.');
+    billetError.code = 'BILLET_REQUIRED';
+    return billetError;
+  }
+  if (hint === 'PERSONNEL_CONFLICT' || hint === 'STAFF_LINK_CONFLICT') {
+    const conflict = new Error(message || 'Those personnel records conflict.');
+    conflict.code = hint;
+    return conflict;
+  }
+  if (
+    hint === 'REFERENCE_NAME_EXISTS'
+    || error?.code === 'P0001' && /already exists/i.test(message)
+  ) {
+    return referenceNameConflictError(fallbackName);
+  }
+  if (hint === 'PERSONNEL_NOT_FOUND') {
+    const missing = new Error('That personnel record was not found.');
+    missing.code = 'PERSONNEL_NOT_FOUND';
+    return missing;
+  }
+  if (hint === 'PERSONNEL_USE_TEAM') {
+    const blocked = new Error('Personnel identity is edited from the Team directory.');
+    blocked.code = 'PERSONNEL_USE_TEAM';
+    return blocked;
+  }
+  return error;
+}
+
+export async function saveDirectoryPerson(person) {
+  const { data, error } = await supabase.rpc('save_directory_person', {
+    p_id: person?.id ?? null,
+    p_rank_title: person?.rankTitle ?? null,
+    p_name: person?.name ?? '',
+    p_command_organization: person?.commandOrganization ?? null,
+    p_installation: person?.installation ?? null,
+    p_is_credo_staff: person?.isCredoStaff === true,
+    p_is_facilitator: person?.isFacilitator === true,
+    p_is_poc: person?.isPoc === true,
+    p_staff_billet_or_role: person?.staffBilletOrRole ?? null,
+    p_staff_prd_eaos: person?.staffPrdEaos ?? null,
+  });
+
+  if (error) throw personnelRpcError(error, person?.name);
+  return data;
+}
+
+export async function archiveDirectoryPerson(id) {
+  const { data, error } = await supabase.rpc('archive_directory_person', {
+    p_id: id,
+  });
+
+  if (error) throw personnelRpcError(error);
+  return data;
+}
+
+export async function reconcileDirectoryPeople(survivorId, retiredId, identity) {
+  const { data, error } = await supabase.rpc('reconcile_directory_people', {
+    p_survivor_id: survivorId,
+    p_retired_id: retiredId,
+    p_rank_title: identity?.rankTitle ?? null,
+    p_name: identity?.name ?? '',
+  });
+
+  if (error) throw personnelRpcError(error, identity?.name);
+  return data;
 }
 
 export async function fetchCommandHighlightsNotes() {
