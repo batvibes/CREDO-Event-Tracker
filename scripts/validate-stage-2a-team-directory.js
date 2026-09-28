@@ -240,9 +240,9 @@ assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
 assert(
   migrationLines.length === 1
-    && migrationLines[0].includes('021_facilitator_experience_foundation.sql')
+    && migrationLines[0].includes('022_facilitator_event_type_product_mappings.sql')
     && migrationLines[0].startsWith('??'),
-  'the only unapplied migration is 021_facilitator_experience_foundation.sql'
+  'the only unapplied migration is 022_facilitator_event_type_product_mappings.sql'
 );
 
 const untrackedPptx = [
