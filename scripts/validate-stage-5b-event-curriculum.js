@@ -136,8 +136,11 @@ assert(!/security\s+definer/i.test(db), 'no security definer function was added'
 assert(app.includes('syncEventCurriculumField'), 'Event Type changes refresh the curriculum choices');
 assert(app.includes('readEventCurriculumProductId'), 'the form reads the optional curriculum');
 assert(app.includes('loadEventCurriculumSupport'), 'startup loads curriculum support without writing events');
-assert(!/setAarRmtField\(\s*['"]Curriculum/.test(app), 'AAR does not receive a curriculum field in this stage');
-assert(!app.includes('aar-curriculum'), 'AAR has no curriculum control');
+assert(!/setAarRmtField\(\s*['"]Curriculum/.test(app), 'AAR does not fill curriculum through an editable report field');
+const aarArticleStart = html.indexOf('id="aar-report-article"');
+const aarArticle = html.slice(aarArticleStart, html.indexOf('</article>', aarArticleStart));
+assert(!aarArticle.includes('Curriculum / Product'), 'the AAR template does not reserve a curriculum row');
+assert(!/<(select|input)\b/i.test(aarArticle), 'the AAR template has no curriculum control');
 assert(!facilitator.includes('curriculum_product_id'), 'Facilitator Management is unchanged by the curriculum field');
 assert(!facilitator.includes('facilitator_event_type_allowed_products'), 'Facilitator Management does not read allowed curricula');
 assert(db.includes(".select('id, name, code, sort_order')"), 'the Facilitator Management product read still does not filter on active');

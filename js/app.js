@@ -56,6 +56,7 @@ import {
   curriculumChoicesForEventType,
   reconcileCurriculumProductId,
 } from './event-curriculum.js';
+import { aarCurriculumDisplayName } from './aar-curriculum.js';
 import { personnelDisplayName } from './personnel-identity.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
@@ -2738,6 +2739,34 @@ function getAarSequenceNumber(event) {
   return String(event.aarSequenceNumber ?? '').trim();
 }
 
+function syncAarCurriculumRow(event, root) {
+  const reportRoot = getAarReportRoot(root);
+  const tableBody = reportRoot?.querySelector('.aar-rmt-table tbody');
+  if (!tableBody) return;
+
+  tableBody.querySelector('[data-aar-product-row]')?.remove();
+  const name = aarCurriculumDisplayName(event?.curriculumProductId, eventCurriculumChoices);
+  if (!name) return;
+
+  const eventTypeRow = [...tableBody.querySelectorAll('tr')].find((row) => (
+    [...row.querySelectorAll('th')].some((cell) => cell.textContent.trim() === 'Event Type')
+  ));
+  const row = document.createElement('tr');
+  row.dataset.aarProductRow = 'true';
+  const label = document.createElement('th');
+  label.scope = 'row';
+  label.textContent = 'Curriculum / Product';
+  const value = document.createElement('td');
+  value.colSpan = 3;
+  value.textContent = name;
+  row.append(label, value);
+  if (eventTypeRow) {
+    eventTypeRow.insertAdjacentElement('afterend', row);
+  } else {
+    tableBody.append(row);
+  }
+}
+
 function setAarSequenceDisplay(event, root) {
   const sequence = getAarSequenceNumber(event);
 
@@ -2785,6 +2814,7 @@ function populateAarDocument(event, options = {}) {
     'Point(s) of contact will appear here.',
     root
   );
+  syncAarCurriculumRow(event, root);
 
   setAarReportBlock(
     'EVENT DESCRIPTION',
