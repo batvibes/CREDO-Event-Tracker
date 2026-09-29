@@ -55,15 +55,26 @@ import { personnelDisplayName } from './personnel-identity.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
   FACILITATOR_EMPTY_PERSONNEL,
+  FACILITATOR_EMPTY_PRODUCTS,
   FACILITATOR_NO_DATA_GAPS,
+  FACILITATOR_NO_FACILITATOR_RECORDS,
   FACILITATOR_NO_PRODUCT_EXPERIENCE,
   FACILITATOR_NO_QUALIFICATION_RECORD,
+  FACILITATOR_PRODUCT_EXPERIENCE_NO,
+  FACILITATOR_PRODUCT_EXPERIENCE_YES,
+  FACILITATOR_QUALIFICATION_NONE,
+  FACILITATOR_QUALIFICATION_ON_FILE,
   FACILITATOR_QUALIFICATION_RECORD,
   buildFacilitatorOverview,
+  buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
+  facilitatorProductPersonnel,
   filterFacilitatorPersonnel,
+  filterFacilitatorProductPersonnel,
+  filterFacilitatorProgramCapabilities,
   formatRecordedFacilitationDate,
   sortFacilitatorPersonnel,
+  sortFacilitatorProgramCapabilities,
   summarizeFacilitatorPersonnel,
 } from './facilitator-management.js';
 import {
@@ -11080,10 +11091,25 @@ const FACILITATOR_SORT_COLUMNS = [
   { key: 'events', index: 4 },
   { key: 'recent', index: 5 },
 ];
+const FACILITATOR_CAPABILITY_SORT_COLUMNS = [
+  { key: 'catalog', index: 0 },
+  { key: 'personnel', index: 1 },
+  { key: 'experience', index: 2 },
+  { key: 'instances', index: 3 },
+  { key: 'recent', index: 4 },
+  { key: 'qualifications', index: 5 },
+];
+const FACILITATOR_VIEW_LABELS = {
+  overview: 'Overview',
+  personnel: 'Personnel',
+  capabilities: 'Program Capabilities',
+};
 
 let facilitatorPersonnel = [];
 let facilitatorProducts = [];
 let facilitatorSort = { column: 'name', direction: SORT_ASC };
+let facilitatorCapabilitySort = { column: 'catalog', direction: SORT_ASC };
+let facilitatorSelectedProductId = '';
 let facilitatorLoadGeneration = 0;
 let facilitatorInternalView = 'overview';
 
@@ -11123,18 +11149,23 @@ function appendFacilitatorCell(row, text, className) {
 }
 
 function showFacilitatorView(view) {
-  facilitatorInternalView = view === 'personnel' ? 'personnel' : 'overview';
-  const overview = document.getElementById('facilitator-overview-panel');
-  const personnel = document.getElementById('facilitator-personnel-panel');
+  facilitatorInternalView = FACILITATOR_VIEW_LABELS[view] ? view : 'overview';
+  const panels = {
+    overview: document.getElementById('facilitator-overview-panel'),
+    personnel: document.getElementById('facilitator-personnel-panel'),
+    capabilities: document.getElementById('facilitator-capabilities-panel'),
+  };
   const subtitle = document.getElementById('facilitator-view-subtitle');
-  if (overview) overview.hidden = facilitatorInternalView !== 'overview';
-  if (personnel) personnel.hidden = facilitatorInternalView !== 'personnel';
-  if (subtitle) subtitle.textContent = facilitatorInternalView === 'personnel' ? 'Personnel' : 'Overview';
+  for (const [name, panel] of Object.entries(panels)) {
+    if (panel) panel.hidden = facilitatorInternalView !== name;
+  }
+  if (subtitle) subtitle.textContent = FACILITATOR_VIEW_LABELS[facilitatorInternalView];
   document.querySelectorAll('#facilitator-view-tabs .team-directory-tab').forEach((button) => {
     const selected = button.dataset.facilitatorView === facilitatorInternalView;
     button.classList.toggle('team-directory-tab-active', selected);
     button.setAttribute('aria-selected', selected ? 'true' : 'false');
   });
+  if (facilitatorInternalView !== 'capabilities') closeFacilitatorProductDetail();
 }
 
 function appendFacilitatorEmptyRow(body, columnCount, message) {
@@ -11183,16 +11214,12 @@ function paintFacilitatorOverview() {
     const row = document.createElement('tr');
     if (product.peopleWithExperience === 0) row.className = 'facilitator-coverage-none';
     const nameCell = document.createElement('td');
-    if (product.peopleWithExperience > 0) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'facilitator-text-button';
-      button.dataset.facilitatorProduct = product.productId;
-      button.textContent = product.productName;
-      nameCell.appendChild(button);
-    } else {
-      nameCell.textContent = product.productName;
-    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'facilitator-text-button';
+    button.dataset.facilitatorProduct = product.productId;
+    button.textContent = product.productName;
+    nameCell.appendChild(button);
     row.appendChild(nameCell);
     appendFacilitatorCell(row, String(product.peopleWithExperience), 'facilitator-count');
     appendFacilitatorCell(row, String(product.recordedInstances), 'facilitator-count');
@@ -11241,6 +11268,58 @@ function paintFacilitatorOverview() {
       appendFacilitatorCell(row, item.condition);
       attentionBody.appendChild(row);
     }
+  }
+}
+
+function facilitatorCapabilityFilterState() {
+  return {
+    query: document.getElementById('facilitator-product-search')?.value ?? '',
+    presence: document.getElementById('facilitator-product-presence')?.value ?? 'all',
+  };
+}
+
+function visibleFacilitatorCapabilities() {
+  return sortFacilitatorProgramCapabilities(
+    filterFacilitatorProgramCapabilities(
+      buildFacilitatorProgramCapabilities(facilitatorPersonnel, facilitatorProducts),
+      facilitatorCapabilityFilterState(),
+    ),
+    facilitatorCapabilitySort.column,
+    facilitatorCapabilitySort.direction,
+  );
+}
+
+function paintFacilitatorProgramCapabilities() {
+  const body = document.getElementById('facilitator-capabilities-body');
+  if (!body) return;
+  const visible = visibleFacilitatorCapabilities();
+  if (!visible.length) {
+    appendFacilitatorEmptyRow(body, 6, FACILITATOR_EMPTY_PRODUCTS);
+    return;
+  }
+  body.replaceChildren();
+  for (const product of visible) {
+    const row = document.createElement('tr');
+    row.className = product.personnelCount === 0 ? 'facilitator-coverage-none facilitator-personnel-row' : 'facilitator-personnel-row';
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', product.productName);
+    const open = () => openFacilitatorProduct(product.productId);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      open();
+    });
+    const nameCell = document.createElement('td');
+    nameCell.textContent = product.productName;
+    row.appendChild(nameCell);
+    appendFacilitatorCell(row, String(product.personnelCount), 'facilitator-count');
+    appendFacilitatorCell(row, String(product.recordedExperienceCount), 'facilitator-count');
+    appendFacilitatorCell(row, String(product.recordedInstances), 'facilitator-count');
+    appendFacilitatorCell(row, formatRecordedFacilitationDate(product.mostRecentOn));
+    appendFacilitatorCell(row, String(product.qualificationRecordCount), 'facilitator-count');
+    body.appendChild(row);
   }
 }
 
@@ -11386,7 +11465,9 @@ async function renderFacilitatorManagement() {
     syncFacilitatorProductFilter();
     paintFacilitatorOverview();
     paintFacilitatorPersonnel();
+    paintFacilitatorProgramCapabilities();
     refreshSortHeaderIndicators('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort);
+    refreshSortHeaderIndicators('#facilitator-capabilities-table', FACILITATOR_CAPABILITY_SORT_COLUMNS, facilitatorCapabilitySort);
   } catch (error) {
     console.error(error);
     if (generation !== facilitatorLoadGeneration || !body) return;
@@ -11402,21 +11483,109 @@ async function renderFacilitatorManagement() {
     const note = document.getElementById('facilitator-summary-note');
     if (summary) summary.replaceChildren();
     if (note) note.textContent = 'Facilitator personnel could not be loaded.';
+    const capabilities = document.getElementById('facilitator-capabilities-body');
+    if (capabilities) appendFacilitatorEmptyRow(capabilities, 6, 'Facilitator personnel could not be loaded.');
   }
 }
 
-function openFacilitatorProduct(productId) {
-  const select = document.getElementById('facilitator-product-filter');
-  if (select && [...select.options].some((option) => option.value === productId)) {
-    select.value = productId;
+function closeFacilitatorProductDetail() {
+  const modal = document.getElementById('facilitator-product-modal');
+  if (modal?.open) modal.close();
+}
+
+function paintFacilitatorProductDetail() {
+  const title = document.getElementById('facilitator-product-title');
+  const host = document.getElementById('facilitator-product-personnel');
+  const product = buildFacilitatorProgramCapabilities(facilitatorPersonnel, facilitatorProducts)
+    .find((row) => row.productId === facilitatorSelectedProductId);
+  if (!title || !host || !product) return;
+  title.textContent = product.productName;
+  const people = filterFacilitatorProductPersonnel(
+    facilitatorProductPersonnel(facilitatorPersonnel, product.productId),
+    {
+      query: document.getElementById('facilitator-product-person-search')?.value ?? '',
+      active: document.getElementById('facilitator-product-active-filter')?.value ?? 'all',
+    },
+  );
+  host.replaceChildren();
+  if (!product.personnelCount) {
+    const note = document.createElement('p');
+    note.className = 'facilitator-detail-note';
+    note.textContent = FACILITATOR_NO_FACILITATOR_RECORDS;
+    host.appendChild(note);
+    return;
   }
-  showFacilitatorView('personnel');
-  paintFacilitatorPersonnel();
+  if (!people.length) {
+    const note = document.createElement('p');
+    note.className = 'facilitator-detail-note';
+    note.textContent = FACILITATOR_EMPTY_PERSONNEL;
+    host.appendChild(note);
+    return;
+  }
+  const table = document.createElement('table');
+  table.className = 'events-table';
+  const head = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  for (const label of [
+    'Name',
+    'Command / Organization',
+    'Installation',
+    'Active',
+    'Recorded Experience',
+    'Recorded Instances',
+    'First Recorded Facilitation',
+    'Most Recent Facilitation',
+    'Qualification Record',
+  ]) {
+    const cell = document.createElement('th');
+    cell.textContent = label;
+    headRow.appendChild(cell);
+  }
+  head.appendChild(headRow);
+  table.appendChild(head);
+  const tableBody = document.createElement('tbody');
+  for (const person of people) {
+    const row = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'facilitator-text-button';
+    button.dataset.facilitatorPerson = person.personId;
+    button.textContent = person.displayName || '—';
+    nameCell.appendChild(button);
+    row.appendChild(nameCell);
+    appendFacilitatorCell(row, person.commandOrganization);
+    appendFacilitatorCell(row, person.installation);
+    appendFacilitatorCell(row, person.active ? 'Active' : 'Inactive');
+    appendFacilitatorCell(row, person.hasRecordedExperience ? FACILITATOR_PRODUCT_EXPERIENCE_YES : FACILITATOR_PRODUCT_EXPERIENCE_NO);
+    appendFacilitatorCell(row, String(person.recordedInstances), 'facilitator-count');
+    appendFacilitatorCell(row, formatRecordedFacilitationDate(person.firstRecordedOn));
+    appendFacilitatorCell(row, formatRecordedFacilitationDate(person.mostRecentOn));
+    appendFacilitatorCell(row, person.hasQualificationRecord ? FACILITATOR_QUALIFICATION_ON_FILE : FACILITATOR_QUALIFICATION_NONE);
+    tableBody.appendChild(row);
+  }
+  table.appendChild(tableBody);
+  host.appendChild(table);
+}
+
+function openFacilitatorProduct(productId) {
+  facilitatorSelectedProductId = productId;
+  const search = document.getElementById('facilitator-product-person-search');
+  const active = document.getElementById('facilitator-product-active-filter');
+  if (search) search.value = '';
+  if (active) active.value = 'all';
+  showFacilitatorView('capabilities');
+  paintFacilitatorProductDetail();
+  const modal = document.getElementById('facilitator-product-modal');
+  if (modal && !modal.open) modal.showModal();
 }
 
 function setupFacilitatorManagement() {
   bindSortableTableHeaders('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort, () => {
     paintFacilitatorPersonnel();
+  });
+  bindSortableTableHeaders('#facilitator-capabilities-table', FACILITATOR_CAPABILITY_SORT_COLUMNS, facilitatorCapabilitySort, () => {
+    paintFacilitatorProgramCapabilities();
   });
   document.getElementById('facilitator-view-tabs')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-facilitator-view]');
@@ -11435,8 +11604,18 @@ function setupFacilitatorManagement() {
   document.getElementById('facilitator-search')?.addEventListener('input', paintFacilitatorPersonnel);
   document.getElementById('facilitator-active-filter')?.addEventListener('change', paintFacilitatorPersonnel);
   document.getElementById('facilitator-product-filter')?.addEventListener('change', paintFacilitatorPersonnel);
+  document.getElementById('facilitator-product-search')?.addEventListener('input', paintFacilitatorProgramCapabilities);
+  document.getElementById('facilitator-product-presence')?.addEventListener('change', paintFacilitatorProgramCapabilities);
+  document.getElementById('facilitator-product-person-search')?.addEventListener('input', paintFacilitatorProductDetail);
+  document.getElementById('facilitator-product-active-filter')?.addEventListener('change', paintFacilitatorProductDetail);
+  document.getElementById('facilitator-product-personnel')?.addEventListener('click', (event) => {
+    const personButton = event.target.closest('[data-facilitator-person]');
+    if (personButton) openFacilitatorDetail(personButton.dataset.facilitatorPerson);
+  });
   document.getElementById('facilitator-detail-close')?.addEventListener('click', closeFacilitatorDetail);
   document.getElementById('facilitator-detail-close-btn')?.addEventListener('click', closeFacilitatorDetail);
+  document.getElementById('facilitator-product-close')?.addEventListener('click', closeFacilitatorProductDetail);
+  document.getElementById('facilitator-product-close-btn')?.addEventListener('click', closeFacilitatorProductDetail);
 }
 
 function switchView(viewName) {
@@ -11445,7 +11624,10 @@ function switchView(viewName) {
   }
 
   currentView = viewName;
-  if (viewName !== 'facilitators') closeFacilitatorDetail();
+  if (viewName !== 'facilitators') {
+    closeFacilitatorDetail();
+    closeFacilitatorProductDetail();
+  }
 
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.classList.toggle('active', item.dataset.view === viewName);

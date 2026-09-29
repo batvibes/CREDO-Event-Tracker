@@ -1214,6 +1214,7 @@
         <nav class="team-directory-tabs" id="facilitator-view-tabs" role="tablist" aria-label="Facilitator Management">
           <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="facilitator-tab-overview" data-facilitator-view="overview" aria-selected="true" aria-controls="facilitator-overview-panel">Overview</button>
           <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-personnel" data-facilitator-view="personnel" aria-selected="false" aria-controls="facilitator-personnel-panel">Personnel</button>
+          <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-capabilities" data-facilitator-view="capabilities" aria-selected="false" aria-controls="facilitator-capabilities-panel">Program Capabilities</button>
         </nav>
         <section class="content-section" id="facilitator-overview-panel" aria-label="Overview">
           <div class="facilitator-summary" id="facilitator-summary"></div>
@@ -1290,6 +1291,35 @@
             </table>
           </div>
         </section>
+        <section class="content-section" id="facilitator-capabilities-panel" hidden aria-labelledby="facilitator-capabilities-heading">
+          <div class="section-header">
+            <div class="section-header-start facilitator-toolbar">
+              <h3 id="facilitator-capabilities-heading">Program Capabilities</h3>
+              <input type="search" id="facilitator-product-search" class="settings-search-input facilitator-search" placeholder="Search products" aria-label="Search products">
+              <select id="facilitator-product-presence" class="filter-select" aria-label="Recorded personnel">
+                <option value="all">All products</option>
+                <option value="with">With recorded personnel</option>
+                <option value="without">No recorded personnel</option>
+              </select>
+            </div>
+          </div>
+          <p class="facilitator-summary-note">Personnel counts each person once when recorded experience, a qualification record, or both exist for the product. Qualification Records means a record is on file.</p>
+          <div class="table-wrap">
+            <table class="events-table" id="facilitator-capabilities-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="facilitator-count">Personnel</th>
+                  <th class="facilitator-count">Recorded Experience</th>
+                  <th class="facilitator-count">Recorded Instances</th>
+                  <th>Most Recent</th>
+                  <th class="facilitator-count">Qualification Records</th>
+                </tr>
+              </thead>
+              <tbody id="facilitator-capabilities-body"></tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
       <div id="view-settings" class="view" hidden>
@@ -1318,6 +1348,29 @@
       <div class="modal-body" id="facilitator-detail-body"></div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="facilitator-detail-close-btn">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal" id="facilitator-product-modal">
+    <div class="modal-content facilitator-detail-content">
+      <div class="modal-header">
+        <h3 id="facilitator-product-title">Product</h3>
+        <button type="button" class="modal-close" id="facilitator-product-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="facilitator-product-body">
+        <div class="facilitator-toolbar">
+          <input type="search" id="facilitator-product-person-search" class="settings-search-input facilitator-search" placeholder="Search by name" aria-label="Search product personnel by name">
+          <select id="facilitator-product-active-filter" class="filter-select" aria-label="Active status">
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        <div class="table-wrap" id="facilitator-product-personnel"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="facilitator-product-close-btn">Close</button>
       </div>
     </div>
   </dialog>

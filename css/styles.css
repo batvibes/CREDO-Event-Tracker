@@ -6905,3 +6905,25 @@ body:has(#new-event-modal[open]) {
 #facilitator-detail-modal .events-table td:first-child {
   white-space: nowrap;
 }
+
+#facilitator-product-modal {
+  width: min(1100px, calc(100vw - 32px));
+}
+
+#facilitator-product-modal .facilitator-detail-content {
+  width: 100%;
+}
+
+#facilitator-product-modal .modal-body {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+
+#facilitator-product-modal .events-table th {
+  white-space: normal;
+}
+
+#facilitator-product-modal .facilitator-detail-note {
+  margin: 0;
+  color: var(--text-muted);
+}

@@ -16,6 +16,12 @@ export const FACILITATOR_NO_DATA_GAPS = 'No current data gaps identified.';
 export const FACILITATOR_QUALIFICATION_NOT_ENTERED = 'Qualification record not yet entered';
 export const FACILITATOR_NO_EXPERIENCE_OR_RECORD = 'No recorded experience or qualification record';
 export const FACILITATOR_NO_PRODUCT_EXPERIENCE = 'No recorded experience';
+export const FACILITATOR_NO_FACILITATOR_RECORDS = 'No facilitator records';
+export const FACILITATOR_EMPTY_PRODUCTS = 'No facilitator products found.';
+export const FACILITATOR_PRODUCT_EXPERIENCE_YES = 'Yes';
+export const FACILITATOR_PRODUCT_EXPERIENCE_NO = 'No';
+export const FACILITATOR_QUALIFICATION_ON_FILE = 'On file';
+export const FACILITATOR_QUALIFICATION_NONE = 'None';
 export const FACILITATOR_RECENT_LIMIT = 8;
 
 function cleanText(value) {
@@ -283,6 +289,107 @@ export function buildFacilitatorOverview(personnel, products) {
     recent: recent.slice(0, FACILITATOR_RECENT_LIMIT),
     attention,
   };
+}
+
+export function buildFacilitatorProgramCapabilities(personnel, products) {
+  const catalog = [...productCatalog(products).values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.name, right.name));
+  return catalog.map((product) => {
+    const people = new Set();
+    const experienced = [];
+    const qualificationPeople = new Set();
+    for (const person of personnel ?? []) {
+      const experience = person.experience?.find((row) => row.productId === product.id);
+      const hasQualification = person.qualificationProducts?.some((row) => row.productId === product.id) === true;
+      if (!experience && !hasQualification) continue;
+      people.add(person.id);
+      if (experience) experienced.push(experience);
+      if (hasQualification) qualificationPeople.add(person.id);
+    }
+    const mostRecentOn = experienced.reduce((latest, row) => {
+      if (!row.mostRecentOn) return latest;
+      if (!latest || row.mostRecentOn > latest) return row.mostRecentOn;
+      return latest;
+    }, null);
+    return {
+      productId: product.id,
+      productName: product.name,
+      sortOrder: product.sortOrder,
+      personnelCount: people.size,
+      recordedExperienceCount: experienced.length,
+      recordedInstances: experienced.reduce((sum, row) => sum + row.eventsConducted, 0),
+      mostRecentOn,
+      qualificationRecordCount: qualificationPeople.size,
+    };
+  });
+}
+
+export function filterFacilitatorProgramCapabilities(records, filters = {}) {
+  const query = normalizeSearch(filters.query);
+  const presence = filters.presence === 'with' || filters.presence === 'without' ? filters.presence : 'all';
+  return (records ?? []).filter((record) => {
+    if (presence === 'with' && record.personnelCount === 0) return false;
+    if (presence === 'without' && record.personnelCount > 0) return false;
+    if (!query) return true;
+    return normalizeSearch(record.productName).includes(query);
+  });
+}
+
+function compareProductRecent(left, right, direction) {
+  const leftDate = left.mostRecentOn || '';
+  const rightDate = right.mostRecentOn || '';
+  if (!leftDate && !rightDate) return left.sortOrder - right.sortOrder;
+  if (!leftDate) return 1;
+  if (!rightDate) return -1;
+  const compared = direction === 'desc' ? compareText(rightDate, leftDate) : compareText(leftDate, rightDate);
+  return compared || left.sortOrder - right.sortOrder;
+}
+
+export function sortFacilitatorProgramCapabilities(records, column = 'catalog', direction = 'asc') {
+  const descending = direction === 'desc';
+  const sorted = [...(records ?? [])].sort((left, right) => {
+    if (column === 'personnel') return left.personnelCount - right.personnelCount || left.sortOrder - right.sortOrder;
+    if (column === 'experience') return left.recordedExperienceCount - right.recordedExperienceCount || left.sortOrder - right.sortOrder;
+    if (column === 'instances') return left.recordedInstances - right.recordedInstances || left.sortOrder - right.sortOrder;
+    if (column === 'qualifications') return left.qualificationRecordCount - right.qualificationRecordCount || left.sortOrder - right.sortOrder;
+    if (column === 'recent') return compareProductRecent(left, right, descending ? 'desc' : 'asc');
+    return left.sortOrder - right.sortOrder || compareText(left.productName, right.productName);
+  });
+  if (descending && column !== 'recent') return sorted.reverse();
+  return sorted;
+}
+
+export function facilitatorProductPersonnel(personnel, productId) {
+  const people = [];
+  for (const person of personnel ?? []) {
+    const experience = person.experience?.find((row) => row.productId === productId) || null;
+    const hasQualificationRecord = person.qualificationProducts?.some((row) => row.productId === productId) === true;
+    if (!experience && !hasQualificationRecord) continue;
+    people.push({
+      personId: person.id,
+      displayName: person.displayName,
+      commandOrganization: person.commandOrganization,
+      installation: person.installation,
+      active: person.active === true,
+      hasRecordedExperience: Boolean(experience),
+      recordedInstances: experience ? experience.eventsConducted : 0,
+      firstRecordedOn: experience?.firstRecordedOn ?? null,
+      mostRecentOn: experience?.mostRecentOn ?? null,
+      hasQualificationRecord,
+    });
+  }
+  return people.sort((left, right) => compareText(left.displayName, right.displayName) || compareText(left.personId, right.personId));
+}
+
+export function filterFacilitatorProductPersonnel(records, filters = {}) {
+  const query = normalizeSearch(filters.query);
+  const active = filters.active === 'active' || filters.active === 'inactive' ? filters.active : 'all';
+  return (records ?? []).filter((record) => {
+    if (active === 'active' && record.active !== true) return false;
+    if (active === 'inactive' && record.active !== false) return false;
+    if (!query) return true;
+    return normalizeSearch(record.displayName).includes(query);
+  });
 }
 
 export function facilitatorProductFilterOptions(records) {

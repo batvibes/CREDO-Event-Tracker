@@ -53,8 +53,9 @@ assert(app.includes('Recorded Facilitation Instances'), 'the participation total
 const overviewPaint = app.slice(app.indexOf('function paintFacilitatorOverview'), app.indexOf('function paintFacilitatorPersonnel'));
 assert(!overviewPaint.includes('Total Events'), 'the participation total is not labeled as unique Events');
 assert(app.includes('openFacilitatorDetail') && app.includes('data-facilitator-person'), 'a facilitator name reuses the existing person detail');
-assert(app.includes('data-facilitator-product'), 'a product with recorded experience can open Personnel');
-assert(!view.includes('Program Capabilities') && !view.includes('Development'), 'later views are not presented as live');
+assert(app.includes('data-facilitator-product'), 'a product row can open the product-centric view');
+assert(view.includes('Program Capabilities'), 'Program Capabilities is available beside Overview');
+assert(!view.includes('Development'), 'Development is not presented as a live view');
 
 assert(model.includes(FACILITATOR_QUALIFICATION_NOT_ENTERED), 'experience without a qualification row is a missing record');
 assert(model.includes(FACILITATOR_NO_EXPERIENCE_OR_RECORD), 'a designated facilitator without records is a data gap');
