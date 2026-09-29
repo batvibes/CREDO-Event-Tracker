@@ -74,7 +74,7 @@ assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'the personnel model do
 assert(!model.includes(".from('events')"), 'the personnel model does not read Events');
 assert(!/standing|trainer_authority|readiness|certification|qualified/i.test(`${model}\n${html.slice(html.indexOf('id="view-facilitators"'), html.indexOf('id="view-settings"'))}`), 'experience is not presented as qualification, certification, or a score');
 
-const products = [{ id: 'asist', name: 'ASIST', code: 'asist', sort_order: 15 }];
+const products = [{ id: 'asist', name: 'ASIST', code: 'asist', sort_order: 15, active: true }];
 const flagged = { id: 'flagged', name: 'Ada', rank_title: 'LCDR', command_organization: 'CREDO', installation: 'Camp Pendleton', active: true, is_facilitator: true };
 const experienced = { id: 'experienced', name: 'John Scanlon', rank_title: 'CDR', command_organization: 'CREDO', installation: 'Camp Pendleton', active: false, is_facilitator: false };
 const qualified = { id: 'qualified', name: 'Blake', rank_title: '', active: true, is_facilitator: false };

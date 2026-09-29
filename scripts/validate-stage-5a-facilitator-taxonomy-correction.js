@@ -158,7 +158,12 @@ assert(originalMappings.includes("('Personal Growth Workshop', 'personal_growth_
 
 assert(!read('js/facilitator-management.js').includes('curriculum_product_id'), 'Facilitator Management does not edit Event curriculum');
 assert(!read('js/facilitator-management.js').includes('facilitator_event_type_allowed_products'), 'Facilitator Management does not read allowed curricula');
-assert(read('js/db.js').includes(".select('id, name, code, sort_order')"), 'the facilitator catalog read does not filter active products');
+const facilitatorRead = read('js/db.js').slice(
+  read('js/db.js').indexOf('export async function fetchFacilitatorManagementSources'),
+  read('js/db.js').indexOf('export async function fetchTeamDirectoryPersonnel'),
+);
+assert(facilitatorRead.includes(".select('id, name, code, active, sort_order')"), 'the facilitator catalog read includes the active flag');
+assert(!facilitatorRead.includes(".eq('active'"), 'the catalog query returns the active flag instead of hiding rows in SQL');
 
 const protectedPaths = [
   'js/monthly-report-pptx-export.js',

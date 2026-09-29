@@ -1,7 +1,10 @@
 /**
  * Read-only Facilitator Management personnel model.
  * Historical experience comes from facilitator_product_experience.
- * This module does not write people, qualifications, roles, or Events.
+ * The operational catalog is facilitator_products with active === true, ordered by sort_order.
+ * A person is included when is_facilitator is true, or when derived experience or a
+ * qualification row exists on an active product. Inactive product rows stay stored and
+ * are omitted here. This module does not write people, qualifications, roles, or Events.
  *
  * Later views can sit beside Personnel: Overview, Program Capabilities, and Development.
  */
@@ -78,7 +81,7 @@ function mapPerson(row) {
 function productCatalog(products) {
   const byId = new Map();
   for (const product of products ?? []) {
-    if (!product?.id || byId.has(product.id)) continue;
+    if (!product?.id || product.active !== true || byId.has(product.id)) continue;
     byId.set(product.id, {
       id: product.id,
       name: cleanText(product.name) || 'Unnamed product',
@@ -91,26 +94,17 @@ function productCatalog(products) {
   return byId;
 }
 
-function namedProduct(catalog, productId) {
-  return catalog.get(productId) || {
-    id: productId,
-    name: 'Unnamed product',
-    code: '',
-    sortOrder: Number.MAX_SAFE_INTEGER,
-  };
-}
-
 export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products) {
   const catalog = productCatalog(products);
   const experienceByPerson = new Map();
   for (const row of experienceRows ?? []) {
     const personId = row?.person_id ?? row?.personId;
     const productId = row?.product_id ?? row?.productId;
-    if (!personId || !productId) continue;
+    const product = catalog.get(productId);
+    if (!personId || !product) continue;
     if (!experienceByPerson.has(personId)) experienceByPerson.set(personId, new Map());
     const productsForPerson = experienceByPerson.get(personId);
     if (productsForPerson.has(productId)) continue;
-    const product = namedProduct(catalog, productId);
     productsForPerson.set(productId, {
       productId,
       productName: product.name,
@@ -125,11 +119,11 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
   for (const row of qualificationRows ?? []) {
     const personId = row?.person_id ?? row?.personId;
     const productId = row?.product_id ?? row?.productId;
-    if (!personId || !productId) continue;
+    const product = catalog.get(productId);
+    if (!personId || !product) continue;
     if (!qualificationsByPerson.has(personId)) qualificationsByPerson.set(personId, new Map());
     const productsForPerson = qualificationsByPerson.get(personId);
     if (productsForPerson.has(productId)) continue;
-    const product = namedProduct(catalog, productId);
     productsForPerson.set(productId, {
       productId,
       productName: product.name,

@@ -1098,7 +1098,7 @@ export async function fetchFacilitatorManagementSources() {
       .select('person_id, product_id'),
     supabase
       .from('facilitator_products')
-      .select('id, name, code, sort_order')
+      .select('id, name, code, active, sort_order')
       .order('sort_order', { ascending: true }),
   ]);
 

@@ -68,9 +68,9 @@ assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'Overview does not writ
 assert(!db.includes('save_facilitator_qualification'), 'no qualification write was added');
 
 const products = [
-  { id: 'second', name: 'Second Product', code: 'second', sort_order: 2 },
-  { id: 'first', name: 'First Product', code: 'first', sort_order: 1 },
-  { id: 'empty', name: 'Empty Product', code: 'empty', sort_order: 3 },
+  { id: 'second', name: 'Second Product', code: 'second', sort_order: 2, active: true },
+  { id: 'first', name: 'First Product', code: 'first', sort_order: 1, active: true },
+  { id: 'empty', name: 'Empty Product', code: 'empty', sort_order: 3, active: true },
 ];
 const activeExperienced = {
   id: 'ada',

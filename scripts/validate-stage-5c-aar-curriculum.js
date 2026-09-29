@@ -77,18 +77,18 @@ const aarFieldUpdate = db.slice(db.indexOf('export async function updateEventAar
 assert(!aarFieldUpdate.includes('curriculum_product_id'), 'AAR field saves do not send curriculum_product_id');
 
 let migrationDiff = '';
-let facilitatorDiff = '';
 let eventCurriculumDiff = '';
+let aarCurriculumDiff = '';
 try {
   migrationDiff = execFileSync('git', ['diff', '--', 'supabase/migrations/023_facilitator_product_taxonomy_correction.sql'], { cwd: ROOT, encoding: 'utf8' });
-  facilitatorDiff = execFileSync('git', ['diff', '--', 'js/facilitator-management.js'], { cwd: ROOT, encoding: 'utf8' });
   eventCurriculumDiff = execFileSync('git', ['diff', '--', 'js/event-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
+  aarCurriculumDiff = execFileSync('git', ['diff', '--', 'js/aar-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
 assert(migrationDiff.trim() === '', 'Migration 023 is unchanged');
-assert(facilitatorDiff.trim() === '', 'Facilitator Management is unchanged');
 assert(!facilitator.includes('curriculum_product_id'), 'Facilitator Management does not read Event curriculum');
+assert(aarCurriculumDiff.trim() === '', 'Stage 5C AAR curriculum display is unchanged');
 assert(eventCurriculumDiff.trim() === '', 'Stage 5B curriculum choice behavior is unchanged');
 const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
 assert(!migrationNames.some((name) => name.startsWith('024')), 'Stage 5C adds no migration');

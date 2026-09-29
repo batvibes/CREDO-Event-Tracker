@@ -62,9 +62,9 @@ assert(!db.includes('save_facilitator_qualification'), 'no qualification write w
 assert(!/\.from\('events'\)/.test(db.slice(db.indexOf('fetchFacilitatorManagementSources'), db.indexOf('fetchTeamDirectoryPersonnel'))), 'the facilitator read does not query Events');
 
 const products = [
-  { id: 'second', name: 'Second Product', code: 'second', sort_order: 2 },
-  { id: 'first', name: 'First Product', code: 'first', sort_order: 1 },
-  { id: 'empty', name: 'Empty Product', code: 'empty', sort_order: 3 },
+  { id: 'second', name: 'Second Product', code: 'second', sort_order: 2, active: true },
+  { id: 'first', name: 'First Product', code: 'first', sort_order: 1, active: true },
+  { id: 'empty', name: 'Empty Product', code: 'empty', sort_order: 3, active: true },
 ];
 const personnel = summarizeFacilitatorPersonnel(
   [
@@ -120,7 +120,6 @@ for (const relativePath of [
   'js/event-reference-fields.js',
   'js/settings-reference-lists.js',
   'js/personnel-identity.js',
-  'js/facilitator-management.js',
 ]) {
   const diff = execFileSync('git', ['diff', '--', relativePath], { cwd: ROOT, encoding: 'utf8' });
   assert(diff.trim() === '', `${relativePath} is unchanged`);

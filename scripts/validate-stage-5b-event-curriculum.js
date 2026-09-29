@@ -141,20 +141,18 @@ const aarArticleStart = html.indexOf('id="aar-report-article"');
 const aarArticle = html.slice(aarArticleStart, html.indexOf('</article>', aarArticleStart));
 assert(!aarArticle.includes('Curriculum / Product'), 'the AAR template does not reserve a curriculum row');
 assert(!/<(select|input)\b/i.test(aarArticle), 'the AAR template has no curriculum control');
-assert(!facilitator.includes('curriculum_product_id'), 'Facilitator Management is unchanged by the curriculum field');
+assert(!facilitator.includes('curriculum_product_id'), 'Facilitator Management does not edit Event curriculum');
 assert(!facilitator.includes('facilitator_event_type_allowed_products'), 'Facilitator Management does not read allowed curricula');
-assert(db.includes(".select('id, name, code, sort_order')"), 'the Facilitator Management product read still does not filter on active');
+const facilitatorRead = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf('export async function fetchTeamDirectoryPersonnel'));
+assert(facilitatorRead.includes(".select('id, name, code, active, sort_order')"), 'Facilitator Management receives the product active flag');
 
 let migrationDiff = '';
-let facilitatorDiff = '';
 try {
   migrationDiff = execFileSync('git', ['diff', '--', 'supabase/migrations/023_facilitator_product_taxonomy_correction.sql'], { cwd: ROOT, encoding: 'utf8' });
-  facilitatorDiff = execFileSync('git', ['diff', '--', 'js/facilitator-management.js'], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
 assert(migrationDiff.trim() === '', 'Migration 023 is unchanged');
-assert(facilitatorDiff.trim() === '', 'Facilitator Management is unchanged');
 assert(migration.includes('add column curriculum_product_id'), 'the review still sees the Stage 5A curriculum column');
 
 const repaired = [
