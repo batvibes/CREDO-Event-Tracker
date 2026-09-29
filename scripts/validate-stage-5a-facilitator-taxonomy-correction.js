@@ -156,11 +156,9 @@ assert(originalProducts.includes("('marriage_enrichment_workshop', 'Marriage Enr
 assert(originalMappings.includes("('Marriage Enrichment Workshop', 'marriage_enrichment_workshop')"), 'migration 022 remains the historical direct workshop mapping');
 assert(originalMappings.includes("('Personal Growth Workshop', 'personal_growth_workshop')"), 'migration 022 remains the historical PGW mapping');
 
-assert(!read('js/db.js').includes('curriculum_product_id'), 'the client does not yet read or write Event curriculum');
-assert(!read('js/app.js').includes('curriculum_product_id'), 'Event Details does not yet edit curriculum');
-assert(!read('js/facilitator-management.js').includes('curriculum_product_id'), 'Facilitator Management is not redesigned in this stage');
-assert(!read('js/db.js').includes('facilitator_event_type_allowed_products'), 'allowed curricula are not managed from the client');
-assert(read('js/db.js').includes(".select('id, name, code, sort_order')"), 'the current facilitator catalog read does not yet filter active products');
+assert(!read('js/facilitator-management.js').includes('curriculum_product_id'), 'Facilitator Management does not edit Event curriculum');
+assert(!read('js/facilitator-management.js').includes('facilitator_event_type_allowed_products'), 'Facilitator Management does not read allowed curricula');
+assert(read('js/db.js').includes(".select('id, name, code, sort_order')"), 'the facilitator catalog read does not filter active products');
 
 const protectedPaths = [
   'js/monthly-report-pptx-export.js',

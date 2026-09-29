@@ -132,10 +132,7 @@ try {
 assert(protectedDiff.trim() === '', 'MIR, Manning, Team, and Stage 3 migrations are unchanged');
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationStatus = status.split('\n').map((line) => line.trim()).filter(Boolean);
-assert(
-  migrationStatus.length === 1 && migrationStatus[0].endsWith('supabase/migrations/023_facilitator_product_taxonomy_correction.sql'),
-  'Stage 5A taxonomy correction is the only new migration',
-);
+assert(migrationStatus.length === 0, 'Stage 5B adds no new migration');
 for (const filePath of [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',
   'scripts/spike-output/section_iv_navstds_occstds_navy_governance_training  -  Repaired.pptx',

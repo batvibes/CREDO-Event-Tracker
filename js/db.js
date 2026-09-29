@@ -1,5 +1,10 @@
 import { supabase } from './supabase.js';
 import { mapTeamDirectoryPerson } from './team-personnel-directory.js';
+import {
+  buildEventCurriculumChoices,
+  isMissingEventCurriculumSchemaError,
+  normalizeCurriculumProductId,
+} from './event-curriculum.js';
 
 function booleanFromDb(value) {
   if (value === true || value === 1) return true;
@@ -58,6 +63,7 @@ export function eventFromRow(row) {
     aarFinalized: booleanFromDb(row.aar_finalized),
     aarFinalizedAt: row.aar_finalized_at ?? null,
     aarSequenceNumber: row.aar_sequence_number == null ? '' : String(row.aar_sequence_number),
+    curriculumProductId: row.curriculum_product_id ?? null,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   };
@@ -130,10 +136,12 @@ function resolveEventDates(event) {
   };
 }
 
-export function eventToRow(event) {
+let eventCurriculumSchemaAvailable = false;
+
+export function eventToRow(event, options = {}) {
   const dates = resolveEventDates(event);
 
-  return {
+  const row = {
     date: dates.date,
     date_type: dates.dateType,
     start_date: dates.startDate,
@@ -160,6 +168,16 @@ export function eventToRow(event) {
     time: event.time ?? '',
     poc: event.poc ?? '',
   };
+
+  if (options.includeCurriculum) {
+    row.curriculum_product_id = normalizeCurriculumProductId(event.curriculumProductId);
+  }
+
+  return row;
+}
+
+function eventWriteRow(event) {
+  return eventToRow(event, { includeCurriculum: eventCurriculumSchemaAvailable });
 }
 
 export function teamFromRow(row) {
@@ -216,7 +234,7 @@ export async function insertEvent(event) {
   const { data, error } = await supabase
     .from('events')
     .insert({
-      ...eventToRow(event),
+      ...eventWriteRow(event),
       created_by: userId,
       updated_by: userId,
     })
@@ -243,7 +261,7 @@ export async function updateEvent(event) {
   const { data, error } = await supabase
     .from('events')
     .update({
-      ...eventToRow(event),
+      ...eventWriteRow(event),
       updated_by: userId,
     })
     .eq('id', event.id)
@@ -790,6 +808,55 @@ export async function renameEventTypeInEvents(previousName, newName) {
     .eq('event_type', previousName);
 
   if (error) throw error;
+}
+
+export async function loadEventCurriculumSupport() {
+  const columnProbe = await supabase
+    .from('events')
+    .select('curriculum_product_id')
+    .limit(1);
+
+  if (columnProbe.error) {
+    if (isMissingEventCurriculumSchemaError(columnProbe.error)) {
+      eventCurriculumSchemaAvailable = false;
+      return { available: false, choices: [] };
+    }
+    throw columnProbe.error;
+  }
+
+  const allowedProbe = await supabase
+    .from('facilitator_event_type_allowed_products')
+    .select('event_type_id, product_id');
+
+  if (allowedProbe.error) {
+    if (isMissingEventCurriculumSchemaError(allowedProbe.error)) {
+      eventCurriculumSchemaAvailable = false;
+      return { available: false, choices: [] };
+    }
+    throw allowedProbe.error;
+  }
+
+  const [productsResult, eventTypesResult] = await Promise.all([
+    supabase
+      .from('facilitator_products')
+      .select('id, name, code, active, sort_order'),
+    supabase
+      .from('event_types')
+      .select('id, name'),
+  ]);
+
+  if (productsResult.error) throw productsResult.error;
+  if (eventTypesResult.error) throw eventTypesResult.error;
+
+  eventCurriculumSchemaAvailable = true;
+  return {
+    available: true,
+    choices: buildEventCurriculumChoices({
+      allowedRows: allowedProbe.data,
+      products: productsResult.data,
+      eventTypes: eventTypesResult.data,
+    }),
+  };
 }
 
 export async function fetchEventTypes() {

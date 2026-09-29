@@ -238,10 +238,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(
-  migrationLines.length === 1 && migrationLines[0].includes('supabase/migrations/023_facilitator_product_taxonomy_correction.sql'),
-  'Stage 5A taxonomy correction is the only unapplied migration',
-);
+assert(migrationLines.length === 0, 'Stage 5B adds no unapplied migration');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',

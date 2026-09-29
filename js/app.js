@@ -15,6 +15,7 @@ import {
   fetchEvents,
   fetchFacilitatorManagementSources,
   fetchLocations,
+  loadEventCurriculumSupport,
   fetchMonthlyReport,
   fetchMonthlyReports,
   fetchPeople,
@@ -51,6 +52,10 @@ import {
   removeVenue,
 } from './db.js';
 import { initEventReferenceFields } from './event-reference-fields.js';
+import {
+  curriculumChoicesForEventType,
+  reconcileCurriculumProductId,
+} from './event-curriculum.js';
 import { personnelDisplayName } from './personnel-identity.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
@@ -181,6 +186,8 @@ const DEFAULT_TEAM = {
 let events = [];
 let eventTypes = [];
 let eventTypeRecords = [];
+let eventCurriculumAvailable = false;
+let eventCurriculumChoices = [];
 let aarGlobalTemplates = {
   credoRequirements: '',
   commandRequirements: '',
@@ -514,6 +521,7 @@ function normalizeEvent(event) {
   event.credoStaff = String(event.credoStaff ?? '').trim();
   event.time = String(event.time ?? '').trim();
   event.poc = String(event.poc ?? '').trim();
+  event.curriculumProductId = event.curriculumProductId ? String(event.curriculumProductId) : null;
   if (event.roster !== 'Complete' && event.roster !== 'Need Roster') {
     event.roster =
       event.rosterAcquired === 'Complete' ? 'Complete' : 'Need Roster';
@@ -12005,6 +12013,7 @@ function resetEventForm(form) {
   setAdditionalEventCostsExpanded(false);
   updateEventDateFieldsVisibility(form);
   updateEventTotalRecordedCost(form);
+  syncEventCurriculumField(form, null);
   eventReferenceFields?.reset();
 }
 
@@ -12027,6 +12036,7 @@ function populateEventFormFromRecord(form, event) {
   }
 
   form.querySelector('[name="eventType"]').value = event.eventType;
+  syncEventCurriculumField(form, event.curriculumProductId ?? null);
   form.querySelector('[name="participants"]').value =
     isTbd(event.participants) ? '' : String(event.participants);
   form.querySelector('[name="venueCost"]').value = event.venueCost || '';
@@ -12090,7 +12100,40 @@ function readEventFieldsFromForm(form) {
     credoStaff: String(data.get('credoStaff') || '').trim(),
     time: String(data.get('time') || '').trim(),
     poc: String(data.get('poc') || '').trim(),
+    curriculumProductId: readEventCurriculumProductId(form),
   };
+}
+
+function syncEventCurriculumField(form, selectedId) {
+  const field = document.getElementById('event-curriculum-field');
+  const select = form.querySelector('[name="curriculumProductId"]');
+  if (!field || !select) return;
+
+  const eventType = form.querySelector('[name="eventType"]')?.value || '';
+  const options = eventCurriculumAvailable
+    ? curriculumChoicesForEventType(eventCurriculumChoices, eventType)
+    : [];
+  const requested = selectedId === undefined ? select.value : selectedId;
+
+  select.replaceChildren(new Option('', ''));
+  options.forEach((choice) => {
+    select.append(new Option(choice.name, choice.productId));
+  });
+
+  const reconciled = reconcileCurriculumProductId(eventCurriculumChoices, eventType, requested);
+  select.value = eventCurriculumAvailable && reconciled ? reconciled : '';
+  field.hidden = options.length === 0;
+}
+
+function readEventCurriculumProductId(form) {
+  const field = document.getElementById('event-curriculum-field');
+  const select = form.querySelector('[name="curriculumProductId"]');
+  if (!eventCurriculumAvailable || !field || field.hidden || !select) return null;
+  return reconcileCurriculumProductId(
+    eventCurriculumChoices,
+    form.querySelector('[name="eventType"]')?.value || '',
+    select.value,
+  );
 }
 
 function openNewEventModal() {
@@ -12260,7 +12303,10 @@ function setupModal() {
   openBtn.addEventListener('click', openNewEventModal);
   closeBtn.addEventListener('click', closeModal);
   cancelBtn.addEventListener('click', closeModal);
-  typeSelect.addEventListener('change', hideEventTypeError);
+  typeSelect.addEventListener('change', () => {
+    hideEventTypeError();
+    syncEventCurriculumField(form);
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -12342,16 +12388,19 @@ async function loadReferenceLists() {
 async function loadAllData() {
   const generation = ++dataLoadGeneration;
 
-  const [types, teamData, loadedEvents, globalTemplates] = await Promise.all([
+  const [types, teamData, loadedEvents, globalTemplates, curriculumSupport] = await Promise.all([
     fetchEventTypes(),
     fetchTeam(),
     fetchEvents(),
     fetchAarGlobalTemplates(),
+    loadEventCurriculumSupport(),
   ]);
 
   if (generation !== dataLoadGeneration) return;
 
   eventTypeRecords = types;
+  eventCurriculumAvailable = curriculumSupport.available === true;
+  eventCurriculumChoices = curriculumSupport.choices || [];
   syncEventTypeNames();
   team = teamData;
   events = loadedEvents.map(normalizeEvent);

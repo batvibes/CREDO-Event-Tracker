@@ -120,7 +120,7 @@ for (const relativePath of [
   'js/event-reference-fields.js',
   'js/settings-reference-lists.js',
   'js/personnel-identity.js',
-  'js/db.js',
+  'js/facilitator-management.js',
 ]) {
   const diff = execFileSync('git', ['diff', '--', relativePath], { cwd: ROOT, encoding: 'utf8' });
   assert(diff.trim() === '', `${relativePath} is unchanged`);
@@ -128,7 +128,7 @@ for (const relativePath of [
 const migrationDiff = execFileSync('git', ['diff', '--', 'supabase/migrations'], { cwd: ROOT, encoding: 'utf8' });
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', 'supabase/migrations'], { cwd: ROOT, encoding: 'utf8' });
-assert(untracked.trim() === 'supabase/migrations/023_facilitator_product_taxonomy_correction.sql', 'Stage 5A taxonomy correction is the only untracked migration');
+assert(untracked.trim() === '', 'Stage 5B adds no untracked migration');
 for (const repaired of [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',
   'scripts/spike-output/section_iv_navstds_occstds_navy_governance_training  -  Repaired.pptx',

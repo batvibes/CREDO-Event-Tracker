@@ -791,6 +791,10 @@ body:has(#new-event-modal[open]) {
   border: none;
 }
 
+#new-event-modal #event-curriculum-field[hidden] {
+  display: none;
+}
+
 #new-event-modal .event-form-section-title {
   margin: 0 0 10px;
   font-size: 0.75rem;
