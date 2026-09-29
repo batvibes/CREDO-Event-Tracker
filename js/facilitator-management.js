@@ -12,6 +12,11 @@ export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitator personnel found.';
 export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
 export const FACILITATOR_NO_QUALIFICATION_RECORD = 'No qualification record.';
 export const FACILITATOR_QUALIFICATION_RECORD = 'Qualification record on file.';
+export const FACILITATOR_NO_DATA_GAPS = 'No current data gaps identified.';
+export const FACILITATOR_QUALIFICATION_NOT_ENTERED = 'Qualification record not yet entered';
+export const FACILITATOR_NO_EXPERIENCE_OR_RECORD = 'No recorded experience or qualification record';
+export const FACILITATOR_NO_PRODUCT_EXPERIENCE = 'No recorded experience';
+export const FACILITATOR_RECENT_LIMIT = 8;
 
 function cleanText(value) {
   if (value == null) return '';
@@ -209,6 +214,75 @@ export function sortFacilitatorPersonnel(records, column = 'name', direction = '
   });
   if (descending && column !== 'recent') return sorted.reverse();
   return sorted;
+}
+
+export function buildFacilitatorOverview(personnel, products) {
+  const catalog = [...productCatalog(products).values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.name, right.name));
+  const coverage = catalog.map((product) => {
+    const rows = [];
+    for (const person of personnel ?? []) {
+      const experience = person.experience?.find((row) => row.productId === product.id);
+      if (experience) rows.push(experience);
+    }
+    const mostRecentOn = rows.reduce((latest, row) => {
+      if (!row.mostRecentOn) return latest;
+      if (!latest || row.mostRecentOn > latest) return row.mostRecentOn;
+      return latest;
+    }, null);
+    return {
+      productId: product.id,
+      productName: product.name,
+      sortOrder: product.sortOrder,
+      peopleWithExperience: rows.length,
+      recordedInstances: rows.reduce((sum, row) => sum + row.eventsConducted, 0),
+      mostRecentOn,
+    };
+  });
+  const productsWithRecordedExperience = coverage.filter((row) => row.peopleWithExperience > 0).length;
+  const recent = [];
+  for (const person of personnel ?? []) {
+    for (const row of person.experience ?? []) {
+      if (!row.mostRecentOn) continue;
+      recent.push({
+        personId: person.id,
+        displayName: person.displayName,
+        productId: row.productId,
+        productName: row.productName,
+        mostRecentOn: row.mostRecentOn,
+      });
+    }
+  }
+  recent.sort((left, right) => compareText(right.mostRecentOn, left.mostRecentOn)
+    || compareText(left.displayName, right.displayName)
+    || compareText(left.productName, right.productName));
+  const attention = [];
+  for (const person of personnel ?? []) {
+    if (person.active !== true) continue;
+    if (person.experience.length > 0 && person.hasQualificationRecord !== true) {
+      attention.push({
+        personId: person.id,
+        displayName: person.displayName,
+        condition: FACILITATOR_QUALIFICATION_NOT_ENTERED,
+      });
+    } else if (person.isFacilitator === true && person.experience.length === 0 && person.hasQualificationRecord !== true) {
+      attention.push({
+        personId: person.id,
+        displayName: person.displayName,
+        condition: FACILITATOR_NO_EXPERIENCE_OR_RECORD,
+      });
+    }
+  }
+  attention.sort((left, right) => compareText(left.displayName, right.displayName) || compareText(left.personId, right.personId));
+  return {
+    activeFacilitatorPersonnel: (personnel ?? []).filter((person) => person.active === true).length,
+    productsWithRecordedExperience,
+    productsWithoutRecordedExperience: coverage.length - productsWithRecordedExperience,
+    recordedFacilitationInstances: coverage.reduce((sum, row) => sum + row.recordedInstances, 0),
+    coverage,
+    recent: recent.slice(0, FACILITATOR_RECENT_LIMIT),
+    attention,
+  };
 }
 
 export function facilitatorProductFilterOptions(records) {

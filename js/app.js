@@ -55,8 +55,11 @@ import { personnelDisplayName } from './personnel-identity.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
   FACILITATOR_EMPTY_PERSONNEL,
+  FACILITATOR_NO_DATA_GAPS,
+  FACILITATOR_NO_PRODUCT_EXPERIENCE,
   FACILITATOR_NO_QUALIFICATION_RECORD,
   FACILITATOR_QUALIFICATION_RECORD,
+  buildFacilitatorOverview,
   facilitatorProductFilterOptions,
   filterFacilitatorPersonnel,
   formatRecordedFacilitationDate,
@@ -11079,8 +11082,10 @@ const FACILITATOR_SORT_COLUMNS = [
 ];
 
 let facilitatorPersonnel = [];
+let facilitatorProducts = [];
 let facilitatorSort = { column: 'name', direction: SORT_ASC };
 let facilitatorLoadGeneration = 0;
+let facilitatorInternalView = 'overview';
 
 function facilitatorFilterState() {
   return {
@@ -11115,6 +11120,128 @@ function appendFacilitatorCell(row, text, className) {
   if (className) cell.className = className;
   cell.textContent = text || '—';
   row.appendChild(cell);
+}
+
+function showFacilitatorView(view) {
+  facilitatorInternalView = view === 'personnel' ? 'personnel' : 'overview';
+  const overview = document.getElementById('facilitator-overview-panel');
+  const personnel = document.getElementById('facilitator-personnel-panel');
+  const subtitle = document.getElementById('facilitator-view-subtitle');
+  if (overview) overview.hidden = facilitatorInternalView !== 'overview';
+  if (personnel) personnel.hidden = facilitatorInternalView !== 'personnel';
+  if (subtitle) subtitle.textContent = facilitatorInternalView === 'personnel' ? 'Personnel' : 'Overview';
+  document.querySelectorAll('#facilitator-view-tabs .team-directory-tab').forEach((button) => {
+    const selected = button.dataset.facilitatorView === facilitatorInternalView;
+    button.classList.toggle('team-directory-tab-active', selected);
+    button.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+}
+
+function appendFacilitatorEmptyRow(body, columnCount, message) {
+  body.replaceChildren();
+  const row = document.createElement('tr');
+  row.className = 'facilitator-empty';
+  const cell = document.createElement('td');
+  cell.colSpan = columnCount;
+  cell.textContent = message;
+  row.appendChild(cell);
+  body.appendChild(row);
+}
+
+function paintFacilitatorOverview() {
+  const summary = document.getElementById('facilitator-summary');
+  const note = document.getElementById('facilitator-summary-note');
+  const coverageBody = document.getElementById('facilitator-coverage-body');
+  const recentBody = document.getElementById('facilitator-recent-body');
+  const attentionBody = document.getElementById('facilitator-attention-body');
+  if (!summary || !coverageBody || !recentBody || !attentionBody) return;
+  const overview = buildFacilitatorOverview(facilitatorPersonnel, facilitatorProducts);
+  summary.replaceChildren();
+  for (const metric of [
+    ['Active Facilitator Personnel', overview.activeFacilitatorPersonnel],
+    ['Products With Recorded Experience', overview.productsWithRecordedExperience],
+    ['Products Without Recorded Experience', overview.productsWithoutRecordedExperience],
+    ['Recorded Facilitation Instances', overview.recordedFacilitationInstances],
+  ]) {
+    const card = document.createElement('div');
+    card.className = 'facilitator-summary-card';
+    const label = document.createElement('div');
+    label.className = 'facilitator-summary-label';
+    label.textContent = metric[0];
+    const value = document.createElement('div');
+    value.className = 'facilitator-summary-value';
+    value.textContent = String(metric[1]);
+    card.append(label, value);
+    summary.appendChild(card);
+  }
+  if (note) {
+    note.textContent = 'Recorded Facilitation Instances count each person once for each product. They are not a count of unique Events.';
+  }
+
+  coverageBody.replaceChildren();
+  for (const product of overview.coverage) {
+    const row = document.createElement('tr');
+    if (product.peopleWithExperience === 0) row.className = 'facilitator-coverage-none';
+    const nameCell = document.createElement('td');
+    if (product.peopleWithExperience > 0) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'facilitator-text-button';
+      button.dataset.facilitatorProduct = product.productId;
+      button.textContent = product.productName;
+      nameCell.appendChild(button);
+    } else {
+      nameCell.textContent = product.productName;
+    }
+    row.appendChild(nameCell);
+    appendFacilitatorCell(row, String(product.peopleWithExperience), 'facilitator-count');
+    appendFacilitatorCell(row, String(product.recordedInstances), 'facilitator-count');
+    appendFacilitatorCell(row, formatRecordedFacilitationDate(product.mostRecentOn));
+    appendFacilitatorCell(
+      row,
+      product.peopleWithExperience > 0 ? 'Recorded experience' : FACILITATOR_NO_PRODUCT_EXPERIENCE,
+    );
+    coverageBody.appendChild(row);
+  }
+
+  if (!overview.recent.length) {
+    appendFacilitatorEmptyRow(recentBody, 3, FACILITATOR_EMPTY_EXPERIENCE);
+  } else {
+    recentBody.replaceChildren();
+    for (const activity of overview.recent) {
+      const row = document.createElement('tr');
+      const nameCell = document.createElement('td');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'facilitator-text-button';
+      button.dataset.facilitatorPerson = activity.personId;
+      button.textContent = activity.displayName;
+      nameCell.appendChild(button);
+      row.appendChild(nameCell);
+      appendFacilitatorCell(row, activity.productName);
+      appendFacilitatorCell(row, formatRecordedFacilitationDate(activity.mostRecentOn));
+      recentBody.appendChild(row);
+    }
+  }
+
+  if (!overview.attention.length) {
+    appendFacilitatorEmptyRow(attentionBody, 2, FACILITATOR_NO_DATA_GAPS);
+  } else {
+    attentionBody.replaceChildren();
+    for (const item of overview.attention) {
+      const row = document.createElement('tr');
+      const nameCell = document.createElement('td');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'facilitator-text-button';
+      button.dataset.facilitatorPerson = item.personId;
+      button.textContent = item.displayName;
+      nameCell.appendChild(button);
+      row.appendChild(nameCell);
+      appendFacilitatorCell(row, item.condition);
+      attentionBody.appendChild(row);
+    }
+  }
 }
 
 function paintFacilitatorPersonnel() {
@@ -11249,6 +11376,7 @@ async function renderFacilitatorManagement() {
   try {
     const sources = await fetchFacilitatorManagementSources();
     if (generation !== facilitatorLoadGeneration) return;
+    facilitatorProducts = sources.products;
     facilitatorPersonnel = summarizeFacilitatorPersonnel(
       sources.people,
       sources.experience,
@@ -11256,6 +11384,7 @@ async function renderFacilitatorManagement() {
       sources.products,
     );
     syncFacilitatorProductFilter();
+    paintFacilitatorOverview();
     paintFacilitatorPersonnel();
     refreshSortHeaderIndicators('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort);
   } catch (error) {
@@ -11269,12 +11398,39 @@ async function renderFacilitatorManagement() {
     cell.textContent = 'Facilitator personnel could not be loaded.';
     row.appendChild(cell);
     body.appendChild(row);
+    const summary = document.getElementById('facilitator-summary');
+    const note = document.getElementById('facilitator-summary-note');
+    if (summary) summary.replaceChildren();
+    if (note) note.textContent = 'Facilitator personnel could not be loaded.';
   }
+}
+
+function openFacilitatorProduct(productId) {
+  const select = document.getElementById('facilitator-product-filter');
+  if (select && [...select.options].some((option) => option.value === productId)) {
+    select.value = productId;
+  }
+  showFacilitatorView('personnel');
+  paintFacilitatorPersonnel();
 }
 
 function setupFacilitatorManagement() {
   bindSortableTableHeaders('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort, () => {
     paintFacilitatorPersonnel();
+  });
+  document.getElementById('facilitator-view-tabs')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-facilitator-view]');
+    if (!button) return;
+    showFacilitatorView(button.dataset.facilitatorView);
+  });
+  document.getElementById('facilitator-overview-panel')?.addEventListener('click', (event) => {
+    const personButton = event.target.closest('[data-facilitator-person]');
+    if (personButton) {
+      openFacilitatorDetail(personButton.dataset.facilitatorPerson);
+      return;
+    }
+    const productButton = event.target.closest('[data-facilitator-product]');
+    if (productButton) openFacilitatorProduct(productButton.dataset.facilitatorProduct);
   });
   document.getElementById('facilitator-search')?.addEventListener('input', paintFacilitatorPersonnel);
   document.getElementById('facilitator-active-filter')?.addEventListener('change', paintFacilitatorPersonnel);
@@ -11322,6 +11478,7 @@ function switchView(viewName) {
   } else if (viewName === 'team') {
     renderTeam();
   } else if (viewName === 'facilitators') {
+    showFacilitatorView('overview');
     renderFacilitatorManagement();
   } else if (viewName === 'settings') {
     renderSettings();

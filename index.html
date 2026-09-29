@@ -1208,10 +1208,58 @@
         <header class="page-header">
           <div class="header-titles">
             <h1>Facilitator Management</h1>
-            <h2>Personnel</h2>
+            <h2 id="facilitator-view-subtitle">Overview</h2>
           </div>
         </header>
-        <section class="content-section" id="facilitator-personnel-panel" aria-labelledby="facilitator-personnel-heading">
+        <nav class="team-directory-tabs" id="facilitator-view-tabs" role="tablist" aria-label="Facilitator Management">
+          <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="facilitator-tab-overview" data-facilitator-view="overview" aria-selected="true" aria-controls="facilitator-overview-panel">Overview</button>
+          <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-personnel" data-facilitator-view="personnel" aria-selected="false" aria-controls="facilitator-personnel-panel">Personnel</button>
+        </nav>
+        <section class="content-section" id="facilitator-overview-panel" aria-label="Overview">
+          <div class="facilitator-summary" id="facilitator-summary"></div>
+          <p class="facilitator-summary-note" id="facilitator-summary-note"></p>
+          <h3 class="facilitator-section-heading">Product Coverage</h3>
+          <div class="table-wrap">
+            <table class="events-table" id="facilitator-coverage-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="facilitator-count">People</th>
+                  <th class="facilitator-count">Recorded Instances</th>
+                  <th>Most Recent</th>
+                  <th>Recorded Experience</th>
+                </tr>
+              </thead>
+              <tbody id="facilitator-coverage-body"></tbody>
+            </table>
+          </div>
+          <h3 class="facilitator-section-heading">Recent Recorded Facilitation</h3>
+          <div class="table-wrap">
+            <table class="events-table" id="facilitator-recent-table">
+              <thead>
+                <tr>
+                  <th>Facilitator</th>
+                  <th>Product</th>
+                  <th>Most Recent Facilitation</th>
+                </tr>
+              </thead>
+              <tbody id="facilitator-recent-body"></tbody>
+            </table>
+          </div>
+          <h3 class="facilitator-section-heading">Needs Attention</h3>
+          <div class="table-wrap">
+            <table class="events-table" id="facilitator-attention-table">
+              <thead>
+                <tr>
+                  <th>Facilitator</th>
+                  <th>Data gap</th>
+                </tr>
+              </thead>
+              <tbody id="facilitator-attention-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="content-section" id="facilitator-personnel-panel" hidden aria-labelledby="facilitator-personnel-heading">
           <div class="section-header">
             <div class="section-header-start facilitator-toolbar">
               <h3 id="facilitator-personnel-heading">Facilitator Personnel</h3>

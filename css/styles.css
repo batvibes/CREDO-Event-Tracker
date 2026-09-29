@@ -6730,6 +6730,115 @@ body:has(#new-event-modal[open]) {
   }
 }
 
+#view-facilitators .page-header {
+  margin-bottom: 8px;
+}
+
+#view-facilitators .team-directory-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0 0 16px;
+  border-bottom: 1px solid #dde3ea;
+}
+
+#view-facilitators .team-directory-tab {
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: #4b5563;
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#view-facilitators .team-directory-tab:hover {
+  color: #00205b;
+}
+
+#view-facilitators .team-directory-tab-active {
+  color: #00205b;
+  border-bottom-color: #00205b;
+}
+
+#view-facilitators .team-directory-tab:focus-visible {
+  outline: 2px solid #00205b;
+  outline-offset: -2px;
+}
+
+#view-facilitators .facilitator-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+#view-facilitators .facilitator-summary-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fbfcfe;
+}
+
+#view-facilitators .facilitator-summary-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#view-facilitators .facilitator-summary-value {
+  margin-top: 4px;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+#view-facilitators .facilitator-summary-note,
+#view-facilitators .facilitator-section-heading {
+  margin: 18px 0 8px;
+}
+
+#view-facilitators .facilitator-summary-note {
+  margin-top: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+#view-facilitators .facilitator-section-heading {
+  font-size: 0.95rem;
+}
+
+#view-facilitators .facilitator-text-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #00205b;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#view-facilitators .facilitator-text-button:hover {
+  text-decoration: underline;
+}
+
+#view-facilitators tr.facilitator-coverage-none td {
+  color: #6b7280;
+}
+
+@media (max-width: 900px) {
+  #view-facilitators .facilitator-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 #view-facilitators .facilitator-toolbar {
   width: 100%;
 }
