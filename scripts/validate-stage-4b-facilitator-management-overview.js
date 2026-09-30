@@ -14,7 +14,6 @@ import {
   FACILITATOR_NO_EXPERIENCE_OR_RECORD,
   FACILITATOR_NO_PRODUCT_EXPERIENCE,
   FACILITATOR_QUALIFICATION_NOT_ENTERED,
-  FACILITATOR_RECENT_LIMIT,
   buildFacilitatorOverview,
   summarizeFacilitatorPersonnel,
 } from '../js/facilitator-management.js';
@@ -44,7 +43,7 @@ assert(view.includes('id="facilitator-view-subtitle">Overview<'), 'Overview is t
 assert(view.includes('id="facilitator-overview-panel"'), 'the Overview panel exists');
 assert(view.includes('id="facilitator-personnel-panel"'), 'the Personnel panel remains');
 assert(view.includes('Product Coverage'), 'Product Coverage is shown');
-assert(view.includes('Recent Recorded Facilitation'), 'recent activity is labeled as recorded facilitation');
+assert(!view.includes('Recent Recorded Facilitation'), 'Recent Recorded Facilitation is not shown');
 assert(view.includes('Needs Attention'), 'factual data gaps have a section');
 assert(view.includes('>People<') && view.includes('Recorded Instances') && view.includes('Most Recent'), 'coverage shows people, instances, and the latest date');
 assert(app.includes("showFacilitatorView('overview')"), 'opening Facilitator Management starts on Overview');
@@ -115,9 +114,8 @@ assert(empty.peopleWithExperience === 0 && empty.recordedInstances === 0 && empt
 const first = overview.coverage.find((row) => row.productId === 'first');
 assert(first.peopleWithExperience === 2 && first.recordedInstances === 5, 'people are distinct and instances are not qualification rows');
 assert(first.mostRecentOn === '2026-01-15', 'product recency uses the latest recorded facilitation date');
-assert(overview.recent.length <= FACILITATOR_RECENT_LIMIT, 'recent facilitation is limited');
-assert(overview.recent[0].personId === 'ada' && overview.recent[0].productId === 'second', 'recent rows are the latest recorded person and product pairs');
-assert(overview.recent.every((row) => row.mostRecentOn), 'rows without a date are excluded');
+assert(!Object.prototype.hasOwnProperty.call(overview, 'recent'), 'Overview no longer builds a recent facilitation list');
+assert(!overviewPaint.includes('facilitator-recent-body'), 'Overview no longer renders Recent Recorded Facilitation');
 assert(overview.attention.map((item) => `${item.personId}:${item.condition}`).join('|') === `blake:${FACILITATOR_NO_EXPERIENCE_OR_RECORD}|ada:${FACILITATOR_QUALIFICATION_NOT_ENTERED}`, 'attention lists only the two factual personnel gaps');
 assert(!overview.attention.some((item) => item.personId === 'john'), 'an inactive historical facilitator is not flagged');
 

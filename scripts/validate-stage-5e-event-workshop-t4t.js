@@ -252,17 +252,16 @@ assert(app.includes("if (!name) return;"), 'a missing curriculum name still remo
 
 let migration023Diff = '';
 let eventCurriculumDiff = '';
-let facilitatorDiff = '';
 try {
   migration023Diff = execFileSync('git', ['diff', '--', 'supabase/migrations/023_facilitator_product_taxonomy_correction.sql'], { cwd: ROOT, encoding: 'utf8' });
   eventCurriculumDiff = execFileSync('git', ['diff', '--', 'js/event-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
-  facilitatorDiff = execFileSync('git', ['diff', '--', 'js/facilitator-management.js'], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
 assert(migration023Diff.trim() === '', 'Migration 023 is unchanged');
 assert(eventCurriculumDiff.trim() === '', 'js/event-curriculum.js is unchanged');
-assert(facilitatorDiff.trim() === '', 'js/facilitator-management.js is unchanged');
+assert(!facilitator.includes('save_facilitator_qualification'), 'Facilitator Management does not edit qualifications');
+assert(!/\.from\('events'\)/.test(facilitator), 'Facilitator Management does not read Events');
 assert(migration023.includes('create trigger events_curriculum_compatibility'), 'the curriculum compatibility trigger remains in Migration 023');
 assert(!migration.includes('events_curriculum_compatibility'), 'Migration 024 does not replace the curriculum trigger');
 

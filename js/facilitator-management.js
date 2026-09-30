@@ -25,7 +25,6 @@ export const FACILITATOR_PRODUCT_EXPERIENCE_YES = 'Yes';
 export const FACILITATOR_PRODUCT_EXPERIENCE_NO = 'No';
 export const FACILITATOR_QUALIFICATION_ON_FILE = 'On file';
 export const FACILITATOR_QUALIFICATION_NONE = 'None';
-export const FACILITATOR_RECENT_LIMIT = 8;
 
 function cleanText(value) {
   if (value == null) return '';
@@ -240,22 +239,6 @@ export function buildFacilitatorOverview(personnel, products) {
     };
   });
   const productsWithRecordedExperience = coverage.filter((row) => row.peopleWithExperience > 0).length;
-  const recent = [];
-  for (const person of personnel ?? []) {
-    for (const row of person.experience ?? []) {
-      if (!row.mostRecentOn) continue;
-      recent.push({
-        personId: person.id,
-        displayName: person.displayName,
-        productId: row.productId,
-        productName: row.productName,
-        mostRecentOn: row.mostRecentOn,
-      });
-    }
-  }
-  recent.sort((left, right) => compareText(right.mostRecentOn, left.mostRecentOn)
-    || compareText(left.displayName, right.displayName)
-    || compareText(left.productName, right.productName));
   const attention = [];
   for (const person of personnel ?? []) {
     if (person.active !== true) continue;
@@ -280,7 +263,6 @@ export function buildFacilitatorOverview(personnel, products) {
     productsWithoutRecordedExperience: coverage.length - productsWithRecordedExperience,
     recordedFacilitationInstances: coverage.reduce((sum, row) => sum + row.recordedInstances, 0),
     coverage,
-    recent: recent.slice(0, FACILITATOR_RECENT_LIMIT),
     attention,
   };
 }
@@ -386,17 +368,12 @@ export function filterFacilitatorProductPersonnel(records, filters = {}) {
   });
 }
 
-export function facilitatorProductFilterOptions(records) {
-  const options = new Map();
-  for (const record of records ?? []) {
-    for (const row of [...record.experience, ...record.qualificationProducts]) {
-      if (!row?.productId || options.has(row.productId)) continue;
-      options.set(row.productId, {
-        id: row.productId,
-        name: row.productName,
-        sortOrder: row.sortOrder,
-      });
-    }
-  }
-  return [...options.values()].sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.name, right.name));
+export function facilitatorProductFilterOptions(products) {
+  return [...productCatalog(products).values()]
+    .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.name, right.name))
+    .map((product) => ({
+      id: product.id,
+      name: product.name,
+      sortOrder: product.sortOrder,
+    }));
 }

@@ -15,6 +15,7 @@ import {
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
   facilitatorProductPersonnel,
+  filterFacilitatorPersonnel,
   summarizeFacilitatorPersonnel,
 } from '../js/facilitator-management.js';
 
@@ -125,8 +126,7 @@ assert(overview.coverage.every((row) => !retiredCatalog.some((item) => item.name
 assert(overview.productsWithRecordedExperience === 3, 'products with recorded experience count only active products');
 assert(overview.productsWithoutRecordedExperience === 9, 'zero-record active products remain in the catalog count');
 assert(overview.recordedFacilitationInstances === 10, 'recorded instances exclude inactive product experience');
-assert(overview.recent.every((row) => !['r1', 'r2', 'r3'].includes(row.productId)), 'Recent Recorded Facilitation excludes inactive products');
-assert(overview.recent[0].productId === 'p4' && overview.recent[0].mostRecentOn === '2026-07-01', 'recent ordering still uses the latest active-product date');
+assert(!Object.prototype.hasOwnProperty.call(overview, 'recent'), 'Overview no longer builds a recent facilitation list');
 assert(overview.attention.map((item) => `${item.personId}:${item.condition}`).join('|') === `blake:${FACILITATOR_NO_EXPERIENCE_OR_RECORD}|ada:${FACILITATOR_QUALIFICATION_NOT_ENTERED}`, 'Needs Attention uses current active-product records and ignores retired qualifications');
 assert(!overview.attention.some((item) => item.personId === 'shane'), 'an active-product qualification record satisfies the existing personnel gap check');
 assert(overview.activeFacilitatorPersonnel === 3, 'Active Facilitator Personnel counts current roster members and excludes inactive people');
@@ -142,9 +142,13 @@ assert(lenses.personnelCount === 0 && lenses.recordedInstances === 0 && lenses.q
 const gottmanPeople = facilitatorProductPersonnel(personnel, 'p4');
 assert(gottmanPeople.map((person) => person.personId).join('|') === 'shane', 'product detail includes only people with records on that active product');
 assert(facilitatorProductPersonnel(personnel, 'r3').length === 0, 'a retired product has no operational detail population');
-const filterNames = facilitatorProductFilterOptions(personnel).map((option) => option.name);
-assert(filterNames.join('|') === 'Gottman, Seven Principles of Making Marriage Work|PREP 8.0|ASIST', 'the personnel product filter lists only active products');
+const filterNames = facilitatorProductFilterOptions(products).map((option) => option.name);
+assert(filterNames.join('|') === expectedNames.join('|'), 'the personnel product filter lists the complete active catalog in sort order');
+assert(filterNames.includes('Gottman, Seven Principles of Making Marriage Work'), 'a zero-record active product remains in the personnel filter');
+assert(filterNames.includes('CliftonStrengths, Strengths Discovery Encounter'), 'CliftonStrengths remains in the personnel filter without records');
+assert(filterNames.includes('Navigating Your Next Chapter'), 'Navigating Your Next Chapter remains in the personnel filter without records');
 assert(!filterNames.includes('Gottman Method') && !filterNames.includes('Marriage Enrichment Workshop'), 'retired products are absent from the product filter');
+assert(filterFacilitatorPersonnel(personnel, { productId: 'p6' }).length === 0, 'selecting a zero-record product returns no fabricated personnel');
 
 const legacy = [
   product('workshop', 'Marriage Enrichment Workshop', 'marriage_enrichment_workshop', 2, true),

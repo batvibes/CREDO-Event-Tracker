@@ -11272,7 +11272,7 @@ function syncFacilitatorProductFilter() {
   const select = document.getElementById('facilitator-product-filter');
   if (!select) return;
   const current = select.value;
-  const options = facilitatorProductFilterOptions(facilitatorPersonnel);
+  const options = facilitatorProductFilterOptions(facilitatorProducts);
   select.replaceChildren(new Option('All products', ''));
   for (const option of options) {
     select.appendChild(new Option(option.name, option.id));
@@ -11322,9 +11322,8 @@ function paintFacilitatorOverview() {
   const summary = document.getElementById('facilitator-summary');
   const note = document.getElementById('facilitator-summary-note');
   const coverageBody = document.getElementById('facilitator-coverage-body');
-  const recentBody = document.getElementById('facilitator-recent-body');
   const attentionBody = document.getElementById('facilitator-attention-body');
-  if (!summary || !coverageBody || !recentBody || !attentionBody) return;
+  if (!summary || !coverageBody || !attentionBody) return;
   const overview = buildFacilitatorOverview(facilitatorPersonnel, facilitatorProducts);
   summary.replaceChildren();
   for (const metric of [
@@ -11368,26 +11367,6 @@ function paintFacilitatorOverview() {
       product.peopleWithExperience > 0 ? 'Recorded experience' : FACILITATOR_NO_PRODUCT_EXPERIENCE,
     );
     coverageBody.appendChild(row);
-  }
-
-  if (!overview.recent.length) {
-    appendFacilitatorEmptyRow(recentBody, 3, FACILITATOR_EMPTY_EXPERIENCE);
-  } else {
-    recentBody.replaceChildren();
-    for (const activity of overview.recent) {
-      const row = document.createElement('tr');
-      const nameCell = document.createElement('td');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'facilitator-text-button';
-      button.dataset.facilitatorPerson = activity.personId;
-      button.textContent = activity.displayName;
-      nameCell.appendChild(button);
-      row.appendChild(nameCell);
-      appendFacilitatorCell(row, activity.productName);
-      appendFacilitatorCell(row, formatRecordedFacilitationDate(activity.mostRecentOn));
-      recentBody.appendChild(row);
-    }
   }
 
   if (!overview.attention.length) {

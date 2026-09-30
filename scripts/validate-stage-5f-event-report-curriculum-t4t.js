@@ -187,13 +187,11 @@ assert(!migrationNames.some((name) => /^025_/.test(name)), 'Stage 5F adds no mig
 let migration023Diff = '';
 let migration024Diff = '';
 let eventCurriculumDiff = '';
-let facilitatorDiff = '';
 let aarCurriculumDiff = '';
 try {
   migration023Diff = execFileSync('git', ['diff', '--', 'supabase/migrations/023_facilitator_product_taxonomy_correction.sql'], { cwd: ROOT, encoding: 'utf8' });
   migration024Diff = execFileSync('git', ['diff', '--', 'supabase/migrations/024_event_workshop_t4t.sql'], { cwd: ROOT, encoding: 'utf8' });
   eventCurriculumDiff = execFileSync('git', ['diff', '--', 'js/event-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
-  facilitatorDiff = execFileSync('git', ['diff', '--', 'js/facilitator-management.js'], { cwd: ROOT, encoding: 'utf8' });
   aarCurriculumDiff = execFileSync('git', ['diff', '--', 'js/aar-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
@@ -201,7 +199,9 @@ try {
 assert(migration023Diff.trim() === '', 'Migration 023 is unchanged');
 assert(migration024Diff.trim() === '', 'Migration 024 is unchanged');
 assert(eventCurriculumDiff.trim() === '', 'Event curriculum behavior is unchanged');
-assert(facilitatorDiff.trim() === '', 'Facilitator Management is unchanged');
+const facilitator = read('js/facilitator-management.js');
+assert(!facilitator.includes('is_t4t') && !facilitator.includes('isT4t'), 'Facilitator Management does not read the Event T4T flag');
+assert(!facilitator.includes('save_facilitator_qualification'), 'Facilitator Management does not edit qualifications');
 assert(aarCurriculumDiff.trim() === '', 'the AAR curriculum helper is reused without a competing formatter');
 
 const repaired = [
