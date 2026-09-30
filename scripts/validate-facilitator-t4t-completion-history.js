@@ -6,8 +6,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import {
+  facilitatorT4tCompletionDisplayFields,
+  facilitatorT4tCompletionHistory,
+  summarizeFacilitatorPersonnel,
+} from '../js/facilitator-management.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -22,10 +26,16 @@ function read(relativePath) {
 }
 
 const migration = read('supabase/migrations/028_facilitator_t4t_completion_history.sql');
+const app = read('js/app.js');
+const db = read('js/db.js');
+const model = read('js/facilitator-management.js');
 const bodyStart = migration.indexOf('as $$');
 const bodyEnd = migration.indexOf('$$;', bodyStart);
 const body = migration.slice(bodyStart, bodyEnd);
-const frontendPaths = ['js', 'css', 'index.html'];
+const fetchSources = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf('export async function fetchTeamDirectoryPersonnel'));
+const detail = app.slice(app.indexOf('function openFacilitatorDetail'), app.indexOf('function closeFacilitatorDetail'));
+const completionProfile = detail.slice(detail.indexOf('person.t4tCompletions'), detail.indexOf('FACILITATOR_EXPERIENCE_HEADING'));
+const qualificationRead = fetchSources.slice(fetchSources.indexOf(".from('facilitator_qualifications')"), fetchSources.indexOf(".from('facilitator_products')"));
 
 assert(migration.includes('create table public.facilitator_t4t_completions'), 'the completion history table is created');
 for (const column of [
@@ -80,15 +90,68 @@ assert(migration.includes('revoke all on function public.record_facilitator_t4t_
 assert(migration.includes('revoke all on function public.record_facilitator_t4t_completion(uuid, uuid, date, uuid, text, text) from anon'), 'anonymous users cannot execute the record function');
 assert(migration.includes('grant execute on function public.record_facilitator_t4t_completion(uuid, uuid, date, uuid, text, text) to authenticated'), 'authenticated users can execute the record function');
 
-let frontendDiff = '';
-try {
-  frontendDiff = execFileSync('git', ['diff', '--name-only', '--', ...frontendPaths], { cwd: ROOT, encoding: 'utf8' });
-  const untrackedFrontend = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '--', ...frontendPaths], { cwd: ROOT, encoding: 'utf8' });
-  frontendDiff = `${frontendDiff}${untrackedFrontend}`;
-} catch (error) {
-  errors.push(`frontend diff failed: ${error.message}`);
-}
-assert(frontendDiff.trim() === '', 'no frontend files were modified for completion history');
+assert(fetchSources.includes(".from('facilitator_t4t_completions')"), 'completion history loads from facilitator_t4t_completions');
+assert(fetchSources.includes('id, person_id, product_id, completed_on, source_event_id, governing_source, notes, created_at'), 'the profile read loads the completion display fields');
+assert(!fetchSources.includes(".from('events')") && !model.includes(".from('events')") && !detail.includes(".from('events')"), 'completion history does not read Events from the browser');
+assert(!/\.(insert|update|delete|upsert)\(/.test(fetchSources), 'the facilitator read does not write completion history');
+assert(!qualificationRead.includes('created_at') && qualificationRead.includes('t4t_completed_on'), 'the qualification read stays separate from completion history');
+assert(completionProfile.includes('FACILITATOR_T4T_COMPLETION_HEADING'), 'completion history is placed before recorded facilitation experience');
+assert(completionProfile.includes('completions.length'), 'a person with no completion history does not render the section');
+assert(completionProfile.includes('facilitatorT4tCompletionDisplayFields'), 'history rows use the completion display fields');
+assert(!completionProfile.includes("createElement('button')"), 'completion history has no write or delete control');
+assert(!completionProfile.includes('record_facilitator_t4t_completion') && !completionProfile.includes('saveFacilitatorQualification'), 'the profile does not record or save from completion history');
+assert(!detail.includes('sourceEventId'), 'an unresolved source Event id is not shown');
+
+const products = [
+  { id: 'asist', name: 'ASIST', code: 'asist', sort_order: 10, active: true },
+  { id: 'lenses', name: '4 Lenses', code: 'four_lenses', sort_order: 6, active: true },
+  { id: 'retired', name: 'Marriage Enrichment Workshop', code: 'marriage_enrichment_workshop', sort_order: 101, active: false },
+];
+const history = facilitatorT4tCompletionHistory([
+  { id: 'older', person_id: 'ada', product_id: 'asist', completed_on: '2024-10-18', governing_source: 'LivingWorks', notes: 'First course.' },
+  { id: 'renewal', person_id: 'ada', product_id: 'asist', completed_on: '2026-01-22', governing_source: 'LivingWorks' },
+  { id: 'lenses', person_id: 'ada', product_id: 'lenses', completed_on: '2024-10-18', governing_source: 'Four Lenses / Shipley Communication', created_at: '2024-10-19T00:00:00Z' },
+  { id: 'same-day-later', person_id: 'ada', product_id: 'lenses', completed_on: '2024-10-18', created_at: '2024-10-20T00:00:00Z' },
+  { id: 'retired', person_id: 'ada', product_id: 'retired', completed_on: '2020-01-01' },
+], products);
+assert(history.map((row) => row.id).join('|') === 'renewal|same-day-later|lenses|older|retired', 'newest completion dates stay first and same-day rows are preserved');
+assert(history.filter((row) => row.productId === 'asist').map((row) => row.completedOn).join('|') === '2026-01-22|2024-10-18', 'two completions for one product both remain');
+assert(history.find((row) => row.id === 'lenses').productName === '4 Lenses', 'product names resolve from facilitator products');
+assert(history.find((row) => row.id === 'retired').productName === 'Marriage Enrichment Workshop', 'a stored inactive product name still resolves');
+const renewalFields = facilitatorT4tCompletionDisplayFields(history.find((row) => row.id === 'renewal'));
+assert(renewalFields.map((field) => `${field.label}:${field.value}`).join('|') === 'Completed:01/22/26|Qualification Authority / Source:LivingWorks', 'a source is shown and blank notes are omitted');
+const notedFields = facilitatorT4tCompletionDisplayFields(history.find((row) => row.id === 'older'));
+assert(notedFields.some((field) => field.label === 'Notes' && field.value === 'First course.'), 'notes are shown when present');
+assert(!renewalFields.some((field) => field.label === 'Notes'), 'blank notes stay omitted');
+
+const people = [
+  { id: 'ada', name: 'Ada', active: true, is_facilitator: true },
+  { id: 'history-only', name: 'Pat', active: true, is_facilitator: false },
+];
+const personnel = summarizeFacilitatorPersonnel(
+  people,
+  [],
+  [{
+    id: 'qual-1',
+    person_id: 'ada',
+    product_id: 'asist',
+    standing: 'provisional',
+    t4t_completed_on: '2026-05-18',
+    trainer_authority: false,
+  }],
+  products,
+  [],
+  [
+    { id: 'renewal', person_id: 'ada', product_id: 'asist', completed_on: '2026-01-22' },
+    { id: 'older', person_id: 'ada', product_id: 'asist', completed_on: '2024-10-18' },
+    { id: 'hidden', person_id: 'history-only', product_id: 'lenses', completed_on: '2025-02-01' },
+  ],
+);
+assert(personnel.map((person) => person.id).join(',') === 'ada', 'completion history alone does not add a person to Facilitator Management');
+assert(personnel[0].t4tCompletions.map((row) => row.id).join('|') === 'renewal|older', 'an included person keeps every completion, newest first');
+assert(personnel[0].qualificationProducts[0].t4tCompletedOn === '2026-05-18', 'completion history does not replace the qualification T4T date');
+assert(personnel[0].qualificationProducts[0].standing === 'provisional', 'completion history does not change standing');
+assert(personnel[0].qualificationProducts[0].trainerAuthority === false, 'completion history does not change trainer authority');
 
 if (errors.length) {
   console.error('validate-facilitator-t4t-completion-history failed:');

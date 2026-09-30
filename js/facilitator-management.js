@@ -5,9 +5,11 @@
  * The operational catalog is facilitator_products with active === true, ordered by sort_order.
  * A person is included when is_facilitator is true, or when ordinary experience, T4T
  * facilitation evidence, or a qualification row exists on an active product.
- * Inactive product rows stay stored and are omitted here. Stored qualification fields
- * stay manual facts. Standing, T4T completion, and trainer authority are not inferred
- * from either experience aggregate. Overview and Program Capabilities union the two
+ * Inactive product rows stay stored and are omitted from the operational catalog.
+ * T4T completion history is separate evidence. It does not add a person to this
+ * roster by itself, and it does not change a qualification date or standing.
+ * Stored qualification fields stay manual facts. Standing, T4T completion, and
+ * trainer authority are not inferred from either experience aggregate. Overview and Program Capabilities union the two
  * aggregates so a T4T delivery is not dropped from those totals. An Event belongs to
  * only one aggregate, and a person is counted once per product. This module does
  * not write people, qualifications, roles, or Events.
@@ -21,6 +23,7 @@ export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitator personnel found.';
 export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
 export const FACILITATOR_EMPTY_T4T_EXPERIENCE = 'No recorded T4T facilitation experience.';
 export const FACILITATOR_T4T_EXPERIENCE_HEADING = 'T4T Facilitation Experience';
+export const FACILITATOR_T4T_COMPLETION_HEADING = 'T4T Completion History';
 export const FACILITATOR_EMPTY_QUALIFICATIONS = 'No qualification or training records entered.';
 export const FACILITATOR_QUALIFICATIONS_HEADING = 'Qualifications & Training';
 export const FACILITATOR_EXPERIENCE_HEADING = 'Recorded Facilitation Experience';
@@ -49,6 +52,51 @@ const FACILITATOR_STANDING_LABELS = Object.fromEntries(FACILITATOR_STANDING_OPTI
 export function formatQualificationStanding(value) {
   const key = cleanText(value).toLowerCase();
   return FACILITATOR_STANDING_LABELS[key] ?? null;
+}
+
+export function facilitatorT4tCompletionHistory(rows, products) {
+  const names = new Map();
+  for (const product of products ?? []) {
+    if (!product?.id || names.has(product.id)) continue;
+    const name = cleanText(product.name);
+    if (name) names.set(product.id, name);
+  }
+  const history = [];
+  for (const row of rows ?? []) {
+    const productId = row?.product_id ?? row?.productId;
+    const productName = names.get(productId);
+    const completedOn = asDate(row?.completed_on ?? row?.completedOn);
+    if (!productId || !productName || !completedOn) continue;
+    history.push({
+      id: row?.id ?? null,
+      personId: row?.person_id ?? row?.personId ?? null,
+      productId,
+      productName,
+      completedOn,
+      sourceEventId: row?.source_event_id ?? row?.sourceEventId ?? null,
+      governingSource: cleanText(row?.governing_source ?? row?.governingSource),
+      notes: cleanText(row?.notes),
+      createdAt: cleanText(row?.created_at ?? row?.createdAt),
+    });
+  }
+  history.sort((left, right) => (
+    compareText(right.completedOn, left.completedOn)
+    || compareText(right.createdAt, left.createdAt)
+    || compareText(String(left.id ?? ''), String(right.id ?? ''))
+  ));
+  return history;
+}
+
+export function facilitatorT4tCompletionDisplayFields(completion) {
+  const fields = [];
+  if (completion?.completedOn) {
+    fields.push({ label: 'Completed', value: formatRecordedFacilitationDate(completion.completedOn) });
+  }
+  if (completion?.governingSource) {
+    fields.push({ label: 'Qualification Authority / Source', value: completion.governingSource });
+  }
+  if (completion?.notes) fields.push({ label: 'Notes', value: completion.notes });
+  return fields;
 }
 
 export function facilitatorQualificationDisplayFields(qualification) {
@@ -245,7 +293,7 @@ function productCatalog(products) {
   return byId;
 }
 
-export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products, t4tRows = []) {
+export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products, t4tRows = [], completionRows = []) {
   const catalog = productCatalog(products);
   const experienceByPerson = collectExperience(experienceRows, catalog);
   const t4tByPerson = collectExperience(t4tRows, catalog);
@@ -285,6 +333,10 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
     const qualificationProducts = [...(qualificationsByPerson.get(person.id)?.values() ?? [])]
       .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
     if (person.isFacilitator !== true && experience.length === 0 && t4tExperience.length === 0 && qualificationProducts.length === 0) continue;
+    const t4tCompletions = facilitatorT4tCompletionHistory(
+      (completionRows ?? []).filter((row) => (row?.person_id ?? row?.personId) === person.id),
+      products,
+    );
     seen.add(person.id);
     const mostRecentOn = experience.reduce((latest, row) => {
       if (!row.mostRecentOn) return latest;
@@ -307,6 +359,7 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
       t4tExperience,
       hasQualificationRecord: qualificationProducts.length > 0,
       qualificationProducts,
+      t4tCompletions,
     });
   }
   return personnel;

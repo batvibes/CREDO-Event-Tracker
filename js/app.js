@@ -84,6 +84,7 @@ import {
   FACILITATOR_EMPTY_PRODUCTS,
   FACILITATOR_EMPTY_QUALIFICATIONS,
   FACILITATOR_EXPERIENCE_HEADING,
+  FACILITATOR_T4T_COMPLETION_HEADING,
   FACILITATOR_T4T_EXPERIENCE_HEADING,
   FACILITATOR_NO_DATA_GAPS,
   FACILITATOR_NO_FACILITATOR_RECORDS,
@@ -95,6 +96,7 @@ import {
   FACILITATOR_QUALIFICATIONS_HEADING,
   FACILITATOR_STANDING_OPTIONS,
   facilitatorQualificationDisplayFields,
+  facilitatorT4tCompletionDisplayFields,
   facilitatorProductAuthorityDefault,
   facilitatorQualificationProductChoices,
   facilitatorQualificationSaveInput,
@@ -11573,6 +11575,42 @@ function openFacilitatorDetail(personId) {
     body.appendChild(list);
   }
 
+  const completions = person.t4tCompletions ?? [];
+  if (completions.length) {
+    const completionHeading = document.createElement('h4');
+    completionHeading.className = 'facilitator-detail-heading';
+    completionHeading.textContent = FACILITATOR_T4T_COMPLETION_HEADING;
+    body.appendChild(completionHeading);
+    const completionList = document.createElement('div');
+    completionList.className = 'facilitator-qualification-list';
+    for (const completion of completions) {
+      const card = document.createElement('section');
+      card.className = 'facilitator-qualification';
+      const name = document.createElement('h5');
+      name.className = 'facilitator-qualification-product';
+      name.textContent = completion.productName;
+      card.appendChild(name);
+      const completionFields = facilitatorT4tCompletionDisplayFields(completion);
+      if (completionFields.length) {
+        const details = document.createElement('dl');
+        details.className = 'facilitator-qualification-fields';
+        for (const field of completionFields) {
+          const row = document.createElement('div');
+          const label = document.createElement('dt');
+          label.textContent = field.label;
+          const value = document.createElement('dd');
+          value.textContent = field.value;
+          row.appendChild(label);
+          row.appendChild(value);
+          details.appendChild(row);
+        }
+        card.appendChild(details);
+      }
+      completionList.appendChild(card);
+    }
+    body.appendChild(completionList);
+  }
+
   const heading = document.createElement('h4');
   heading.className = 'facilitator-detail-heading';
   heading.textContent = FACILITATOR_EXPERIENCE_HEADING;
@@ -12072,6 +12110,7 @@ async function renderFacilitatorManagement() {
       sources.qualifications,
       sources.products,
       sources.t4tExperience,
+      sources.t4tCompletions,
     );
     syncFacilitatorProductFilter();
     paintFacilitatorOverview();

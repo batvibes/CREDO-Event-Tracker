@@ -7001,6 +7001,8 @@ body:has(#new-event-modal[open]) {
 #facilitator-detail-modal .facilitator-qualification-fields dt,
 #facilitator-detail-modal .facilitator-qualification-fields dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 0.875rem;
 }
 
@@ -7032,6 +7034,10 @@ body:has(#new-event-modal[open]) {
 @media (max-width: 640px) {
   #facilitator-detail-modal .events-table td:first-child {
     white-space: normal;
+  }
+
+  #facilitator-detail-modal .facilitator-qualification-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

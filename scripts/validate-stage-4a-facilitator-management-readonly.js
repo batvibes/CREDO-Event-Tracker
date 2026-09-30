@@ -68,7 +68,8 @@ assert(fetchSources.includes(".from('facilitator_product_experience')"), 'histor
 assert(fetchSources.includes(".from('facilitator_qualifications')"), 'population can include people with qualification rows');
 assert(fetchSources.includes('person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on'), 'experience fields come from the derived view');
 assert(fetchSources.includes(".select('id, person_id, product_id, standing, t4t_completed_on, first_facilitated_on, trainer_authority, expiration_on, governing_source, notes')"), 'the profile loads the stored qualification fields');
-assert(!fetchSources.includes('created_at') && !fetchSources.includes('updated_by'), 'qualification audit fields are not loaded');
+const qualificationRead = fetchSources.slice(fetchSources.indexOf(".from('facilitator_qualifications')"), fetchSources.indexOf(".from('facilitator_products')"));
+assert(!qualificationRead.includes('created_at') && !qualificationRead.includes('updated_by'), 'qualification audit fields are not loaded');
 assert(!/\.(insert|update|delete|upsert)\(/.test(fetchSources), 'the facilitator read does not write');
 assert(!fetchSources.includes(".from('events')"), 'Event history is not recalculated in the client');
 assert(!fetchSources.includes('save_facilitator_qualification'), 'the facilitator read does not save qualifications');
