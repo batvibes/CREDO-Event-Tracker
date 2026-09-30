@@ -11802,7 +11802,11 @@ function paintFacilitatorQualificationEditor(qualification) {
   source.id = 'facilitator-qualification-source';
   source.type = 'text';
   source.value = qualification?.governingSource || '';
-  appendQualificationField(form, 'Governing Source', source);
+  appendQualificationField(form, 'Qualification Authority / Source', source);
+  const sourceHelp = document.createElement('p');
+  sourceHelp.className = 'facilitator-qualification-note';
+  sourceHelp.textContent = 'Organization or documentation supporting this qualification. Leave blank if not verified.';
+  source.parentElement.appendChild(sourceHelp);
 
   const notes = document.createElement('textarea');
   notes.id = 'facilitator-qualification-notes';

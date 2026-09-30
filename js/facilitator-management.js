@@ -68,7 +68,7 @@ export function facilitatorQualificationDisplayFields(qualification) {
     fields.push({ label: 'Trainer / T4T Authority', value: 'Yes' });
   }
   if (qualification?.governingSource) {
-    fields.push({ label: 'Governing Source', value: qualification.governingSource });
+    fields.push({ label: 'Qualification Authority / Source', value: qualification.governingSource });
   }
   if (qualification?.notes) fields.push({ label: 'Notes', value: qualification.notes });
   return fields;

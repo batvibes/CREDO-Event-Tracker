@@ -148,7 +148,11 @@ assert(ada.experience[0].firstRecordedOn === '2024-03-01', 'profile experience k
 assert(ada.qualificationProducts[0].firstFacilitatedOn === '2019-04-01', 'manual first facilitated stays separate from recorded experience');
 assert(ada.qualificationProducts[0].trainerAuthority === false, 'a T4T completion date does not grant trainer authority');
 const fields = facilitatorQualificationDisplayFields(ada.qualificationProducts[0]);
-assert(fields.map((field) => field.label).join('|') === 'T4T Completed|Standing|First Facilitated|Governing Source|Notes', 'blank qualification fields are omitted');
+assert(fields.map((field) => field.label).join('|') === 'T4T Completed|Standing|First Facilitated|Qualification Authority / Source|Notes', 'blank qualification fields are omitted');
+const qualificationEditor = app.slice(app.indexOf('function paintFacilitatorQualificationEditor'), app.indexOf('function cancelFacilitatorQualificationEdit'));
+assert(qualificationEditor.includes('Qualification Authority / Source'), 'the qualification editor uses the authority source label');
+assert(qualificationEditor.includes('Organization or documentation supporting this qualification. Leave blank if not verified.'), 'the authority source field explains that a blank value stays unverified');
+assert(qualificationEditor.includes("source.id = 'facilitator-qualification-source'") && qualificationEditor.includes("source.type = 'text'"), 'the authority source input stays the existing text field');
 assert(fields.find((field) => field.label === 'Standing')?.value === 'Provisional', 'provisional standing renders in title case');
 assert(fields.find((field) => field.label === 'T4T Completed')?.value === '05/18/26', 'T4T completion renders as a stored training date');
 assert(!fields.some((field) => field.label === 'Trainer / T4T Authority'), 'false trainer authority is omitted');
