@@ -59,3 +59,151 @@ export function personnelMatchesHistoricalName(person, historicalName) {
 export function findPersonnelByHistoricalName(people, historicalName) {
   return (people || []).find((person) => personnelMatchesHistoricalName(person, historicalName)) || null;
 }
+
+function aliasDisplayName(alias) {
+  return cleanPersonnelText(alias?.displayName ?? alias?.display_name);
+}
+
+function nameTokens(value) {
+  return normalizePersonnelText(value)
+    .split(' ')
+    .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+    .filter(Boolean);
+}
+
+function containsNamePhrase(inputTokens, phraseTokens) {
+  if (!phraseTokens.length || phraseTokens.length > inputTokens.length) return false;
+  for (let start = 0; start <= inputTokens.length - phraseTokens.length; start += 1) {
+    const matches = phraseTokens.every((token, offset) => inputTokens[start + offset] === token);
+    if (matches) return true;
+  }
+  return false;
+}
+
+function personIdentity(person, aliases) {
+  const personalName = cleanPersonnelText(person?.name);
+  const displayName = personnelDisplayName(person?.rankTitle ?? person?.rank_title, person?.name);
+  const aliasNames = [];
+  for (const alias of person?.aliases || []) {
+    const name = aliasDisplayName(alias);
+    if (name) aliasNames.push(name);
+  }
+  for (const alias of aliases || []) {
+    const aliasPersonId = alias?.personId ?? alias?.person_id;
+    if (aliasPersonId !== person?.id) continue;
+    const name = aliasDisplayName(alias);
+    if (name) aliasNames.push(name);
+  }
+  return {
+    personId: person.id,
+    displayName,
+    personalName,
+    rankTitle: cleanPersonnelText(person?.rankTitle ?? person?.rank_title),
+    commandOrganization: cleanPersonnelText(person?.commandOrganization ?? person?.command_organization),
+    active: person?.active === false ? false : person?.active === true ? true : null,
+    aliasNames,
+  };
+}
+
+function exactMatchKind(identity, normalizedInput) {
+  if (normalizePersonnelText(identity.displayName) === normalizedInput) return 'display';
+  if (normalizePersonnelText(identity.personalName) === normalizedInput) return 'personal-name';
+  if (identity.aliasNames.some((name) => normalizePersonnelText(name) === normalizedInput)) return 'alias';
+  return '';
+}
+
+function candidateFrom(identity, match) {
+  return {
+    personId: identity.personId,
+    displayName: identity.displayName,
+    personalName: identity.personalName,
+    rankTitle: identity.rankTitle,
+    commandOrganization: identity.commandOrganization,
+    active: identity.active,
+    match,
+  };
+}
+
+function compareCandidates(left, right) {
+  return left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' })
+    || String(left.personId).localeCompare(String(right.personId));
+}
+
+export function matchDirectoryPerson(input, people, aliases) {
+  const original = input == null ? '' : String(input);
+  const normalizedInput = normalizePersonnelText(original);
+  const directory = [];
+  const seen = new Set();
+  for (const person of people || []) {
+    if (!person?.id || seen.has(person.id)) continue;
+    seen.add(person.id);
+    directory.push(personIdentity(person, aliases));
+  }
+
+  const result = {
+    status: 'new',
+    input: original,
+    normalizedInput,
+    candidates: [],
+    selectedPersonId: null,
+    canCreateNew: false,
+    reason: 'A name is required.',
+  };
+  if (!normalizedInput) return result;
+
+  const exact = [];
+  for (const identity of directory) {
+    const kind = exactMatchKind(identity, normalizedInput);
+    if (kind) exact.push(candidateFrom(identity, kind));
+  }
+  exact.sort(compareCandidates);
+  if (exact.length === 1) {
+    return {
+      ...result,
+      status: 'exact',
+      candidates: exact,
+      selectedPersonId: exact[0].personId,
+      reason: 'One directory identity matches this name.',
+    };
+  }
+  if (exact.length > 1) {
+    return {
+      ...result,
+      status: 'ambiguous',
+      candidates: exact,
+      reason: 'More than one person matches this name.',
+    };
+  }
+
+  const inputTokens = nameTokens(normalizedInput);
+  const probable = [];
+  for (const identity of directory) {
+    const phrase = nameTokens(identity.personalName);
+    if (containsNamePhrase(inputTokens, phrase)) {
+      probable.push(candidateFrom(identity, 'probable-personal-name'));
+    }
+  }
+  probable.sort(compareCandidates);
+  if (probable.length === 1) {
+    return {
+      ...result,
+      status: 'probable',
+      candidates: probable,
+      reason: 'One person\'s personal name appears in the entered text.',
+    };
+  }
+  if (probable.length > 1) {
+    return {
+      ...result,
+      status: 'ambiguous',
+      candidates: probable,
+      reason: 'More than one person matches this name.',
+    };
+  }
+
+  return {
+    ...result,
+    canCreateNew: true,
+    reason: 'No directory identity matches this name.',
+  };
+}
