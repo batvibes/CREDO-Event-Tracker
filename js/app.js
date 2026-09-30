@@ -13,12 +13,16 @@ import {
   fetchCommands,
   fetchEventTypes,
   eventCurriculumControlValue,
+  eventT4tValueForSave,
+  eventTypeAllowsWorkshopT4t,
   fetchEvents,
   fetchFacilitatorManagementSources,
   fetchLocations,
   loadEventCurriculumSupport,
   mergeEventCurriculumProductId,
+  mergeEventT4t,
   normalizeLoadedEventCurriculum,
+  normalizeLoadedEventT4t,
   fetchMonthlyReport,
   fetchMonthlyReports,
   fetchPeople,
@@ -192,6 +196,7 @@ let eventTypes = [];
 let eventTypeRecords = [];
 let eventCurriculumAvailable = false;
 let eventCurriculumChoices = [];
+let eventT4tAvailable = false;
 let aarGlobalTemplates = {
   credoRequirements: '',
   commandRequirements: '',
@@ -526,6 +531,7 @@ function normalizeEvent(event) {
   event.time = String(event.time ?? '').trim();
   event.poc = String(event.poc ?? '').trim();
   event.curriculumProductId = normalizeLoadedEventCurriculum(event);
+  event.isT4t = normalizeLoadedEventT4t(event);
   if (event.roster !== 'Complete' && event.roster !== 'Need Roster') {
     event.roster =
       event.rosterAcquired === 'Complete' ? 'Complete' : 'Need Roster';
@@ -540,8 +546,10 @@ function syncEventTypeNames() {
 
 function applySavedEvent(event, saved) {
   const curriculumProductId = mergeEventCurriculumProductId(event.curriculumProductId, saved);
+  const isT4t = mergeEventT4t(event.isT4t, saved);
   Object.assign(event, normalizeEvent(saved));
   event.curriculumProductId = curriculumProductId;
+  event.isT4t = isT4t;
 }
 
 async function persistEvent(event) {
@@ -2754,7 +2762,11 @@ function syncAarCurriculumRow(event, root) {
   if (!tableBody) return;
 
   tableBody.querySelector('[data-aar-product-row]')?.remove();
-  const name = aarCurriculumDisplayName(event?.curriculumProductId, eventCurriculumChoices);
+  const name = aarCurriculumDisplayName(
+    event?.curriculumProductId,
+    eventCurriculumChoices,
+    event?.isT4t === true,
+  );
   if (!name) return;
 
   const eventTypeRow = [...tableBody.querySelectorAll('tr')].find((row) => (
@@ -12053,6 +12065,7 @@ function resetEventForm(form) {
   updateEventDateFieldsVisibility(form);
   updateEventTotalRecordedCost(form);
   syncEventCurriculumField(form, null);
+  syncEventT4tField(form, false);
   eventReferenceFields?.reset();
 }
 
@@ -12076,6 +12089,7 @@ function populateEventFormFromRecord(form, event) {
 
   form.querySelector('[name="eventType"]').value = event.eventType;
   syncEventCurriculumField(form, event.curriculumProductId ?? null);
+  syncEventT4tField(form, event.isT4t === true);
   form.querySelector('[name="participants"]').value =
     isTbd(event.participants) ? '' : String(event.participants);
   form.querySelector('[name="venueCost"]').value = event.venueCost || '';
@@ -12140,6 +12154,7 @@ function readEventFieldsFromForm(form) {
     time: String(data.get('time') || '').trim(),
     poc: String(data.get('poc') || '').trim(),
     curriculumProductId: readEventCurriculumProductId(form),
+    isT4t: readEventIsT4t(form),
   };
 }
 
@@ -12166,6 +12181,25 @@ function syncEventCurriculumField(form, selectedId) {
     requested,
   );
   field.hidden = options.length === 0;
+}
+
+function syncEventT4tField(form, checked) {
+  const field = document.getElementById('event-t4t-field');
+  const input = form.querySelector('[name="isT4t"]');
+  if (!field || !input) return;
+
+  const eventType = form.querySelector('[name="eventType"]')?.value || '';
+  const allowed = eventT4tAvailable && eventTypeAllowsWorkshopT4t(eventType);
+  const requested = checked === undefined ? input.checked === true : checked === true;
+  input.checked = allowed && requested;
+  field.hidden = !allowed;
+}
+
+function readEventIsT4t(form) {
+  if (!eventT4tAvailable) return false;
+  const eventType = form.querySelector('[name="eventType"]')?.value || '';
+  const checked = form.querySelector('[name="isT4t"]')?.checked === true;
+  return eventT4tValueForSave(eventType, checked);
 }
 
 function readEventCurriculumProductId(form) {
@@ -12349,6 +12383,7 @@ function setupModal() {
   typeSelect.addEventListener('change', () => {
     hideEventTypeError();
     syncEventCurriculumField(form);
+    syncEventT4tField(form);
   });
 
   form.addEventListener('submit', async (e) => {
@@ -12444,6 +12479,7 @@ async function loadAllData() {
   eventTypeRecords = types;
   eventCurriculumAvailable = curriculumSupport.available === true;
   eventCurriculumChoices = curriculumSupport.choices || [];
+  eventT4tAvailable = curriculumSupport.t4tAvailable === true;
   syncEventTypeNames();
   team = teamData;
   events = loadedEvents.map(normalizeEvent);

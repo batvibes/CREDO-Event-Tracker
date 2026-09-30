@@ -226,6 +226,8 @@ vm.runInContext([
   'normalizeLoadedEventCurriculum',
   'mergeEventCurriculumProductId',
   'eventCurriculumControlValue',
+  'readEventT4tColumn',
+  'assignEventT4t',
   'eventFromRow',
 ].map((name) => extractFunction(db, name)).join('\n') + `
 this.eventFromRow = eventFromRow;

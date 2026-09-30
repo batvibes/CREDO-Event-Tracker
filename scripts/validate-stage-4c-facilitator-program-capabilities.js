@@ -127,7 +127,8 @@ for (const relativePath of [
 const migrationDiff = execFileSync('git', ['diff', '--', 'supabase/migrations'], { cwd: ROOT, encoding: 'utf8' });
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', 'supabase/migrations'], { cwd: ROOT, encoding: 'utf8' });
-assert(untracked.trim() === '', 'Stage 5B adds no untracked migration');
+const untrackedMigrations = untracked.split('\n').map((line) => line.trim()).filter(Boolean);
+assert(untrackedMigrations.every((line) => line.endsWith('024_event_workshop_t4t.sql')), 'the only new migration is 024_event_workshop_t4t.sql');
 for (const repaired of [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',
   'scripts/spike-output/section_iv_navstds_occstds_navy_governance_training  -  Repaired.pptx',

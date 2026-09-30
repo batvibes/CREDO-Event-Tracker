@@ -183,8 +183,9 @@ try {
 }
 assert(migrationDiff.trim() === '', 'Migration 023 is unchanged');
 assert(eventCurriculumDiff.trim() === '', 'Stage 5B Event curriculum behavior is unchanged');
-assert(aarCurriculumDiff.trim() === '', 'Stage 5C AAR curriculum behavior is unchanged');
-assert(!fs.readdirSync(path.join(ROOT, 'supabase/migrations')).some((name) => name.startsWith('024')), 'Stage 5D adds no migration');
+const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
+assert(migrationNames.includes('024_event_workshop_t4t.sql'), 'Stage 5E migration 024 is present');
+assert(!migrationNames.some((name) => /^0(2[5-9]|[3-9]\d)_/.test(name)), 'no migration after 024 was added');
 
 if (errors.length) {
   console.error('validate-stage-5d-facilitator-active-products failed:');

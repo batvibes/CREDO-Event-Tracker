@@ -44,6 +44,11 @@ assert(aarCurriculumDisplayName('blank-name', choices) === null, 'a blank produc
 assert(aarCurriculumDisplayName('gottman', []) === null, 'curriculum display is absent when Stage 5B choices are unavailable');
 assert(aarCurriculumDisplayName('asist-id', [{ productId: 'asist-id', name: 'ASIST', eventTypeName: 'ASIST Workshop' }]) === 'ASIST', 'a name is shown only for the stored product id');
 assert(aarCurriculumDisplayName(null, [{ productId: 'asist-id', name: 'ASIST', eventTypeName: 'ASIST Workshop' }]) === null, 'an Event Type alone does not create a curriculum label');
+assert(aarCurriculumDisplayName('lenses', choices, false) === '4 Lenses', 'a resolved curriculum without T4T keeps the canonical name');
+assert(aarCurriculumDisplayName('lenses', choices, true) === '4 Lenses T4T', 'a resolved curriculum with T4T suffixes the canonical name');
+assert(aarCurriculumDisplayName('prep', choices, true) === 'PREP 8.0 T4T', 'PREP keeps its canonical name before the T4T suffix');
+assert(aarCurriculumDisplayName(null, choices, true) === null, 'a blank curriculum omits the AAR row even when T4T is true');
+assert(aarCurriculumDisplayName('missing-product', choices, true) === null, 'an unresolved curriculum omits the AAR row even when T4T is true');
 
 const model = read('js/aar-curriculum.js');
 const app = read('js/app.js');
@@ -63,7 +68,7 @@ assert(!aarArticle.includes('Curriculum / Product'), 'the AAR template has no st
 assert(!/<(select|input)\b/i.test(aarArticle), 'the AAR template has no curriculum input');
 assert(app.includes('function syncAarCurriculumRow'), 'the open AAR syncs the inherited curriculum');
 assert(app.includes('syncAarCurriculumRow(event, root)'), 'AAR population refreshes the inherited curriculum');
-assert(app.includes('aarCurriculumDisplayName(event?.curriculumProductId, eventCurriculumChoices)'), 'the AAR resolves the parent Event curriculum against Stage 5B choices');
+assert(app.includes('aarCurriculumDisplayName(\n    event?.curriculumProductId,\n    eventCurriculumChoices,\n    event?.isT4t === true,\n  )'), 'the AAR resolves the parent Event curriculum and T4T flag');
 assert(app.includes("if (!name) return;"), 'a missing curriculum removes the display instead of leaving a label');
 assert(app.includes("label.textContent = 'Curriculum / Product'"), 'a present curriculum uses the Curriculum / Product label');
 assert(app.includes('value.textContent = name'), 'the displayed value is the resolved product name');
@@ -88,10 +93,11 @@ try {
 }
 assert(migrationDiff.trim() === '', 'Migration 023 is unchanged');
 assert(!facilitator.includes('curriculum_product_id'), 'Facilitator Management does not read Event curriculum');
-assert(aarCurriculumDiff.trim() === '', 'Stage 5C AAR curriculum display is unchanged');
 assert(eventCurriculumDiff.trim() === '', 'Stage 5B curriculum choice behavior is unchanged');
+assert(!model.includes('is_t4t'), 'AAR display does not read or store the Event T4T column');
 const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
-assert(!migrationNames.some((name) => name.startsWith('024')), 'Stage 5C adds no migration');
+assert(migrationNames.includes('024_event_workshop_t4t.sql'), 'Stage 5E migration 024 is present');
+assert(!migrationNames.some((name) => /^0(2[5-9]|[3-9]\d)_/.test(name)), 'no migration after 024 was added');
 assert(!app.includes('manualExperience') && !app.includes('qualification management'), 'Stage 5C does not add manual experience or qualification management');
 
 const repaired = [

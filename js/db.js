@@ -58,6 +58,46 @@ export function eventCurriculumControlValue(available, choices, eventTypeName, p
   return reconcileCurriculumProductId(choices, eventTypeName, productId) || '';
 }
 
+export function eventTypeAllowsWorkshopT4t(eventTypeName) {
+  return eventTypeName === 'Marriage Enrichment Workshop'
+    || eventTypeName === 'Personal Growth Workshop';
+}
+
+export function eventT4tValueForSave(eventTypeName, checked) {
+  if (!eventTypeAllowsWorkshopT4t(eventTypeName)) return false;
+  return checked === true;
+}
+
+export function readEventT4tColumn(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return { present: false, isT4t: false };
+  }
+  if (!Object.prototype.hasOwnProperty.call(row, 'is_t4t')) {
+    return { present: false, isT4t: false };
+  }
+  return { present: true, isT4t: booleanFromDb(row.is_t4t) };
+}
+
+export function assignEventT4t(event, row) {
+  const t4t = readEventT4tColumn(row);
+  if (t4t.present) {
+    event.isT4t = t4t.isT4t;
+  }
+  return event;
+}
+
+export function normalizeLoadedEventT4t(event) {
+  if (!event || !Object.prototype.hasOwnProperty.call(event, 'isT4t')) return false;
+  return event.isT4t === true;
+}
+
+export function mergeEventT4t(existingIsT4t, savedEvent) {
+  if (savedEvent && Object.prototype.hasOwnProperty.call(savedEvent, 'isT4t')) {
+    return savedEvent.isT4t === true;
+  }
+  return existingIsT4t === true;
+}
+
 export function eventFromRow(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) {
     throw new Error('INVALID_EVENT_ROW');
@@ -105,7 +145,8 @@ export function eventFromRow(row) {
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   };
-  return assignEventCurriculumProductId(event, row);
+  assignEventCurriculumProductId(event, row);
+  return assignEventT4t(event, row);
 }
 
 function aarAuditEntryFromRow(row) {
@@ -176,6 +217,7 @@ function resolveEventDates(event) {
 }
 
 let eventCurriculumSchemaAvailable = false;
+let eventT4tSchemaAvailable = false;
 
 export function eventToRow(event, options = {}) {
   const dates = resolveEventDates(event);
@@ -212,11 +254,18 @@ export function eventToRow(event, options = {}) {
     row.curriculum_product_id = normalizeCurriculumProductId(event.curriculumProductId);
   }
 
+  if (options.includeT4t) {
+    row.is_t4t = event.isT4t === true;
+  }
+
   return row;
 }
 
 function eventWriteRow(event) {
-  return eventToRow(event, { includeCurriculum: eventCurriculumSchemaAvailable });
+  return eventToRow(event, {
+    includeCurriculum: eventCurriculumSchemaAvailable,
+    includeT4t: eventT4tSchemaAvailable,
+  });
 }
 
 export function teamFromRow(row) {
@@ -858,7 +907,8 @@ export async function loadEventCurriculumSupport() {
   if (columnProbe.error) {
     if (isMissingEventCurriculumSchemaError(columnProbe.error)) {
       eventCurriculumSchemaAvailable = false;
-      return { available: false, choices: [] };
+      eventT4tSchemaAvailable = false;
+      return { available: false, t4tAvailable: false, choices: [] };
     }
     throw columnProbe.error;
   }
@@ -870,7 +920,8 @@ export async function loadEventCurriculumSupport() {
   if (allowedProbe.error) {
     if (isMissingEventCurriculumSchemaError(allowedProbe.error)) {
       eventCurriculumSchemaAvailable = false;
-      return { available: false, choices: [] };
+      eventT4tSchemaAvailable = false;
+      return { available: false, t4tAvailable: false, choices: [] };
     }
     throw allowedProbe.error;
   }
@@ -888,14 +939,27 @@ export async function loadEventCurriculumSupport() {
   if (eventTypesResult.error) throw eventTypesResult.error;
 
   eventCurriculumSchemaAvailable = true;
-  return {
-    available: true,
-    choices: buildEventCurriculumChoices({
-      allowedRows: allowedProbe.data,
-      products: productsResult.data,
-      eventTypes: eventTypesResult.data,
-    }),
-  };
+  const choices = buildEventCurriculumChoices({
+    allowedRows: allowedProbe.data,
+    products: productsResult.data,
+    eventTypes: eventTypesResult.data,
+  });
+
+  const t4tProbe = await supabase
+    .from('events')
+    .select('is_t4t')
+    .limit(1);
+
+  if (t4tProbe.error) {
+    if (isMissingEventCurriculumSchemaError(t4tProbe.error)) {
+      eventT4tSchemaAvailable = false;
+      return { available: true, t4tAvailable: false, choices };
+    }
+    throw t4tProbe.error;
+  }
+
+  eventT4tSchemaAvailable = true;
+  return { available: true, t4tAvailable: true, choices };
 }
 
 export async function fetchEventTypes() {

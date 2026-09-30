@@ -795,6 +795,25 @@ body:has(#new-event-modal[open]) {
   display: none;
 }
 
+#new-event-modal #event-t4t-field[hidden] {
+  display: none;
+}
+
+#new-event-modal .event-t4t-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+#new-event-modal #event-is-t4t {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  accent-color: #00205b;
+}
+
 #new-event-modal .event-form-section-title {
   margin: 0 0 10px;
   font-size: 0.75rem;
