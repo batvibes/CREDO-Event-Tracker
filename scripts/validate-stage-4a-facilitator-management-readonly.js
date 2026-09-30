@@ -155,13 +155,16 @@ assert(qualificationEditor.includes('Organization or documentation supporting th
 assert(qualificationEditor.includes("source.id = 'facilitator-qualification-source'") && qualificationEditor.includes("source.type = 'text'"), 'the authority source input stays the existing text field');
 assert(fields.find((field) => field.label === 'Standing')?.value === 'Provisional', 'provisional standing renders in title case');
 assert(fields.find((field) => field.label === 'T4T Completed')?.value === '05/18/26', 'T4T completion renders as a stored training date');
-assert(!fields.some((field) => field.label === 'Trainer / T4T Authority'), 'false trainer authority is omitted');
+assert(!fields.some((field) => field.label === 'Train-the-Trainer Instructor'), 'false instructor status is omitted');
+assert(qualificationEditor.includes('Train-the-Trainer Instructor'), 'the qualification editor uses the instructor label');
+assert(qualificationEditor.includes('Indicates this facilitator is qualified to conduct Train-the-Trainer instruction for this product.'), 'the instructor checkbox explains Train-the-Trainer instruction');
+assert(!detail.includes('facilitator-qualification-remove') && !detail.includes('deleteFacilitatorQualification'), 'the read-only profile has no qualification remove control');
 assert(formatQualificationStanding('developing') === 'Developing', 'developing renders in title case');
 assert(formatQualificationStanding('registered') === 'Registered', 'registered renders in title case');
 assert(formatQualificationStanding('inactive') === 'Inactive', 'inactive renders in title case');
 assert(formatQualificationStanding('qualified') == null, 'an unrecognized standing is not invented');
 const withAuthority = facilitatorQualificationDisplayFields({ trainerAuthority: true, standing: 'registered' });
-assert(withAuthority.find((field) => field.label === 'Trainer / T4T Authority')?.value === 'Yes', 'trainer authority renders only from the stored true value');
+assert(withAuthority.find((field) => field.label === 'Train-the-Trainer Instructor')?.value === 'Yes', 'instructor status renders only from the stored true value');
 assert(!fs.existsSync(path.join(ROOT, 'supabase/migrations/023_facilitator_management.sql')), 'Stage 4A does not add a migration');
 
 const protectedPaths = [

@@ -1648,17 +1648,18 @@ export async function fetchPersonnelAliases() {
   }));
 }
 
-function qualificationRpcError(error) {
+function qualificationRpcError(error, fallback = 'The qualification could not be saved.') {
   const hint = error?.hint || '';
   if (hint === 'PERSONNEL_NOT_FOUND') return new Error('That personnel record was not found.');
   if (hint === 'FACILITATOR_PRODUCT_NOT_FOUND') return new Error('That facilitator product was not found.');
+  if (hint === 'QUALIFICATION_NOT_FOUND') return new Error('That qualification record was not found.');
   if (hint === 'QUALIFICATION_STANDING_INVALID') {
     return new Error('Select a standing of Developing, Provisional, Registered, or Inactive.');
   }
   if (error?.code === '42501' || /not authorized/i.test(error?.message || '')) {
     return new Error('You are not authorized to edit facilitator qualifications.');
   }
-  return new Error(error?.message || 'The qualification could not be saved.');
+  return new Error(error?.message || fallback);
 }
 
 export async function saveFacilitatorQualification(qualification) {
@@ -1675,6 +1676,16 @@ export async function saveFacilitatorQualification(qualification) {
   });
 
   if (error) throw qualificationRpcError(error);
+  return data;
+}
+
+export async function deleteFacilitatorQualification(qualificationId) {
+  const id = typeof qualificationId === 'string' ? qualificationId.trim() : '';
+  if (!id) throw new Error('That qualification record could not be found.');
+  const { data, error } = await supabase.rpc('delete_facilitator_qualification', {
+    p_qualification_id: id,
+  });
+  if (error) throw qualificationRpcError(error, 'The qualification could not be removed.');
   return data;
 }
 

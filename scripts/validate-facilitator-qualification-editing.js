@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   FACILITATOR_STANDING_OPTIONS,
+  facilitatorQualificationDisplayFields,
   facilitatorQualificationProductChoices,
   facilitatorQualificationSaveInput,
   summarizeFacilitatorPersonnel,
@@ -92,11 +93,47 @@ assert(facilitatorQualificationSaveInput({ personId: 'ada', productId: 'lenses',
 assert(facilitatorQualificationSaveInput({ personId: 'ada', productId: 'lenses', standing: '', t4tCompletedOn: '2026-05-18' }).ok === false, 'a T4T date does not default standing to Provisional');
 
 assert(saveWrapper.includes(".rpc('save_facilitator_qualification'"), 'saves go through save_facilitator_qualification');
+assert(saveWrapper.includes('p_trainer_authority: qualification?.trainerAuthority === true'), 'save still sends the instructor flag from its own boolean');
 assert(!saveWrapper.includes(".from('facilitator_qualifications')") && !/\.(insert|update|delete|upsert)\(/.test(saveWrapper), 'the browser does not write facilitator_qualifications directly');
 assert(!app.includes(".from('facilitator_qualifications')"), 'the application shell does not write qualification rows directly');
 assert(!cancel.includes('saveFacilitatorQualification'), 'Cancel does not call the save RPC');
 assert(submit.includes('renderFacilitatorManagement') && submit.includes('openFacilitatorDetail'), 'a successful save reloads Facilitator Management and refreshes the profile');
-assert(!/delete qualification|deleteFacilitatorQualification/i.test(`${app}\n${db}\n${model}`), 'qualification deletion was not added');
+
+const hiddenInstructor = facilitatorQualificationDisplayFields({ trainerAuthority: false, t4tCompletedOn: '2026-05-18', standing: 'developing' });
+assert(!hiddenInstructor.some((field) => field.label === 'Train-the-Trainer Instructor'), 'a false instructor flag stays omitted from the profile');
+const shownInstructor = facilitatorQualificationDisplayFields({ trainerAuthority: true, standing: 'registered' });
+assert(shownInstructor.find((field) => field.label === 'Train-the-Trainer Instructor')?.value === 'Yes', 'a true instructor flag renders Yes');
+assert(editor.includes('Train-the-Trainer Instructor'), 'the checkbox label is Train-the-Trainer Instructor');
+assert(editor.includes("authority.id = 'facilitator-qualification-authority'") && editor.includes("authority.type = 'checkbox'"), 'the instructor control stays the existing checkbox');
+assert(editor.includes('Indicates this facilitator is qualified to conduct Train-the-Trainer instruction for this product.'), 'the instructor checkbox has its helper text');
+assert(!editor.includes('Trainer / T4T Authority'), 'the old trainer authority label is gone from the editor');
+
+const qualificationList = app.slice(app.indexOf('function paintFacilitatorQualificationList'), app.indexOf('function paintFacilitatorQualificationEditor'));
+const removal = app.slice(app.indexOf('function paintFacilitatorQualificationRemoval'), app.indexOf('async function confirmFacilitatorQualificationRemoval'));
+const removalConfirm = app.slice(app.indexOf('async function confirmFacilitatorQualificationRemoval'), app.indexOf('function openFacilitatorQualificationManager'));
+const deleteWrapper = db.slice(db.indexOf('export async function deleteFacilitatorQualification'), db.indexOf('function personnelRpcError'));
+const deleteMigration = read('supabase/migrations/027_facilitator_qualification_delete.sql');
+const deleteBody = deleteMigration.slice(deleteMigration.indexOf('as $$'), deleteMigration.indexOf('$$;'));
+assert(qualificationList.includes('facilitator-qualification-remove') && qualificationList.includes('paintFacilitatorQualificationRemoval'), 'Manage Qualifications can open removal for one row');
+assert(!qualificationList.includes('deleteFacilitatorQualification'), 'the list control does not delete before confirmation');
+assert(!detail.includes('facilitator-qualification-remove') && !detail.includes('deleteFacilitatorQualification'), 'the read-only profile has no remove control');
+assert(removal.includes("title.textContent = 'Remove Qualification'"), 'confirmation title is Remove Qualification');
+assert(removal.includes('Remove ${productName} qualification for ${personName}? This removes the qualification record only. Recorded facilitation experience and personnel information will not be affected.'), 'confirmation explains that only the qualification record is removed');
+assert(removal.includes("cancel.textContent = 'Cancel'") && removal.includes('paintFacilitatorQualificationList()'), 'Cancel returns to the qualification list');
+assert(!removal.includes('deleteFacilitatorQualification') && !removal.includes('window.confirm'), 'Cancel does not delete and confirmation is inside the dialog');
+assert(removalConfirm.includes('deleteFacilitatorQualification(qualification.id)'), 'confirmed removal calls the RPC with the qualification id');
+assert(removalConfirm.includes('renderFacilitatorManagement') && removalConfirm.includes('openFacilitatorDetail') && removalConfirm.includes('paintFacilitatorQualificationList'), 'a successful removal reloads Facilitator Management and returns to the list');
+const removalCatch = removalConfirm.slice(removalConfirm.indexOf('} catch'));
+assert(!removalCatch.includes('paintFacilitatorQualificationList') && !removalCatch.includes('qualificationProducts'), 'a failed removal leaves the visible record in place');
+assert(deleteWrapper.includes(".rpc('delete_facilitator_qualification'") && deleteWrapper.includes('p_qualification_id: id'), 'the browser deletes through delete_facilitator_qualification by id');
+assert(!deleteWrapper.includes(".from('facilitator_qualifications')") && !/\.(insert|update|delete|upsert)\(/.test(deleteWrapper), 'the browser does not delete facilitator_qualifications directly');
+assert(deleteMigration.includes('security definer') && deleteMigration.includes('set search_path = public'), 'the delete function is security definer with a fixed search path');
+assert(deleteBody.includes('auth.uid() is null') && deleteBody.includes('public.can_edit_events()') && deleteBody.includes("errcode = '42501'"), 'delete requires an authenticated editor or admin');
+assert(deleteBody.includes('delete from public.facilitator_qualifications') && deleteBody.includes('where id = p_qualification_id'), 'delete targets one qualification row by its primary key');
+assert(deleteBody.includes("hint = 'QUALIFICATION_NOT_FOUND'"), 'a missing qualification id raises not found');
+assert(!/delete\s+from\s+public\.(people|facilitator_products|events|facilitator_product_experience|facilitator_t4t_product_experience)\b/i.test(deleteBody), 'delete does not remove people, products, events, or experience');
+assert(!/where\s+(person_id|product_id)\b/i.test(deleteBody), 'delete does not select a row by person or product');
+assert(deleteMigration.includes('revoke all on function public.delete_facilitator_qualification(uuid) from public') && deleteMigration.includes('revoke all on function public.delete_facilitator_qualification(uuid) from anon') && deleteMigration.includes('grant execute on function public.delete_facilitator_qualification(uuid) to authenticated'), 'only authenticated users can execute the delete function');
 
 const personnel = summarizeFacilitatorPersonnel(
   [{ id: 'ada', name: 'Ada', active: true, is_facilitator: true }],
@@ -112,7 +149,8 @@ assert(!overview.includes('standing') && !overview.includes('expiration'), 'Need
 assert(!capabilities.includes('trainer_authority') && !capabilities.includes('expiration'), 'Program Capabilities does not edit qualifications');
 assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
 assert(migrationNames.includes('026_facilitator_product_authority_defaults.sql'), 'verified product authority defaults use migration 026');
-assert(!migrationNames.some((name) => /^0(2[7-9]|[3-9]\d)_/.test(name)), 'no migration after 026 was added');
+assert(migrationNames.includes('027_facilitator_qualification_delete.sql'), 'qualification removal uses migration 027');
+assert(!migrationNames.some((name) => /^0(2[8-9]|[3-9]\d)_/.test(name)), 'no migration after 027 was added');
 
 if (errors.length) {
   console.error('validate-facilitator-qualification-editing failed:');

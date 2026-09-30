@@ -17,6 +17,7 @@ import {
   eventTypeAllowsWorkshopT4t,
   fetchEvents,
   fetchFacilitatorManagementSources,
+  deleteFacilitatorQualification,
   saveFacilitatorQualification,
   fetchLocations,
   loadEventCurriculumSupport,
@@ -11710,7 +11711,16 @@ function paintFacilitatorQualificationList() {
       const standing = FACILITATOR_STANDING_OPTIONS.find((option) => option[0] === qualification.standing)?.[1];
       button.textContent = standing ? `${qualification.productName} — ${standing}` : qualification.productName;
       button.addEventListener('click', () => paintFacilitatorQualificationEditor(qualification));
-      list.appendChild(button);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-secondary facilitator-qualification-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `Remove ${qualification.productName} qualification`);
+      remove.addEventListener('click', () => paintFacilitatorQualificationRemoval(qualification));
+      const row = document.createElement('div');
+      row.className = 'facilitator-qualification-row';
+      row.append(button, remove);
+      list.appendChild(row);
     }
     body.appendChild(list);
   }
@@ -11817,8 +11827,12 @@ function paintFacilitatorQualificationEditor(qualification) {
   authority.checked = qualification?.trainerAuthority === true;
   const authorityLabel = document.createElement('label');
   authorityLabel.className = 'facilitator-qualification-check';
-  authorityLabel.append(authority, document.createTextNode('Trainer / T4T Authority'));
+  authorityLabel.append(authority, document.createTextNode('Train-the-Trainer Instructor'));
   training.appendChild(authorityLabel);
+  const authorityHelp = document.createElement('p');
+  authorityHelp.className = 'facilitator-qualification-note';
+  authorityHelp.textContent = 'Indicates this facilitator is qualified to conduct Train-the-Trainer instruction for this product.';
+  training.appendChild(authorityHelp);
 
   const documentation = appendQualificationSection(form, 'Section 03 — Documentation');
   const source = document.createElement('input');
@@ -11947,6 +11961,89 @@ async function submitFacilitatorQualification(qualification) {
     if (save?.isConnected) {
       save.disabled = false;
       save.textContent = 'Save';
+    }
+    if (cancel?.isConnected) cancel.disabled = false;
+  }
+}
+
+function paintFacilitatorQualificationRemoval(qualification) {
+  const person = facilitatorQualificationPerson();
+  const title = document.getElementById('facilitator-qualification-title');
+  const body = document.getElementById('facilitator-qualification-body');
+  const footer = document.getElementById('facilitator-qualification-footer');
+  if (!person || !title || !body || !footer) return;
+  title.textContent = 'Remove Qualification';
+  body.replaceChildren();
+  const copy = document.createElement('p');
+  copy.className = 'facilitator-qualification-note';
+  const productName = qualification?.productName || 'this product';
+  const personName = person.displayName || 'this facilitator';
+  copy.textContent = `Remove ${productName} qualification for ${personName}? This removes the qualification record only. Recorded facilitation experience and personnel information will not be affected.`;
+  const error = document.createElement('p');
+  error.id = 'facilitator-qualification-error';
+  error.className = 'facilitator-qualification-error';
+  error.hidden = true;
+  body.append(copy, error);
+  footer.replaceChildren();
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn-secondary';
+  cancel.id = 'facilitator-qualification-remove-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => {
+    if (facilitatorQualificationSaving) return;
+    paintFacilitatorQualificationList();
+  });
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'btn btn-primary';
+  removeButton.id = 'facilitator-qualification-remove-confirm';
+  removeButton.textContent = 'Remove Qualification';
+  removeButton.addEventListener('click', () => confirmFacilitatorQualificationRemoval(qualification, error, removeButton, cancel));
+  footer.append(cancel, removeButton);
+}
+
+async function confirmFacilitatorQualificationRemoval(qualification, error, removeButton, cancel) {
+  if (facilitatorQualificationSaving) return;
+  const person = facilitatorQualificationPerson();
+  if (!person) return;
+  if (!qualification?.id) {
+    if (error) {
+      error.textContent = 'That qualification record could not be found.';
+      error.hidden = false;
+    }
+    return;
+  }
+  facilitatorQualificationSaving = true;
+  if (removeButton) {
+    removeButton.disabled = true;
+    removeButton.textContent = 'Removing…';
+  }
+  if (cancel) cancel.disabled = true;
+  try {
+    await deleteFacilitatorQualification(qualification.id);
+    const reloaded = await renderFacilitatorManagement();
+    const refreshed = facilitatorPersonnel.find((record) => record.id === person.id);
+    if (!reloaded || !refreshed) {
+      if (error) {
+        error.textContent = 'The qualification was removed, but the profile could not be reloaded.';
+        error.hidden = false;
+      }
+      return;
+    }
+    facilitatorQualificationNotice = 'Qualification removed.';
+    openFacilitatorDetail(person.id);
+    paintFacilitatorQualificationList();
+  } catch (removeError) {
+    if (error) {
+      error.textContent = removeError.message || 'The qualification could not be removed.';
+      error.hidden = false;
+    }
+  } finally {
+    facilitatorQualificationSaving = false;
+    if (removeButton?.isConnected) {
+      removeButton.disabled = false;
+      removeButton.textContent = 'Remove Qualification';
     }
     if (cancel?.isConnected) cancel.disabled = false;
   }

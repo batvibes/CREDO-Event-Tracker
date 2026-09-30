@@ -65,7 +65,7 @@ export function facilitatorQualificationDisplayFields(qualification) {
     fields.push({ label: 'Expiration', value: formatRecordedFacilitationDate(qualification.expirationOn) });
   }
   if (qualification?.trainerAuthority === true) {
-    fields.push({ label: 'Trainer / T4T Authority', value: 'Yes' });
+    fields.push({ label: 'Train-the-Trainer Instructor', value: 'Yes' });
   }
   if (qualification?.governingSource) {
     fields.push({ label: 'Qualification Authority / Source', value: qualification.governingSource });
