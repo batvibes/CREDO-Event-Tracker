@@ -12,10 +12,13 @@ import {
   fetchCommandHighlightsNotes,
   fetchCommands,
   fetchEventTypes,
+  eventCurriculumControlValue,
   fetchEvents,
   fetchFacilitatorManagementSources,
   fetchLocations,
   loadEventCurriculumSupport,
+  mergeEventCurriculumProductId,
+  normalizeLoadedEventCurriculum,
   fetchMonthlyReport,
   fetchMonthlyReports,
   fetchPeople,
@@ -522,7 +525,7 @@ function normalizeEvent(event) {
   event.credoStaff = String(event.credoStaff ?? '').trim();
   event.time = String(event.time ?? '').trim();
   event.poc = String(event.poc ?? '').trim();
-  event.curriculumProductId = event.curriculumProductId ? String(event.curriculumProductId) : null;
+  event.curriculumProductId = normalizeLoadedEventCurriculum(event);
   if (event.roster !== 'Complete' && event.roster !== 'Need Roster') {
     event.roster =
       event.rosterAcquired === 'Complete' ? 'Complete' : 'Need Roster';
@@ -535,11 +538,17 @@ function syncEventTypeNames() {
   eventTypes = eventTypeRecords.map((record) => record.name);
 }
 
+function applySavedEvent(event, saved) {
+  const curriculumProductId = mergeEventCurriculumProductId(event.curriculumProductId, saved);
+  Object.assign(event, normalizeEvent(saved));
+  event.curriculumProductId = curriculumProductId;
+}
+
 async function persistEvent(event) {
   try {
     const result = await updateEvent(event);
     const saved = result.event ?? result;
-    Object.assign(event, normalizeEvent(saved));
+    applySavedEvent(event, saved);
     applyAarResequencePatches(result.resequenced);
     refreshOpenAarDocumentIfNeeded();
   } catch (err) {
@@ -551,7 +560,7 @@ async function persistEvent(event) {
 async function persistNewEvent(event) {
   try {
     const saved = await insertEvent(event);
-    Object.assign(event, normalizeEvent(saved));
+    applySavedEvent(event, saved);
     return true;
   } catch (err) {
     console.error(err);
@@ -12150,8 +12159,12 @@ function syncEventCurriculumField(form, selectedId) {
     select.append(new Option(choice.name, choice.productId));
   });
 
-  const reconciled = reconcileCurriculumProductId(eventCurriculumChoices, eventType, requested);
-  select.value = eventCurriculumAvailable && reconciled ? reconciled : '';
+  select.value = eventCurriculumControlValue(
+    eventCurriculumAvailable,
+    eventCurriculumChoices,
+    eventType,
+    requested,
+  );
   field.hidden = options.length === 0;
 }
 

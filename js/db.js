@@ -4,6 +4,7 @@ import {
   buildEventCurriculumChoices,
   isMissingEventCurriculumSchemaError,
   normalizeCurriculumProductId,
+  reconcileCurriculumProductId,
 } from './event-curriculum.js';
 
 function booleanFromDb(value) {
@@ -19,12 +20,50 @@ function booleanFromDb(value) {
   return Boolean(value);
 }
 
+export function readEventCurriculumColumn(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return { present: false, curriculumProductId: null };
+  }
+  if (!Object.prototype.hasOwnProperty.call(row, 'curriculum_product_id')) {
+    return { present: false, curriculumProductId: null };
+  }
+  return {
+    present: true,
+    curriculumProductId: normalizeCurriculumProductId(row.curriculum_product_id),
+  };
+}
+
+export function assignEventCurriculumProductId(event, row) {
+  const curriculum = readEventCurriculumColumn(row);
+  if (curriculum.present) {
+    event.curriculumProductId = curriculum.curriculumProductId;
+  }
+  return event;
+}
+
+export function normalizeLoadedEventCurriculum(event) {
+  if (!event || !Object.prototype.hasOwnProperty.call(event, 'curriculumProductId')) return null;
+  return normalizeCurriculumProductId(event.curriculumProductId);
+}
+
+export function mergeEventCurriculumProductId(existingId, savedEvent) {
+  if (savedEvent && Object.prototype.hasOwnProperty.call(savedEvent, 'curriculumProductId')) {
+    return normalizeCurriculumProductId(savedEvent.curriculumProductId);
+  }
+  return normalizeCurriculumProductId(existingId);
+}
+
+export function eventCurriculumControlValue(available, choices, eventTypeName, productId) {
+  if (!available) return '';
+  return reconcileCurriculumProductId(choices, eventTypeName, productId) || '';
+}
+
 export function eventFromRow(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) {
     throw new Error('INVALID_EVENT_ROW');
   }
 
-  return {
+  const event = {
     id: row.id,
     date: row.date,
     dateType: row.date_type === 'range' ? 'range' : 'single',
@@ -63,10 +102,10 @@ export function eventFromRow(row) {
     aarFinalized: booleanFromDb(row.aar_finalized),
     aarFinalizedAt: row.aar_finalized_at ?? null,
     aarSequenceNumber: row.aar_sequence_number == null ? '' : String(row.aar_sequence_number),
-    curriculumProductId: row.curriculum_product_id ?? null,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   };
+  return assignEventCurriculumProductId(event, row);
 }
 
 function aarAuditEntryFromRow(row) {

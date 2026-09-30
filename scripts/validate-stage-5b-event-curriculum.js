@@ -6,12 +6,15 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { aarCurriculumDisplayName } from '../js/aar-curriculum.js';
 import {
   buildEventCurriculumChoices,
   curriculumChoicesForEventType,
   isMissingEventCurriculumSchemaError,
+  normalizeCurriculumProductId,
   reconcileCurriculumProductId,
 } from '../js/event-curriculum.js';
 
@@ -94,6 +97,8 @@ assert(reconcileCurriculumProductId(choices, 'Personal Growth Workshop', 'gottma
 assert(reconcileCurriculumProductId(choices, 'ASIST Workshop', 'gottman') === null, 'leaving the workshop Event Types clears the curriculum');
 assert(reconcileCurriculumProductId(choices, 'Personal Growth Workshop', 'lenses') === 'lenses', 'an allowed PGW curriculum is kept');
 assert(reconcileCurriculumProductId(choices, 'Marriage Enrichment Workshop', 'love') === null, 'an inactive product is not retained');
+assert(!isMissingEventCurriculumSchemaError({ code: '08006' }), 'a network failure is not treated as a missing schema');
+assert(!isMissingEventCurriculumSchemaError(new Error('fetch failed')), 'an unexpected error is not treated as a missing schema');
 
 assert(isMissingEventCurriculumSchemaError({ code: 'PGRST204' }), 'a missing column is treated as the pre-023 schema');
 assert(isMissingEventCurriculumSchemaError({ code: 'PGRST205' }), 'a missing allowed-curriculum table is treated as the pre-023 schema');
@@ -122,7 +127,9 @@ assert(!uuidPattern.test(form), 'Event Details does not hard-code product UUIDs'
 assert(model.includes('product.active === true'), 'only active products become choices');
 assert(model.includes('choice.eventTypeName === eventTypeName'), 'choices follow the exact Event Type name');
 
-assert(db.includes('curriculumProductId: row.curriculum_product_id ?? null'), 'loaded events keep a null curriculum when the column is absent or null');
+assert(db.includes('assignEventCurriculumProductId(event, row)'), 'loaded events copy curriculum only when the row owns curriculum_product_id');
+assert(!db.includes('curriculumProductId: row.curriculum_product_id ?? null'), 'a missing curriculum column is not fabricated as null');
+assert(db.includes("!Object.prototype.hasOwnProperty.call(row, 'curriculum_product_id')"), 'curriculum absence stays distinct from an explicit null');
 assert(db.includes('if (options.includeCurriculum)'), 'the curriculum column is added to a save only when requested');
 assert(db.includes('includeCurriculum: eventCurriculumSchemaAvailable'), 'saves include the column only after the Stage 5A schema probe succeeds');
 assert(db.includes('let eventCurriculumSchemaAvailable = false'), 'curriculum writes stay off until the probe succeeds');
@@ -135,6 +142,20 @@ assert(!/security\s+definer/i.test(db), 'no security definer function was added'
 
 assert(app.includes('syncEventCurriculumField'), 'Event Type changes refresh the curriculum choices');
 assert(app.includes('readEventCurriculumProductId'), 'the form reads the optional curriculum');
+assert(app.includes('function applySavedEvent(event, saved)'), 'existing and new Event saves share one response merge');
+assert(app.includes('const curriculumProductId = mergeEventCurriculumProductId(event.curriculumProductId, saved);'), 'a save merge reads the returned curriculum before normalization');
+assert(app.includes('event.curriculumProductId = curriculumProductId;'), 'a save merge writes the curriculum decision after the response assign');
+assert(app.includes('event.curriculumProductId = normalizeLoadedEventCurriculum(event);'), 'a fresh event load still normalizes a missing curriculum to blank');
+assert(app.includes('select.value = eventCurriculumControlValue('), 'the curriculum control displays the reconciled saved id');
+const populateStart = app.indexOf('function populateEventFormFromRecord');
+const populate = app.slice(populateStart, app.indexOf('function readEventFieldsFromForm'));
+const typeAssignment = populate.indexOf('form.querySelector(\'[name="eventType"]\').value = event.eventType;');
+const curriculumAssignment = populate.indexOf('syncEventCurriculumField(form, event.curriculumProductId ?? null);');
+assert(typeAssignment >= 0 && curriculumAssignment > typeAssignment, 'hydration sets Event Type before applying the saved curriculum');
+const typeChange = app.slice(app.indexOf("typeSelect.addEventListener('change'"), app.indexOf("typeSelect.addEventListener('change'") + 180);
+assert(typeChange.includes('syncEventCurriculumField(form);'), 'a user Event Type change reconciles the current selection');
+assert(!typeChange.includes('syncEventCurriculumField(form,'), 'a user Event Type change does not replay a stored curriculum id');
+assert(app.includes('await persistEvent(event);'), 'roster and status saves use the same Event persistence path');
 assert(app.includes('loadEventCurriculumSupport'), 'startup loads curriculum support without writing events');
 assert(!/setAarRmtField\(\s*['"]Curriculum/.test(app), 'AAR does not fill curriculum through an editable report field');
 const aarArticleStart = html.indexOf('id="aar-report-article"');
@@ -169,6 +190,108 @@ for (const filePath of repaired) {
   assert(fs.existsSync(path.join(ROOT, filePath)), `repaired PowerPoint remains present: ${filePath}`);
   assert(status.includes(filePath), `repaired PowerPoint remains untracked: ${filePath}`);
 }
+
+function extractFunction(source, name) {
+  const start = source.indexOf(`export function ${name}`);
+  const fallback = start >= 0 ? start : source.indexOf(`function ${name}`);
+  if (fallback < 0) {
+    errors.push(`missing function ${name}`);
+    return '';
+  }
+  const brace = source.indexOf('{', fallback);
+  let depth = 0;
+  for (let index = brace; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    else if (source[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(fallback, index + 1).replace(/^export /, '');
+    }
+  }
+  errors.push(`unterminated function ${name}`);
+  return '';
+}
+
+const hydration = vm.createContext({
+  normalizeCurriculumProductId,
+  reconcileCurriculumProductId,
+  Object,
+  String,
+  Error,
+  Boolean,
+});
+vm.runInContext([
+  'booleanFromDb',
+  'readEventCurriculumColumn',
+  'assignEventCurriculumProductId',
+  'normalizeLoadedEventCurriculum',
+  'mergeEventCurriculumProductId',
+  'eventCurriculumControlValue',
+  'eventFromRow',
+].map((name) => extractFunction(db, name)).join('\n') + `
+this.eventFromRow = eventFromRow;
+this.normalizeLoadedEventCurriculum = normalizeLoadedEventCurriculum;
+this.mergeEventCurriculumProductId = mergeEventCurriculumProductId;
+this.eventCurriculumControlValue = eventCurriculumControlValue;
+`, hydration);
+
+function freshCurriculum(row) {
+  return hydration.normalizeLoadedEventCurriculum(hydration.eventFromRow(row));
+}
+
+function displayedCurriculum(eventType, curriculumProductId) {
+  return hydration.eventCurriculumControlValue(true, choices, eventType, curriculumProductId);
+}
+
+function mergeSave(existingId, saved) {
+  const event = { curriculumProductId: existingId };
+  const curriculumProductId = hydration.mergeEventCurriculumProductId(event.curriculumProductId, saved);
+  const normalized = { ...saved, curriculumProductId: hydration.normalizeLoadedEventCurriculum(saved) };
+  Object.assign(event, normalized);
+  event.curriculumProductId = curriculumProductId;
+  return event.curriculumProductId;
+}
+
+const mewRow = {
+  id: 'mew-event',
+  date: '2026-04-08',
+  event_type: 'Marriage Enrichment Workshop',
+  curriculum_product_id: 'gottman',
+  aar_finalized: false,
+};
+const pgwRow = {
+  id: 'pgw-event',
+  date: '2026-05-01',
+  event_type: 'Personal Growth Workshop',
+  curriculum_product_id: 'lenses',
+  aar_finalized: false,
+};
+
+assert(freshCurriculum(mewRow) === 'gottman', 'a persisted MEW curriculum hydrates from the returned column');
+assert(displayedCurriculum('Marriage Enrichment Workshop', freshCurriculum(mewRow)) === 'gottman', 'a persisted MEW curriculum displays as the selected choice');
+assert(freshCurriculum(pgwRow) === 'lenses', 'a persisted PGW curriculum hydrates from the returned column');
+assert(displayedCurriculum('Personal Growth Workshop', freshCurriculum(pgwRow)) === 'lenses', 'a persisted PGW curriculum displays as the selected choice');
+assert(freshCurriculum({ ...mewRow, curriculum_product_id: null }) === null, 'an explicit database null hydrates to null');
+assert(displayedCurriculum('Marriage Enrichment Workshop', null) === '', 'an explicit null curriculum displays blank');
+assert(displayedCurriculum('Marriage Enrichment Workshop', 'lenses') === '', 'an incompatible persisted curriculum does not display as a valid selection');
+assert(displayedCurriculum('Marriage Enrichment Workshop', 'love') === '', 'an inactive persisted curriculum does not display as a valid selection');
+assert(reconcileCurriculumProductId(choices, 'Personal Growth Workshop', 'gottman') === null, 'a user change from MEW to PGW clears an incompatible curriculum');
+assert(reconcileCurriculumProductId(choices, 'Marriage Enrichment Workshop', 'lenses') === null, 'a user change from PGW to MEW clears an incompatible curriculum');
+assert(reconcileCurriculumProductId(choices, 'ASIST Workshop', 'gottman') === null, 'a user change from a workshop to a type with no curricula clears the curriculum');
+assert(reconcileCurriculumProductId(choices, 'Personal Growth Workshop', 'chapter') === 'chapter', 'a compatible selected curriculum remains');
+assert(displayedCurriculum('Marriage Enrichment Workshop', '') === '', 'blank remains a valid curriculum choice');
+assert(mergeSave('gottman', { curriculumProductId: 'prep' }) === 'prep', 'a returned curriculum UUID replaces the in-memory curriculum');
+assert(mergeSave('gottman', { curriculumProductId: null }) === null, 'a returned explicit null clears the in-memory curriculum');
+assert(mergeSave('gottman', { id: 'mew-event', eventType: 'Marriage Enrichment Workshop' }) === 'gottman', 'an absent curriculum_product_id preserves the existing in-memory curriculum');
+assert(mergeSave('lenses', { roster: 'Complete' }) === 'lenses', 'an unrelated Event save preserves the existing curriculum when the response omits the column');
+assert(mergeSave(null, { curriculumProductId: null }) === null, 'clearing a blank curriculum stays blank');
+assert(aarCurriculumDisplayName(freshCurriculum(mewRow), choices) === 'Gottman, Seven Principles of Making Marriage Work', 'AAR display receives the hydrated MEW curriculum name');
+assert(aarCurriculumDisplayName(freshCurriculum(pgwRow), choices) === '4 Lenses', 'AAR display receives the hydrated PGW curriculum name');
+assert(aarCurriculumDisplayName(freshCurriculum({ ...mewRow, curriculum_product_id: null }), choices) === null, 'AAR omits a hydrated null curriculum');
+const pre023Row = { id: 'historical', date: '2026-04-08', event_type: 'Marriage Enrichment Workshop', aar_finalized: false };
+const pre023Event = hydration.eventFromRow(pre023Row);
+assert(!Object.prototype.hasOwnProperty.call(pre023Event, 'curriculumProductId'), 'a fresh pre-023 row does not invent a curriculum property');
+assert(freshCurriculum(pre023Row) === null, 'a fresh load without curriculum_product_id behaves as no curriculum');
+assert(displayedCurriculum('Marriage Enrichment Workshop', freshCurriculum(pre023Row)) === '', 'a fresh pre-023 event displays a blank curriculum');
 
 if (errors.length) {
   console.error('validate-stage-5b-event-curriculum failed:');
