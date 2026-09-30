@@ -7007,12 +7007,89 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-qualification-modal {
-  width: min(640px, calc(100vw - 32px));
+  width: min(560px, calc(100vw - 32px));
+  margin: auto;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+}
+
+#facilitator-qualification-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+}
+
+#facilitator-qualification-modal .modal-header,
+#facilitator-qualification-modal .modal-footer {
+  flex-shrink: 0;
 }
 
 #facilitator-qualification-modal .modal-body {
-  max-height: min(70vh, 720px);
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#facilitator-qualification-modal #facilitator-qualification-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-section + .facilitator-qualification-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+#facilitator-qualification-modal .facilitator-qualification-section-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #00205b;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-date-span {
+  grid-column: 1 / -1;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-dates label,
+#facilitator-qualification-modal .modal-body input,
+#facilitator-qualification-modal .modal-body select,
+#facilitator-qualification-modal .modal-body textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-check input {
+  width: auto;
+  max-width: none;
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  #facilitator-qualification-modal .facilitator-qualification-dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 #facilitator-qualification-modal .facilitator-qualification-list {

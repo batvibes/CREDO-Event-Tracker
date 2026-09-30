@@ -11660,11 +11660,22 @@ function closeFacilitatorQualificationManager() {
   if (modal?.open) modal.close();
 }
 
-function appendQualificationField(form, labelText, control) {
+function appendQualificationField(parent, labelText, control) {
   const label = document.createElement('label');
   label.append(document.createTextNode(labelText), control);
-  form.appendChild(label);
+  parent.appendChild(label);
   return control;
+}
+
+function appendQualificationSection(form, title) {
+  const section = document.createElement('section');
+  section.className = 'facilitator-qualification-section';
+  const heading = document.createElement('h4');
+  heading.className = 'facilitator-qualification-section-title';
+  heading.textContent = title;
+  section.appendChild(heading);
+  form.appendChild(section);
+  return section;
 }
 
 function paintFacilitatorQualificationList() {
@@ -11740,6 +11751,7 @@ function paintFacilitatorQualificationEditor(qualification) {
     submitFacilitatorQualification(qualification);
   });
 
+  const details = appendQualificationSection(form, 'Section 01 — Qualification Details');
   if (creating) {
     const product = document.createElement('select');
     product.id = 'facilitator-qualification-product';
@@ -11747,7 +11759,7 @@ function paintFacilitatorQualificationEditor(qualification) {
     for (const choice of facilitatorQualificationProductChoices(facilitatorProducts, person.qualificationProducts)) {
       product.appendChild(new Option(choice.name, choice.id));
     }
-    appendQualificationField(form, 'Product', product);
+    appendQualificationField(details, 'Product', product);
   } else {
     const field = document.createElement('div');
     field.className = 'facilitator-qualification-fixed';
@@ -11759,7 +11771,7 @@ function paintFacilitatorQualificationEditor(qualification) {
     product.dataset.productId = qualification.productId;
     product.textContent = qualification.productName;
     field.append(caption, product);
-    form.appendChild(field);
+    details.appendChild(field);
   }
 
   const standing = document.createElement('select');
@@ -11769,25 +11781,31 @@ function paintFacilitatorQualificationEditor(qualification) {
     standing.appendChild(new Option(label, value));
   }
   standing.value = qualification?.standing || '';
-  appendQualificationField(form, 'Standing', standing);
+  appendQualificationField(details, 'Standing', standing);
+
+  const training = appendQualificationSection(form, 'Section 02 — Training & Validity');
+  const dates = document.createElement('div');
+  dates.className = 'facilitator-qualification-dates';
+  training.appendChild(dates);
 
   const t4tCompleted = document.createElement('input');
   t4tCompleted.id = 'facilitator-qualification-t4t';
   t4tCompleted.type = 'date';
   t4tCompleted.value = qualification?.t4tCompletedOn || '';
-  appendQualificationField(form, 'T4T Completed', t4tCompleted);
+  appendQualificationField(dates, 'T4T Completed', t4tCompleted);
 
   const firstFacilitated = document.createElement('input');
   firstFacilitated.id = 'facilitator-qualification-first';
   firstFacilitated.type = 'date';
   firstFacilitated.value = qualification?.firstFacilitatedOn || '';
-  appendQualificationField(form, 'First Facilitated', firstFacilitated);
+  appendQualificationField(dates, 'First Facilitated', firstFacilitated);
 
   const expiration = document.createElement('input');
   expiration.id = 'facilitator-qualification-expiration';
   expiration.type = 'date';
   expiration.value = qualification?.expirationOn || '';
-  appendQualificationField(form, 'Expiration', expiration);
+  const expirationField = appendQualificationField(dates, 'Expiration', expiration);
+  expirationField.parentElement.classList.add('facilitator-qualification-date-span');
 
   const authority = document.createElement('input');
   authority.id = 'facilitator-qualification-authority';
@@ -11796,13 +11814,14 @@ function paintFacilitatorQualificationEditor(qualification) {
   const authorityLabel = document.createElement('label');
   authorityLabel.className = 'facilitator-qualification-check';
   authorityLabel.append(authority, document.createTextNode('Trainer / T4T Authority'));
-  form.appendChild(authorityLabel);
+  training.appendChild(authorityLabel);
 
+  const documentation = appendQualificationSection(form, 'Section 03 — Documentation');
   const source = document.createElement('input');
   source.id = 'facilitator-qualification-source';
   source.type = 'text';
   source.value = qualification?.governingSource || '';
-  appendQualificationField(form, 'Qualification Authority / Source', source);
+  appendQualificationField(documentation, 'Qualification Authority / Source', source);
   const sourceHelp = document.createElement('p');
   sourceHelp.className = 'facilitator-qualification-note';
   sourceHelp.textContent = 'Organization or documentation supporting this qualification. Leave blank if not verified.';
@@ -11812,7 +11831,7 @@ function paintFacilitatorQualificationEditor(qualification) {
   notes.id = 'facilitator-qualification-notes';
   notes.rows = 4;
   notes.value = qualification?.notes || '';
-  appendQualificationField(form, 'Notes', notes);
+  appendQualificationField(documentation, 'Notes', notes);
 
   const error = document.createElement('p');
   error.id = 'facilitator-qualification-error';
