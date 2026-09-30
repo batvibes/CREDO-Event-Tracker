@@ -142,8 +142,13 @@ try {
   errors.push(`protected diff failed: ${error.message}`);
 }
 assert(protectedDiff.trim() === '', 'MIR, Team, Event, Settings, and personnel identity files are unchanged');
+const database = read('js/db.js');
+const qualificationSave = database.slice(database.indexOf('export async function saveFacilitatorQualification'), database.indexOf('function personnelRpcError'));
+assert(qualificationSave.includes(".rpc('save_facilitator_qualification'"), 'qualification writes use the existing save RPC');
+assert(qualificationSave.includes('p_person_id') && qualificationSave.includes('p_product_id') && qualificationSave.includes('p_standing') && qualificationSave.includes('p_t4t_completed_on') && qualificationSave.includes('p_first_facilitated_on') && qualificationSave.includes('p_trainer_authority') && qualificationSave.includes('p_expiration_on') && qualificationSave.includes('p_governing_source') && qualificationSave.includes('p_notes'), 'the save call uses the existing RPC parameters');
+assert(!qualificationSave.includes(".from('facilitator_qualifications')"), 'the qualification save does not write the table directly');
+assert(!/\.(insert|update|delete|upsert)\(/.test(qualificationSave), 'the qualification save does not insert, update, or delete directly');
 assert(!read('js/app.js').includes('facilitator_qualifications'), 'qualification rows are not edited from the application shell');
-assert(!read('js/db.js').includes('save_facilitator_qualification'), 'no qualification write wrapper was added');
 
 if (errors.length) {
   console.error('validate-stage-3a-facilitator-qualification-foundation failed:');

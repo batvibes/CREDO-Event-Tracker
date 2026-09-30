@@ -1635,6 +1635,36 @@ export async function fetchPersonnelAliases() {
   }));
 }
 
+function qualificationRpcError(error) {
+  const hint = error?.hint || '';
+  if (hint === 'PERSONNEL_NOT_FOUND') return new Error('That personnel record was not found.');
+  if (hint === 'FACILITATOR_PRODUCT_NOT_FOUND') return new Error('That facilitator product was not found.');
+  if (hint === 'QUALIFICATION_STANDING_INVALID') {
+    return new Error('Select a standing of Developing, Provisional, Registered, or Inactive.');
+  }
+  if (error?.code === '42501' || /not authorized/i.test(error?.message || '')) {
+    return new Error('You are not authorized to edit facilitator qualifications.');
+  }
+  return new Error(error?.message || 'The qualification could not be saved.');
+}
+
+export async function saveFacilitatorQualification(qualification) {
+  const { data, error } = await supabase.rpc('save_facilitator_qualification', {
+    p_person_id: qualification?.personId ?? null,
+    p_product_id: qualification?.productId ?? null,
+    p_standing: qualification?.standing ?? null,
+    p_t4t_completed_on: qualification?.t4tCompletedOn ?? null,
+    p_first_facilitated_on: qualification?.firstFacilitatedOn ?? null,
+    p_trainer_authority: qualification?.trainerAuthority === true,
+    p_expiration_on: qualification?.expirationOn ?? null,
+    p_governing_source: qualification?.governingSource || null,
+    p_notes: qualification?.notes || null,
+  });
+
+  if (error) throw qualificationRpcError(error);
+  return data;
+}
+
 function personnelRpcError(error, fallbackName = 'that name') {
   const hint = error?.hint || '';
   const message = String(error?.message || '');

@@ -29,12 +29,16 @@ export const FACILITATOR_PRODUCT_EXPERIENCE_NO = 'No';
 export const FACILITATOR_QUALIFICATION_ON_FILE = 'On file';
 export const FACILITATOR_QUALIFICATION_NONE = 'None';
 
-const FACILITATOR_STANDING_LABELS = {
-  developing: 'Developing',
-  provisional: 'Provisional',
-  registered: 'Registered',
-  inactive: 'Inactive',
-};
+export const FACILITATOR_STANDING_OPTIONS = Object.freeze([
+  ['developing', 'Developing'],
+  ['provisional', 'Provisional'],
+  ['registered', 'Registered'],
+  ['inactive', 'Inactive'],
+]);
+export const FACILITATOR_QUALIFICATION_PRODUCT_REQUIRED = 'Select a product.';
+export const FACILITATOR_QUALIFICATION_STANDING_REQUIRED = 'Select a standing.';
+
+const FACILITATOR_STANDING_LABELS = Object.fromEntries(FACILITATOR_STANDING_OPTIONS);
 
 export function formatQualificationStanding(value) {
   const key = cleanText(value).toLowerCase();
@@ -62,6 +66,39 @@ export function facilitatorQualificationDisplayFields(qualification) {
   }
   if (qualification?.notes) fields.push({ label: 'Notes', value: qualification.notes });
   return fields;
+}
+
+export function facilitatorQualificationProductChoices(products, qualifications) {
+  const taken = new Set((qualifications ?? []).map((row) => row?.productId).filter(Boolean));
+  return facilitatorProductFilterOptions(products).filter((product) => !taken.has(product.id));
+}
+
+function cleanQualificationNote(value) {
+  if (value == null) return '';
+  return String(value).replace(/\r\n/g, '\n').trim();
+}
+
+export function facilitatorQualificationSaveInput(input) {
+  const productId = cleanText(input?.productId);
+  if (!productId) return { ok: false, message: FACILITATOR_QUALIFICATION_PRODUCT_REQUIRED };
+  const standing = cleanText(input?.standing).toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(FACILITATOR_STANDING_LABELS, standing)) {
+    return { ok: false, message: FACILITATOR_QUALIFICATION_STANDING_REQUIRED };
+  }
+  return {
+    ok: true,
+    value: {
+      personId: input?.personId ?? null,
+      productId,
+      standing,
+      t4tCompletedOn: asDate(input?.t4tCompletedOn),
+      firstFacilitatedOn: asDate(input?.firstFacilitatedOn),
+      trainerAuthority: input?.trainerAuthority === true,
+      expirationOn: asDate(input?.expirationOn),
+      governingSource: cleanText(input?.governingSource),
+      notes: cleanQualificationNote(input?.notes),
+    },
+  };
 }
 
 function cleanText(value) {

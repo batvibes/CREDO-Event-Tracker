@@ -59,7 +59,8 @@ assert(!/standing|trainer_authority|readiness|expiration|trainer authority/i.tes
 assert(!/\.from\('events'\)/.test(model), 'the product model does not read Events');
 assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'Program Capabilities does not write');
 assert(!/is_facilitator\s*[:=]\s*true/.test(model), 'product membership does not assign the Facilitator role');
-assert(!db.includes('save_facilitator_qualification'), 'no qualification write was added');
+const facilitatorRead = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf('export async function fetchTeamDirectoryPersonnel'));
+assert(!facilitatorRead.includes('save_facilitator_qualification'), 'Program Capabilities does not save qualifications');
 assert(!/\.from\('events'\)/.test(db.slice(db.indexOf('fetchFacilitatorManagementSources'), db.indexOf('fetchTeamDirectoryPersonnel'))), 'the facilitator read does not query Events');
 
 const products = [

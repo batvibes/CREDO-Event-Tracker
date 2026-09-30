@@ -17,6 +17,7 @@ import {
   eventTypeAllowsWorkshopT4t,
   fetchEvents,
   fetchFacilitatorManagementSources,
+  saveFacilitatorQualification,
   fetchLocations,
   loadEventCurriculumSupport,
   mergeEventCurriculumProductId,
@@ -89,7 +90,10 @@ import {
   FACILITATOR_QUALIFICATION_NONE,
   FACILITATOR_QUALIFICATION_ON_FILE,
   FACILITATOR_QUALIFICATIONS_HEADING,
+  FACILITATOR_STANDING_OPTIONS,
   facilitatorQualificationDisplayFields,
+  facilitatorQualificationProductChoices,
+  facilitatorQualificationSaveInput,
   buildFacilitatorOverview,
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
@@ -11248,6 +11252,9 @@ const FACILITATOR_VIEW_LABELS = {
 
 let facilitatorPersonnel = [];
 let facilitatorProducts = [];
+let facilitatorQualificationPersonId = null;
+let facilitatorQualificationSaving = false;
+let facilitatorQualificationNotice = '';
 let facilitatorSort = { column: 'name', direction: SORT_ASC };
 let facilitatorCapabilitySort = { column: 'catalog', direction: SORT_ASC };
 let facilitatorSelectedProductId = '';
@@ -11512,10 +11519,21 @@ function openFacilitatorDetail(personId) {
   const meta = [place, status].filter(Boolean).join(' · ');
   if (meta) appendDetailLine(body, meta, 'facilitator-detail-meta');
 
+  const qualificationHeader = document.createElement('div');
+  qualificationHeader.className = 'facilitator-section-header';
   const qualificationHeading = document.createElement('h4');
   qualificationHeading.className = 'facilitator-detail-heading';
   qualificationHeading.textContent = FACILITATOR_QUALIFICATIONS_HEADING;
-  body.appendChild(qualificationHeading);
+  qualificationHeader.appendChild(qualificationHeading);
+  if (canEditEvents()) {
+    const manage = document.createElement('button');
+    manage.type = 'button';
+    manage.className = 'btn btn-secondary';
+    manage.textContent = 'Manage Qualifications';
+    manage.addEventListener('click', () => openFacilitatorQualificationManager(person.id));
+    qualificationHeader.appendChild(manage);
+  }
+  body.appendChild(qualificationHeader);
   if (!person.qualificationProducts.length) {
     appendDetailLine(body, FACILITATOR_EMPTY_QUALIFICATIONS, 'facilitator-detail-note');
   } else {
@@ -11591,6 +11609,276 @@ function closeFacilitatorDetail() {
   document.getElementById('facilitator-detail-modal')?.close();
 }
 
+function facilitatorQualificationPerson() {
+  return facilitatorPersonnel.find((record) => record.id === facilitatorQualificationPersonId) ?? null;
+}
+
+function closeFacilitatorQualificationManager() {
+  if (facilitatorQualificationSaving) return;
+  facilitatorQualificationNotice = '';
+  const modal = document.getElementById('facilitator-qualification-modal');
+  if (modal?.open) modal.close();
+}
+
+function appendQualificationField(form, labelText, control) {
+  const label = document.createElement('label');
+  label.append(document.createTextNode(labelText), control);
+  form.appendChild(label);
+  return control;
+}
+
+function paintFacilitatorQualificationList() {
+  const person = facilitatorQualificationPerson();
+  const title = document.getElementById('facilitator-qualification-title');
+  const body = document.getElementById('facilitator-qualification-body');
+  const footer = document.getElementById('facilitator-qualification-footer');
+  if (!person || !title || !body || !footer) return;
+  title.textContent = 'Manage Qualifications';
+  body.replaceChildren();
+  if (facilitatorQualificationNotice) {
+    const note = document.createElement('p');
+    note.className = 'facilitator-qualification-note';
+    note.textContent = facilitatorQualificationNotice;
+    body.appendChild(note);
+  }
+  const choices = facilitatorQualificationProductChoices(facilitatorProducts, person.qualificationProducts);
+  if (!person.qualificationProducts.length) {
+    const empty = document.createElement('p');
+    empty.className = 'facilitator-qualification-note';
+    empty.textContent = FACILITATOR_EMPTY_QUALIFICATIONS;
+    body.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'facilitator-qualification-list';
+    for (const qualification of person.qualificationProducts) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-secondary facilitator-qualification-edit';
+      const standing = FACILITATOR_STANDING_OPTIONS.find((option) => option[0] === qualification.standing)?.[1];
+      button.textContent = standing ? `${qualification.productName} — ${standing}` : qualification.productName;
+      button.addEventListener('click', () => paintFacilitatorQualificationEditor(qualification));
+      list.appendChild(button);
+    }
+    body.appendChild(list);
+  }
+  footer.replaceChildren();
+  if (choices.length) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'btn btn-secondary';
+    add.textContent = 'Add Qualification';
+    add.addEventListener('click', () => paintFacilitatorQualificationEditor(null));
+    footer.appendChild(add);
+  } else {
+    const complete = document.createElement('p');
+    complete.className = 'facilitator-qualification-note';
+    complete.textContent = 'A qualification record already exists for every active product.';
+    body.appendChild(complete);
+  }
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'btn btn-secondary';
+  close.textContent = 'Close';
+  close.addEventListener('click', closeFacilitatorQualificationManager);
+  footer.appendChild(close);
+}
+
+function paintFacilitatorQualificationEditor(qualification) {
+  const person = facilitatorQualificationPerson();
+  const title = document.getElementById('facilitator-qualification-title');
+  const body = document.getElementById('facilitator-qualification-body');
+  const footer = document.getElementById('facilitator-qualification-footer');
+  if (!person || !title || !body || !footer) return;
+  const creating = !qualification;
+  facilitatorQualificationNotice = '';
+  title.textContent = creating ? 'Add Qualification' : 'Edit Qualification';
+  body.replaceChildren();
+  const form = document.createElement('form');
+  form.id = 'facilitator-qualification-form';
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    submitFacilitatorQualification(qualification);
+  });
+
+  if (creating) {
+    const product = document.createElement('select');
+    product.id = 'facilitator-qualification-product';
+    product.appendChild(new Option('Select a product', ''));
+    for (const choice of facilitatorQualificationProductChoices(facilitatorProducts, person.qualificationProducts)) {
+      product.appendChild(new Option(choice.name, choice.id));
+    }
+    appendQualificationField(form, 'Product', product);
+  } else {
+    const field = document.createElement('div');
+    field.className = 'facilitator-qualification-fixed';
+    const caption = document.createElement('span');
+    caption.textContent = 'Product';
+    const product = document.createElement('p');
+    product.id = 'facilitator-qualification-product-fixed';
+    product.className = 'facilitator-qualification-note';
+    product.dataset.productId = qualification.productId;
+    product.textContent = qualification.productName;
+    field.append(caption, product);
+    form.appendChild(field);
+  }
+
+  const standing = document.createElement('select');
+  standing.id = 'facilitator-qualification-standing';
+  standing.appendChild(new Option('Select standing', ''));
+  for (const [value, label] of FACILITATOR_STANDING_OPTIONS) {
+    standing.appendChild(new Option(label, value));
+  }
+  standing.value = qualification?.standing || '';
+  appendQualificationField(form, 'Standing', standing);
+
+  const t4tCompleted = document.createElement('input');
+  t4tCompleted.id = 'facilitator-qualification-t4t';
+  t4tCompleted.type = 'date';
+  t4tCompleted.value = qualification?.t4tCompletedOn || '';
+  appendQualificationField(form, 'T4T Completed', t4tCompleted);
+
+  const firstFacilitated = document.createElement('input');
+  firstFacilitated.id = 'facilitator-qualification-first';
+  firstFacilitated.type = 'date';
+  firstFacilitated.value = qualification?.firstFacilitatedOn || '';
+  appendQualificationField(form, 'First Facilitated', firstFacilitated);
+
+  const expiration = document.createElement('input');
+  expiration.id = 'facilitator-qualification-expiration';
+  expiration.type = 'date';
+  expiration.value = qualification?.expirationOn || '';
+  appendQualificationField(form, 'Expiration', expiration);
+
+  const authority = document.createElement('input');
+  authority.id = 'facilitator-qualification-authority';
+  authority.type = 'checkbox';
+  authority.checked = qualification?.trainerAuthority === true;
+  const authorityLabel = document.createElement('label');
+  authorityLabel.className = 'facilitator-qualification-check';
+  authorityLabel.append(authority, document.createTextNode('Trainer / T4T Authority'));
+  form.appendChild(authorityLabel);
+
+  const source = document.createElement('input');
+  source.id = 'facilitator-qualification-source';
+  source.type = 'text';
+  source.value = qualification?.governingSource || '';
+  appendQualificationField(form, 'Governing Source', source);
+
+  const notes = document.createElement('textarea');
+  notes.id = 'facilitator-qualification-notes';
+  notes.rows = 4;
+  notes.value = qualification?.notes || '';
+  appendQualificationField(form, 'Notes', notes);
+
+  const error = document.createElement('p');
+  error.id = 'facilitator-qualification-error';
+  error.className = 'facilitator-qualification-error';
+  error.hidden = true;
+  form.appendChild(error);
+  body.appendChild(form);
+
+  footer.replaceChildren();
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn-secondary';
+  cancel.id = 'facilitator-qualification-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', cancelFacilitatorQualificationEdit);
+  const save = document.createElement('button');
+  save.type = 'submit';
+  save.className = 'btn btn-primary';
+  save.id = 'facilitator-qualification-save';
+  save.textContent = 'Save';
+  save.addEventListener('click', () => form.requestSubmit());
+  footer.appendChild(cancel);
+  footer.appendChild(save);
+}
+
+function cancelFacilitatorQualificationEdit() {
+  if (facilitatorQualificationSaving) return;
+  paintFacilitatorQualificationList();
+}
+
+async function submitFacilitatorQualification(qualification) {
+  if (facilitatorQualificationSaving) return;
+  const person = facilitatorQualificationPerson();
+  const error = document.getElementById('facilitator-qualification-error');
+  const save = document.getElementById('facilitator-qualification-save');
+  const cancel = document.getElementById('facilitator-qualification-cancel');
+  if (!person) return;
+  const productId = qualification?.productId
+    || document.getElementById('facilitator-qualification-product')?.value
+    || '';
+  const prepared = facilitatorQualificationSaveInput({
+    personId: person.id,
+    productId,
+    standing: document.getElementById('facilitator-qualification-standing')?.value,
+    t4tCompletedOn: document.getElementById('facilitator-qualification-t4t')?.value,
+    firstFacilitatedOn: document.getElementById('facilitator-qualification-first')?.value,
+    trainerAuthority: document.getElementById('facilitator-qualification-authority')?.checked === true,
+    expirationOn: document.getElementById('facilitator-qualification-expiration')?.value,
+    governingSource: document.getElementById('facilitator-qualification-source')?.value,
+    notes: document.getElementById('facilitator-qualification-notes')?.value,
+  });
+  if (!prepared.ok) {
+    if (error) {
+      error.textContent = prepared.message;
+      error.hidden = false;
+    }
+    return;
+  }
+  if (!qualification && person.qualificationProducts.some((row) => row.productId === prepared.value.productId)) {
+    if (error) {
+      error.textContent = 'A qualification record already exists for that product.';
+      error.hidden = false;
+    }
+    return;
+  }
+  facilitatorQualificationSaving = true;
+  if (save) {
+    save.disabled = true;
+    save.textContent = 'Saving…';
+  }
+  if (cancel) cancel.disabled = true;
+  try {
+    await saveFacilitatorQualification(prepared.value);
+    const reloaded = await renderFacilitatorManagement();
+    const refreshed = facilitatorPersonnel.find((record) => record.id === person.id);
+    const visible = reloaded && refreshed?.qualificationProducts.some((row) => row.productId === prepared.value.productId);
+    if (!visible) {
+      if (error) {
+        error.textContent = 'The qualification was saved, but the profile could not be reloaded.';
+        error.hidden = false;
+      }
+      return;
+    }
+    facilitatorQualificationNotice = 'Qualification saved.';
+    openFacilitatorDetail(person.id);
+    paintFacilitatorQualificationList();
+  } catch (saveError) {
+    if (error) {
+      error.textContent = saveError.message || 'The qualification could not be saved.';
+      error.hidden = false;
+    }
+  } finally {
+    facilitatorQualificationSaving = false;
+    if (save?.isConnected) {
+      save.disabled = false;
+      save.textContent = 'Save';
+    }
+    if (cancel?.isConnected) cancel.disabled = false;
+  }
+}
+
+function openFacilitatorQualificationManager(personId) {
+  if (!canEditEvents()) return;
+  facilitatorQualificationPersonId = personId;
+  facilitatorQualificationNotice = '';
+  paintFacilitatorQualificationList();
+  const modal = document.getElementById('facilitator-qualification-modal');
+  if (modal && !modal.open) modal.showModal();
+}
+
 async function renderFacilitatorManagement() {
   const generation = ++facilitatorLoadGeneration;
   const body = document.getElementById('facilitator-personnel-body');
@@ -11610,6 +11898,7 @@ async function renderFacilitatorManagement() {
     paintFacilitatorProgramCapabilities();
     refreshSortHeaderIndicators('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort);
     refreshSortHeaderIndicators('#facilitator-capabilities-table', FACILITATOR_CAPABILITY_SORT_COLUMNS, facilitatorCapabilitySort);
+    return true;
   } catch (error) {
     console.error(error);
     if (generation !== facilitatorLoadGeneration || !body) return;
@@ -11627,6 +11916,7 @@ async function renderFacilitatorManagement() {
     if (note) note.textContent = 'Facilitator personnel could not be loaded.';
     const capabilities = document.getElementById('facilitator-capabilities-body');
     if (capabilities) appendFacilitatorEmptyRow(capabilities, 6, 'Facilitator personnel could not be loaded.');
+    return false;
   }
 }
 
@@ -11756,6 +12046,11 @@ function setupFacilitatorManagement() {
   });
   document.getElementById('facilitator-detail-close')?.addEventListener('click', closeFacilitatorDetail);
   document.getElementById('facilitator-detail-close-btn')?.addEventListener('click', closeFacilitatorDetail);
+  document.getElementById('facilitator-qualification-close')?.addEventListener('click', closeFacilitatorQualificationManager);
+  document.getElementById('facilitator-qualification-modal')?.addEventListener('cancel', (event) => {
+    if (facilitatorQualificationSaving) event.preventDefault();
+    else facilitatorQualificationNotice = '';
+  });
   document.getElementById('facilitator-product-close')?.addEventListener('click', closeFacilitatorProductDetail);
   document.getElementById('facilitator-product-close-btn')?.addEventListener('click', closeFacilitatorProductDetail);
 }

@@ -65,7 +65,8 @@ assert(!/unstaffed|unavailable|unqualified|mission capable|readiness|standing|tr
 assert(!/\.from\('events'\)/.test(model), 'the overview model does not read Events');
 assert(!/\.from\('events'\)/.test(read('js/db.js').slice(db.indexOf('fetchFacilitatorManagementSources'), db.indexOf('fetchTeamDirectoryPersonnel'))), 'the facilitator read does not query Events');
 assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'Overview does not write');
-assert(!db.includes('save_facilitator_qualification'), 'no qualification write was added');
+const facilitatorRead = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf('export async function fetchTeamDirectoryPersonnel'));
+assert(!facilitatorRead.includes('save_facilitator_qualification'), 'the overview read does not save qualifications');
 
 const products = [
   { id: 'second', name: 'Second Product', code: 'second', sort_order: 2, active: true },

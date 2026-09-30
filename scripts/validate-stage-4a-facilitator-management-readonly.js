@@ -82,7 +82,10 @@ const detail = app.slice(app.indexOf('function openFacilitatorDetail'), app.inde
 assert(detail.includes('FACILITATOR_QUALIFICATIONS_HEADING') && detail.includes('FACILITATOR_EXPERIENCE_HEADING'), 'the profile has qualification and recorded-experience sections');
 assert(model.includes(FACILITATOR_QUALIFICATIONS_HEADING) && model.includes(FACILITATOR_EXPERIENCE_HEADING), 'profile section titles are the qualification and recorded-experience headings');
 assert(detail.includes('First Recorded Facilitation') && detail.includes('row.firstRecordedOn'), 'recorded experience keeps the derived first date');
-assert(!detail.includes('save_facilitator_qualification') && !detail.includes('createElement(\'button\')'), 'the profile does not add qualification editing');
+assert(detail.includes('canEditEvents()') && detail.includes('Manage Qualifications'), 'authorized editors can manage qualifications from the profile');
+assert(!detail.includes('saveFacilitatorQualification'), 'opening the profile does not save a qualification');
+const recordedExperience = detail.slice(detail.indexOf('FACILITATOR_EXPERIENCE_HEADING'));
+assert(!recordedExperience.includes('createElement(\'button\')'), 'recorded experience stays read-only');
 
 const products = [{ id: 'asist', name: 'ASIST', code: 'asist', sort_order: 15, active: true }];
 const flagged = { id: 'flagged', name: 'Ada', rank_title: 'LCDR', command_organization: 'CREDO', installation: 'Camp Pendleton', active: true, is_facilitator: true };

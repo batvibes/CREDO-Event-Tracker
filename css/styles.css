@@ -6930,6 +6930,17 @@ body:has(#new-event-modal[open]) {
   overflow: auto;
 }
 
+#facilitator-detail-modal .facilitator-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#facilitator-detail-modal .facilitator-section-header .btn {
+  flex: 0 0 auto;
+}
+
 #facilitator-detail-modal .facilitator-detail-heading {
   margin: 16px 0 8px;
   font-size: 0.75rem;
@@ -6937,6 +6948,10 @@ body:has(#new-event-modal[open]) {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #00205b;
+}
+
+#facilitator-detail-modal .facilitator-section-header .facilitator-detail-heading {
+  margin-bottom: 0;
 }
 
 #facilitator-detail-modal .facilitator-qualification-list {
@@ -6989,6 +7004,53 @@ body:has(#new-event-modal[open]) {
 
 #facilitator-detail-modal .events-table td:first-child {
   white-space: nowrap;
+}
+
+#facilitator-qualification-modal {
+  width: min(640px, calc(100vw - 32px));
+}
+
+#facilitator-qualification-modal .modal-body {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-edit {
+  width: 100%;
+  text-align: left;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-check {
+  flex-direction: row;
+  align-items: center;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-error {
+  margin: 0;
+  color: #9b1c1c;
+  font-size: 0.875rem;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-note {
+  margin: 0;
+  color: #5c6570;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+#facilitator-qualification-modal .facilitator-qualification-fixed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 #facilitator-product-modal {
