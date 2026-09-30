@@ -60,7 +60,8 @@ assert(model.includes(FACILITATOR_QUALIFICATION_NOT_ENTERED), 'experience withou
 assert(model.includes(FACILITATOR_NO_EXPERIENCE_OR_RECORD), 'a designated facilitator without records is a data gap');
 assert(model.includes(FACILITATOR_NO_PRODUCT_EXPERIENCE), 'a product without history uses neutral wording');
 assert(model.includes(FACILITATOR_NO_DATA_GAPS) && model.includes(FACILITATOR_EMPTY_EXPERIENCE), 'empty states stay factual');
-assert(!/unstaffed|unavailable|unqualified|mission capable|readiness|standing|trainer authority|at risk|noncompliant|expired|overdue/i.test(`${model}\n${view}`), 'coverage and gaps do not imply qualification or readiness');
+const overviewModel = model.slice(model.indexOf('export function buildFacilitatorOverview'), model.indexOf('export function buildFacilitatorProgramCapabilities'));
+assert(!/unstaffed|unavailable|unqualified|mission capable|readiness|standing|trainer authority|at risk|noncompliant|expired|overdue/i.test(`${overviewModel}\n${view}`), 'coverage and gaps do not imply qualification or readiness');
 assert(!/\.from\('events'\)/.test(model), 'the overview model does not read Events');
 assert(!/\.from\('events'\)/.test(read('js/db.js').slice(db.indexOf('fetchFacilitatorManagementSources'), db.indexOf('fetchTeamDirectoryPersonnel'))), 'the facilitator read does not query Events');
 assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'Overview does not write');

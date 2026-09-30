@@ -54,7 +54,8 @@ assert(html.includes('id="facilitator-product-modal"'), 'product detail reuses t
 assert(app.includes('openFacilitatorDetail') && app.includes('facilitator-product-personnel'), 'a person name reuses the existing person detail');
 assert(app.includes("showFacilitatorView('capabilities')"), 'Overview product rows open Program Capabilities');
 assert(!/qualified facilitator|qualified personnel|unqualified/i.test(`${model}\n${view}\n${html.slice(html.indexOf('id="facilitator-product-modal"'), html.indexOf('id="aar-audit-modal"'))}`), 'product personnel are not labeled qualified or unqualified');
-assert(!/standing|trainer_authority|readiness|expiration|trainer authority/i.test(model), 'Program Capabilities does not infer standing, readiness, or authority');
+const capabilitiesModel = model.slice(model.indexOf('export function buildFacilitatorProgramCapabilities'), model.indexOf('export function filterFacilitatorProgramCapabilities'));
+assert(!/standing|trainer_authority|readiness|expiration|trainer authority/i.test(capabilitiesModel), 'Program Capabilities does not infer standing, readiness, or authority');
 assert(!/\.from\('events'\)/.test(model), 'the product model does not read Events');
 assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'Program Capabilities does not write');
 assert(!/is_facilitator\s*[:=]\s*true/.test(model), 'product membership does not assign the Facilitator role');

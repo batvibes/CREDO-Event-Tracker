@@ -1198,7 +1198,7 @@ export async function fetchFacilitatorManagementSources() {
       .select('person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on'),
     supabase
       .from('facilitator_qualifications')
-      .select('person_id, product_id'),
+      .select('id, person_id, product_id, standing, t4t_completed_on, first_facilitated_on, trainer_authority, expiration_on, governing_source, notes'),
     supabase
       .from('facilitator_products')
       .select('id, name, code, active, sort_order')

@@ -79,15 +79,17 @@ import {
   FACILITATOR_EMPTY_EXPERIENCE,
   FACILITATOR_EMPTY_PERSONNEL,
   FACILITATOR_EMPTY_PRODUCTS,
+  FACILITATOR_EMPTY_QUALIFICATIONS,
+  FACILITATOR_EXPERIENCE_HEADING,
   FACILITATOR_NO_DATA_GAPS,
   FACILITATOR_NO_FACILITATOR_RECORDS,
   FACILITATOR_NO_PRODUCT_EXPERIENCE,
-  FACILITATOR_NO_QUALIFICATION_RECORD,
   FACILITATOR_PRODUCT_EXPERIENCE_NO,
   FACILITATOR_PRODUCT_EXPERIENCE_YES,
   FACILITATOR_QUALIFICATION_NONE,
   FACILITATOR_QUALIFICATION_ON_FILE,
-  FACILITATOR_QUALIFICATION_RECORD,
+  FACILITATOR_QUALIFICATIONS_HEADING,
+  facilitatorQualificationDisplayFields,
   buildFacilitatorOverview,
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
@@ -11509,25 +11511,47 @@ function openFacilitatorDetail(personId) {
   const status = person.active === true ? '' : 'Inactive';
   const meta = [place, status].filter(Boolean).join(' · ');
   if (meta) appendDetailLine(body, meta, 'facilitator-detail-meta');
-  appendDetailLine(
-    body,
-    person.hasQualificationRecord ? FACILITATOR_QUALIFICATION_RECORD : FACILITATOR_NO_QUALIFICATION_RECORD,
-    'facilitator-detail-note',
-  );
-  if (person.qualificationProducts.length) {
-    const list = document.createElement('ul');
-    list.className = 'facilitator-detail-note';
-    for (const product of person.qualificationProducts) {
-      const item = document.createElement('li');
-      item.textContent = product.productName;
-      list.appendChild(item);
+
+  const qualificationHeading = document.createElement('h4');
+  qualificationHeading.className = 'facilitator-detail-heading';
+  qualificationHeading.textContent = FACILITATOR_QUALIFICATIONS_HEADING;
+  body.appendChild(qualificationHeading);
+  if (!person.qualificationProducts.length) {
+    appendDetailLine(body, FACILITATOR_EMPTY_QUALIFICATIONS, 'facilitator-detail-note');
+  } else {
+    const list = document.createElement('div');
+    list.className = 'facilitator-qualification-list';
+    for (const qualification of person.qualificationProducts) {
+      const card = document.createElement('section');
+      card.className = 'facilitator-qualification';
+      const name = document.createElement('h5');
+      name.className = 'facilitator-qualification-product';
+      name.textContent = qualification.productName;
+      card.appendChild(name);
+      const fields = facilitatorQualificationDisplayFields(qualification);
+      if (fields.length) {
+        const details = document.createElement('dl');
+        details.className = 'facilitator-qualification-fields';
+        for (const field of fields) {
+          const row = document.createElement('div');
+          const label = document.createElement('dt');
+          label.textContent = field.label;
+          const value = document.createElement('dd');
+          value.textContent = field.value;
+          row.appendChild(label);
+          row.appendChild(value);
+          details.appendChild(row);
+        }
+        card.appendChild(details);
+      }
+      list.appendChild(card);
     }
     body.appendChild(list);
   }
 
   const heading = document.createElement('h4');
   heading.className = 'facilitator-detail-heading';
-  heading.textContent = 'Recorded experience';
+  heading.textContent = FACILITATOR_EXPERIENCE_HEADING;
   body.appendChild(heading);
 
   if (!person.experience.length) {

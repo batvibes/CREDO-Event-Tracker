@@ -4,7 +4,9 @@
  * The operational catalog is facilitator_products with active === true, ordered by sort_order.
  * A person is included when is_facilitator is true, or when derived experience or a
  * qualification row exists on an active product. Inactive product rows stay stored and
- * are omitted here. This module does not write people, qualifications, roles, or Events.
+ * are omitted here. Stored qualification fields stay manual facts. Standing, T4T completion,
+ * and trainer authority are not inferred from recorded experience. This module does
+ * not write people, qualifications, roles, or Events.
  *
  * Later views can sit beside Personnel: Overview, Program Capabilities, and Development.
  */
@@ -13,8 +15,9 @@ import { personnelDisplayName } from './personnel-identity.js';
 
 export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitator personnel found.';
 export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
-export const FACILITATOR_NO_QUALIFICATION_RECORD = 'No qualification record.';
-export const FACILITATOR_QUALIFICATION_RECORD = 'Qualification record on file.';
+export const FACILITATOR_EMPTY_QUALIFICATIONS = 'No qualification or training records entered.';
+export const FACILITATOR_QUALIFICATIONS_HEADING = 'Qualifications & Training';
+export const FACILITATOR_EXPERIENCE_HEADING = 'Recorded Facilitation Experience';
 export const FACILITATOR_NO_DATA_GAPS = 'No current data gaps identified.';
 export const FACILITATOR_QUALIFICATION_NOT_ENTERED = 'Qualification record not yet entered';
 export const FACILITATOR_NO_EXPERIENCE_OR_RECORD = 'No recorded experience or qualification record';
@@ -25,6 +28,41 @@ export const FACILITATOR_PRODUCT_EXPERIENCE_YES = 'Yes';
 export const FACILITATOR_PRODUCT_EXPERIENCE_NO = 'No';
 export const FACILITATOR_QUALIFICATION_ON_FILE = 'On file';
 export const FACILITATOR_QUALIFICATION_NONE = 'None';
+
+const FACILITATOR_STANDING_LABELS = {
+  developing: 'Developing',
+  provisional: 'Provisional',
+  registered: 'Registered',
+  inactive: 'Inactive',
+};
+
+export function formatQualificationStanding(value) {
+  const key = cleanText(value).toLowerCase();
+  return FACILITATOR_STANDING_LABELS[key] ?? null;
+}
+
+export function facilitatorQualificationDisplayFields(qualification) {
+  const fields = [];
+  if (qualification?.t4tCompletedOn) {
+    fields.push({ label: 'T4T Completed', value: formatRecordedFacilitationDate(qualification.t4tCompletedOn) });
+  }
+  const standing = formatQualificationStanding(qualification?.standing);
+  if (standing) fields.push({ label: 'Standing', value: standing });
+  if (qualification?.firstFacilitatedOn) {
+    fields.push({ label: 'First Facilitated', value: formatRecordedFacilitationDate(qualification.firstFacilitatedOn) });
+  }
+  if (qualification?.expirationOn) {
+    fields.push({ label: 'Expiration', value: formatRecordedFacilitationDate(qualification.expirationOn) });
+  }
+  if (qualification?.trainerAuthority === true) {
+    fields.push({ label: 'Trainer / T4T Authority', value: 'Yes' });
+  }
+  if (qualification?.governingSource) {
+    fields.push({ label: 'Governing Source', value: qualification.governingSource });
+  }
+  if (qualification?.notes) fields.push({ label: 'Notes', value: qualification.notes });
+  return fields;
+}
 
 function cleanText(value) {
   if (value == null) return '';
@@ -123,10 +161,19 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
     if (!qualificationsByPerson.has(personId)) qualificationsByPerson.set(personId, new Map());
     const productsForPerson = qualificationsByPerson.get(personId);
     if (productsForPerson.has(productId)) continue;
+    const standing = cleanText(row.standing).toLowerCase();
     productsForPerson.set(productId, {
+      id: row.id ?? null,
       productId,
       productName: product.name,
       sortOrder: product.sortOrder,
+      standing: Object.prototype.hasOwnProperty.call(FACILITATOR_STANDING_LABELS, standing) ? standing : null,
+      t4tCompletedOn: asDate(row.t4t_completed_on ?? row.t4tCompletedOn),
+      firstFacilitatedOn: asDate(row.first_facilitated_on ?? row.firstFacilitatedOn),
+      trainerAuthority: explicitTrue(row.trainer_authority ?? row.trainerAuthority),
+      expirationOn: asDate(row.expiration_on ?? row.expirationOn),
+      governingSource: cleanText(row.governing_source ?? row.governingSource),
+      notes: cleanText(row.notes),
     });
   }
 

@@ -6925,6 +6925,11 @@ body:has(#new-event-modal[open]) {
   font-size: 0.875rem;
 }
 
+#facilitator-detail-modal .modal-body {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+
 #facilitator-detail-modal .facilitator-detail-heading {
   margin: 16px 0 8px;
   font-size: 0.75rem;
@@ -6932,6 +6937,50 @@ body:has(#new-event-modal[open]) {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #00205b;
+}
+
+#facilitator-detail-modal .facilitator-qualification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#facilitator-detail-modal .facilitator-qualification {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9fb;
+}
+
+#facilitator-detail-modal .facilitator-qualification-product {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #00205b;
+}
+
+#facilitator-detail-modal .facilitator-qualification-fields {
+  display: grid;
+  grid-template-columns: minmax(148px, 210px) minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 8px 0 0;
+}
+
+#facilitator-detail-modal .facilitator-qualification-fields div {
+  display: contents;
+}
+
+#facilitator-detail-modal .facilitator-qualification-fields dt,
+#facilitator-detail-modal .facilitator-qualification-fields dd {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+#facilitator-detail-modal .facilitator-qualification-fields dt {
+  color: #5c6570;
+}
+
+#facilitator-detail-modal .facilitator-qualification-fields dd {
+  white-space: pre-wrap;
 }
 
 #facilitator-detail-modal .events-table th {

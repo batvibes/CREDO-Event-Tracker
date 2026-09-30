@@ -11,8 +11,12 @@ import { fileURLToPath } from 'node:url';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
   FACILITATOR_EMPTY_PERSONNEL,
-  FACILITATOR_NO_QUALIFICATION_RECORD,
+  FACILITATOR_EMPTY_QUALIFICATIONS,
+  FACILITATOR_EXPERIENCE_HEADING,
+  FACILITATOR_QUALIFICATIONS_HEADING,
+  facilitatorQualificationDisplayFields,
   filterFacilitatorPersonnel,
+  formatQualificationStanding,
   formatRecordedFacilitationDate,
   sortFacilitatorPersonnel,
   summarizeFacilitatorPersonnel,
@@ -56,23 +60,29 @@ assert(app.includes("facilitators: 'view-facilitators'"), 'navigation opens the 
 assert(app.includes('fetchFacilitatorManagementSources'), 'the view reads the facilitator data access function');
 assert(app.includes('First Recorded Facilitation') && app.includes('Most Recent Facilitation'), 'product detail shows derived facilitation dates');
 assert(model.includes(FACILITATOR_EMPTY_PERSONNEL) && model.includes(FACILITATOR_EMPTY_EXPERIENCE), 'empty states use the approved wording');
-assert(model.includes(FACILITATOR_NO_QUALIFICATION_RECORD), 'absence of a qualification row is labeled as no record');
-assert(app.includes('FACILITATOR_EMPTY_PERSONNEL') && app.includes('FACILITATOR_EMPTY_EXPERIENCE') && app.includes('FACILITATOR_NO_QUALIFICATION_RECORD'), 'the Personnel view uses those empty states');
+assert(model.includes(FACILITATOR_EMPTY_QUALIFICATIONS), 'a person without qualification rows uses the profile empty state');
+assert(app.includes('FACILITATOR_EMPTY_PERSONNEL') && app.includes('FACILITATOR_EMPTY_EXPERIENCE') && app.includes('FACILITATOR_EMPTY_QUALIFICATIONS'), 'the Personnel view uses those empty states');
 
 assert(fetchSources.includes(".from('people')"), 'population can include people marked as facilitators');
 assert(fetchSources.includes(".from('facilitator_product_experience')"), 'historical experience is read from the Stage 3B view');
 assert(fetchSources.includes(".from('facilitator_qualifications')"), 'population can include people with qualification rows');
 assert(fetchSources.includes('person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on'), 'experience fields come from the derived view');
-assert(fetchSources.includes(".select('person_id, product_id')"), 'qualification presence does not load standing or manual dates');
+assert(fetchSources.includes(".select('id, person_id, product_id, standing, t4t_completed_on, first_facilitated_on, trainer_authority, expiration_on, governing_source, notes')"), 'the profile loads the stored qualification fields');
+assert(!fetchSources.includes('created_at') && !fetchSources.includes('updated_by'), 'qualification audit fields are not loaded');
 assert(!/\.(insert|update|delete|upsert)\(/.test(fetchSources), 'the facilitator read does not write');
 assert(!fetchSources.includes(".from('events')"), 'Event history is not recalculated in the client');
-assert(!fetchSources.includes('first_facilitated_on'), 'the manual First Facilitated field is not loaded');
-assert(!/standing|trainer_authority|t4t_completed_on|expiration_on|governing_source/.test(fetchSources), 'qualification judgment fields are not loaded');
+assert(!fetchSources.includes('save_facilitator_qualification'), 'the facilitator read does not save qualifications');
 
 assert(!/is_facilitator\s*[:=]\s*true/.test(model), 'recorded experience does not assign the Facilitator role');
 assert(!/\.(insert|update|delete|upsert)\(/.test(model), 'the personnel model does not write');
 assert(!model.includes(".from('events')"), 'the personnel model does not read Events');
-assert(!/standing|trainer_authority|readiness|certification|qualified/i.test(`${model}\n${html.slice(html.indexOf('id="view-facilitators"'), html.indexOf('id="view-settings"'))}`), 'experience is not presented as qualification, certification, or a score');
+const facilitatorView = html.slice(html.indexOf('id="view-facilitators"'), html.indexOf('id="view-settings"'));
+assert(!/standing|trainer_authority|readiness|certification|qualified/i.test(facilitatorView), 'Personnel and Overview markup do not present standing or certification');
+const detail = app.slice(app.indexOf('function openFacilitatorDetail'), app.indexOf('function closeFacilitatorDetail'));
+assert(detail.includes('FACILITATOR_QUALIFICATIONS_HEADING') && detail.includes('FACILITATOR_EXPERIENCE_HEADING'), 'the profile has qualification and recorded-experience sections');
+assert(model.includes(FACILITATOR_QUALIFICATIONS_HEADING) && model.includes(FACILITATOR_EXPERIENCE_HEADING), 'profile section titles are the qualification and recorded-experience headings');
+assert(detail.includes('First Recorded Facilitation') && detail.includes('row.firstRecordedOn'), 'recorded experience keeps the derived first date');
+assert(!detail.includes('save_facilitator_qualification') && !detail.includes('createElement(\'button\')'), 'the profile does not add qualification editing');
 
 const products = [{ id: 'asist', name: 'ASIST', code: 'asist', sort_order: 15, active: true }];
 const flagged = { id: 'flagged', name: 'Ada', rank_title: 'LCDR', command_organization: 'CREDO', installation: 'Camp Pendleton', active: true, is_facilitator: true };
@@ -106,6 +116,45 @@ assert(formatRecordedFacilitationDate('2024-03-01') === '03/01/24', 'recorded da
 assert(formatRecordedFacilitationDate(null) === '—', 'a missing date does not become today');
 assert(filterFacilitatorPersonnel(personnel, { active: 'inactive' }).map((person) => person.id).join(',') === 'experienced', 'inactive personnel can be filtered without being removed from the roster');
 assert(sortFacilitatorPersonnel(personnel, 'name', 'asc').map((person) => person.displayName).join('|') === 'Blake|CDR John Scanlon|LCDR Ada', 'default name order is deterministic');
+
+const profile = summarizeFacilitatorPersonnel(
+  [{ id: 'ada', name: 'Ada', rank_title: 'LCDR', command_organization: 'CREDO', installation: 'Camp Pendleton', active: true, is_facilitator: true }],
+  [{
+    person_id: 'ada',
+    product_id: 'asist',
+    events_conducted: 2,
+    first_recorded_facilitation_on: '2024-03-01',
+    most_recent_facilitation_on: '2025-06-15',
+  }],
+  [{
+    id: 'qual-1',
+    person_id: 'ada',
+    product_id: 'asist',
+    standing: 'provisional',
+    t4t_completed_on: '2026-05-18',
+    first_facilitated_on: '2019-04-01',
+    trainer_authority: false,
+    governing_source: 'LivingWorks',
+    notes: 'Completed the applicable T4T.',
+  }],
+  products,
+);
+const ada = profile[0];
+assert(ada.qualificationProducts[0].id === 'qual-1' && ada.qualificationProducts[0].productName === 'ASIST', 'a qualification stays with its person and product');
+assert(ada.experience[0].firstRecordedOn === '2024-03-01', 'profile experience keeps the Event-derived first date');
+assert(ada.qualificationProducts[0].firstFacilitatedOn === '2019-04-01', 'manual first facilitated stays separate from recorded experience');
+assert(ada.qualificationProducts[0].trainerAuthority === false, 'a T4T completion date does not grant trainer authority');
+const fields = facilitatorQualificationDisplayFields(ada.qualificationProducts[0]);
+assert(fields.map((field) => field.label).join('|') === 'T4T Completed|Standing|First Facilitated|Governing Source|Notes', 'blank qualification fields are omitted');
+assert(fields.find((field) => field.label === 'Standing')?.value === 'Provisional', 'provisional standing renders in title case');
+assert(fields.find((field) => field.label === 'T4T Completed')?.value === '05/18/26', 'T4T completion renders as a stored training date');
+assert(!fields.some((field) => field.label === 'Trainer / T4T Authority'), 'false trainer authority is omitted');
+assert(formatQualificationStanding('developing') === 'Developing', 'developing renders in title case');
+assert(formatQualificationStanding('registered') === 'Registered', 'registered renders in title case');
+assert(formatQualificationStanding('inactive') === 'Inactive', 'inactive renders in title case');
+assert(formatQualificationStanding('qualified') == null, 'an unrecognized standing is not invented');
+const withAuthority = facilitatorQualificationDisplayFields({ trainerAuthority: true, standing: 'registered' });
+assert(withAuthority.find((field) => field.label === 'Trainer / T4T Authority')?.value === 'Yes', 'trainer authority renders only from the stored true value');
 assert(!fs.existsSync(path.join(ROOT, 'supabase/migrations/023_facilitator_management.sql')), 'Stage 4A does not add a migration');
 
 const protectedPaths = [
