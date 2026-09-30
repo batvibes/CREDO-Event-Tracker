@@ -1,11 +1,15 @@
 /**
  * Read-only Facilitator Management personnel model.
- * Historical experience comes from facilitator_product_experience.
+ * Ordinary facilitation comes from facilitator_product_experience.
+ * T4T facilitation comes from facilitator_t4t_product_experience.
  * The operational catalog is facilitator_products with active === true, ordered by sort_order.
- * A person is included when is_facilitator is true, or when derived experience or a
- * qualification row exists on an active product. Inactive product rows stay stored and
- * are omitted here. Stored qualification fields stay manual facts. Standing, T4T completion,
- * and trainer authority are not inferred from recorded experience. This module does
+ * A person is included when is_facilitator is true, or when ordinary experience, T4T
+ * facilitation evidence, or a qualification row exists on an active product.
+ * Inactive product rows stay stored and are omitted here. Stored qualification fields
+ * stay manual facts. Standing, T4T completion, and trainer authority are not inferred
+ * from either experience aggregate. Overview and Program Capabilities union the two
+ * aggregates so a T4T delivery is not dropped from those totals. An Event belongs to
+ * only one aggregate, and a person is counted once per product. This module does
  * not write people, qualifications, roles, or Events.
  *
  * Later views can sit beside Personnel: Overview, Program Capabilities, and Development.
@@ -15,6 +19,8 @@ import { personnelDisplayName } from './personnel-identity.js';
 
 export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitator personnel found.';
 export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
+export const FACILITATOR_EMPTY_T4T_EXPERIENCE = 'No recorded T4T facilitation experience.';
+export const FACILITATOR_T4T_EXPERIENCE_HEADING = 'T4T Facilitation Experience';
 export const FACILITATOR_EMPTY_QUALIFICATIONS = 'No qualification or training records entered.';
 export const FACILITATOR_QUALIFICATIONS_HEADING = 'Qualifications & Training';
 export const FACILITATOR_EXPERIENCE_HEADING = 'Recorded Facilitation Experience';
@@ -152,6 +158,63 @@ function mapPerson(row) {
   };
 }
 
+function earlierDate(current, next) {
+  if (!next) return current ?? null;
+  if (!current || next < current) return next;
+  return current;
+}
+
+function laterDate(current, next) {
+  if (!next) return current ?? null;
+  if (!current || next > current) return next;
+  return current;
+}
+
+function collectExperience(rows, catalog) {
+  const byPerson = new Map();
+  for (const row of rows ?? []) {
+    const personId = row?.person_id ?? row?.personId;
+    const productId = row?.product_id ?? row?.productId;
+    const product = catalog.get(productId);
+    if (!personId || !product) continue;
+    if (!byPerson.has(personId)) byPerson.set(personId, new Map());
+    const productsForPerson = byPerson.get(personId);
+    if (productsForPerson.has(productId)) continue;
+    productsForPerson.set(productId, {
+      productId,
+      productName: product.name,
+      sortOrder: product.sortOrder,
+      eventsConducted: asCount(row.events_conducted ?? row.eventsConducted),
+      firstRecordedOn: asDate(row.first_recorded_facilitation_on ?? row.firstRecordedOn),
+      mostRecentOn: asDate(row.most_recent_facilitation_on ?? row.mostRecentOn),
+    });
+  }
+  return byPerson;
+}
+
+function experienceList(byPerson, personId) {
+  return [...(byPerson.get(personId)?.values() ?? [])]
+    .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
+}
+
+function hasRecordedFacilitatorEvidence(person) {
+  return (person?.experience?.length ?? 0) > 0 || (person?.t4tExperience?.length ?? 0) > 0;
+}
+
+function combinedProductEvidence(person, productId) {
+  const rows = [];
+  for (const list of [person?.experience, person?.t4tExperience]) {
+    const match = (list ?? []).find((row) => row?.productId === productId);
+    if (match) rows.push(match);
+  }
+  if (!rows.length) return null;
+  return {
+    eventsConducted: rows.reduce((sum, row) => sum + row.eventsConducted, 0),
+    firstRecordedOn: rows.reduce((earliest, row) => earlierDate(earliest, row.firstRecordedOn), null),
+    mostRecentOn: rows.reduce((latest, row) => laterDate(latest, row.mostRecentOn), null),
+  };
+}
+
 function productCatalog(products) {
   const byId = new Map();
   for (const product of products ?? []) {
@@ -168,26 +231,10 @@ function productCatalog(products) {
   return byId;
 }
 
-export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products) {
+export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products, t4tRows = []) {
   const catalog = productCatalog(products);
-  const experienceByPerson = new Map();
-  for (const row of experienceRows ?? []) {
-    const personId = row?.person_id ?? row?.personId;
-    const productId = row?.product_id ?? row?.productId;
-    const product = catalog.get(productId);
-    if (!personId || !product) continue;
-    if (!experienceByPerson.has(personId)) experienceByPerson.set(personId, new Map());
-    const productsForPerson = experienceByPerson.get(personId);
-    if (productsForPerson.has(productId)) continue;
-    productsForPerson.set(productId, {
-      productId,
-      productName: product.name,
-      sortOrder: product.sortOrder,
-      eventsConducted: asCount(row.events_conducted ?? row.eventsConducted),
-      firstRecordedOn: asDate(row.first_recorded_facilitation_on ?? row.firstRecordedOn),
-      mostRecentOn: asDate(row.most_recent_facilitation_on ?? row.mostRecentOn),
-    });
-  }
+  const experienceByPerson = collectExperience(experienceRows, catalog);
+  const t4tByPerson = collectExperience(t4tRows, catalog);
 
   const qualificationsByPerson = new Map();
   for (const row of qualificationRows ?? []) {
@@ -219,11 +266,11 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
   for (const source of people ?? []) {
     const person = mapPerson(source);
     if (!person.id || seen.has(person.id)) continue;
-    const experience = [...(experienceByPerson.get(person.id)?.values() ?? [])]
-      .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
+    const experience = experienceList(experienceByPerson, person.id);
+    const t4tExperience = experienceList(t4tByPerson, person.id);
     const qualificationProducts = [...(qualificationsByPerson.get(person.id)?.values() ?? [])]
       .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
-    if (person.isFacilitator !== true && experience.length === 0 && qualificationProducts.length === 0) continue;
+    if (person.isFacilitator !== true && experience.length === 0 && t4tExperience.length === 0 && qualificationProducts.length === 0) continue;
     seen.add(person.id);
     const mostRecentOn = experience.reduce((latest, row) => {
       if (!row.mostRecentOn) return latest;
@@ -243,6 +290,7 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
       eventsConducted: experience.reduce((sum, row) => sum + row.eventsConducted, 0),
       mostRecentOn,
       experience,
+      t4tExperience,
       hasQualificationRecord: qualificationProducts.length > 0,
       qualificationProducts,
     });
@@ -259,8 +307,9 @@ export function filterFacilitatorPersonnel(records, filters = {}) {
     if (active === 'inactive' && record.active !== false) return false;
     if (productId) {
       const inExperience = record.experience.some((row) => row.productId === productId);
+      const inT4t = (record.t4tExperience ?? []).some((row) => row.productId === productId);
       const inQualification = record.qualificationProducts.some((row) => row.productId === productId);
-      if (!inExperience && !inQualification) return false;
+      if (!inExperience && !inT4t && !inQualification) return false;
     }
     if (!query) return true;
     return normalizeSearch(`${record.displayName} ${record.name}`).includes(query);
@@ -305,8 +354,8 @@ export function buildFacilitatorOverview(personnel, products) {
   const coverage = catalog.map((product) => {
     const rows = [];
     for (const person of personnel ?? []) {
-      const experience = person.experience?.find((row) => row.productId === product.id);
-      if (experience) rows.push(experience);
+      const evidence = combinedProductEvidence(person, product.id);
+      if (evidence) rows.push(evidence);
     }
     const mostRecentOn = rows.reduce((latest, row) => {
       if (!row.mostRecentOn) return latest;
@@ -326,13 +375,14 @@ export function buildFacilitatorOverview(personnel, products) {
   const attention = [];
   for (const person of personnel ?? []) {
     if (person.active !== true) continue;
-    if (person.experience.length > 0 && person.hasQualificationRecord !== true) {
+    const hasRecordedEvidence = hasRecordedFacilitatorEvidence(person);
+    if (hasRecordedEvidence && person.hasQualificationRecord !== true) {
       attention.push({
         personId: person.id,
         displayName: person.displayName,
         condition: FACILITATOR_QUALIFICATION_NOT_ENTERED,
       });
-    } else if (person.isFacilitator === true && person.experience.length === 0 && person.hasQualificationRecord !== true) {
+    } else if (person.isFacilitator === true && !hasRecordedEvidence && person.hasQualificationRecord !== true) {
       attention.push({
         personId: person.id,
         displayName: person.displayName,
@@ -359,7 +409,7 @@ export function buildFacilitatorProgramCapabilities(personnel, products) {
     const experienced = [];
     const qualificationPeople = new Set();
     for (const person of personnel ?? []) {
-      const experience = person.experience?.find((row) => row.productId === product.id);
+      const experience = combinedProductEvidence(person, product.id);
       const hasQualification = person.qualificationProducts?.some((row) => row.productId === product.id) === true;
       if (!experience && !hasQualification) continue;
       people.add(person.id);
@@ -422,7 +472,7 @@ export function sortFacilitatorProgramCapabilities(records, column = 'catalog', 
 export function facilitatorProductPersonnel(personnel, productId) {
   const people = [];
   for (const person of personnel ?? []) {
-    const experience = person.experience?.find((row) => row.productId === productId) || null;
+    const experience = combinedProductEvidence(person, productId);
     const hasQualificationRecord = person.qualificationProducts?.some((row) => row.productId === productId) === true;
     if (!experience && !hasQualificationRecord) continue;
     people.push({

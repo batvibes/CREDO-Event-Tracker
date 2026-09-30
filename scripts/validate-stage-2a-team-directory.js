@@ -238,7 +238,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(migrationLines.every((line) => line.includes('024_event_workshop_t4t.sql')), 'the only new migration is 024_event_workshop_t4t.sql');
+assert(migrationLines.every((line) => line.includes('025_facilitator_t4t_product_experience.sql')), 'the only new migration is 025_facilitator_t4t_product_experience.sql');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',

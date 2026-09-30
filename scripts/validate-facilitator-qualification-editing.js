@@ -110,7 +110,8 @@ assert(!model.includes(".from('events')") && !facilitatorRead.includes(".from('e
 assert(app.includes('facilitatorProductFilterOptions(facilitatorProducts)'), 'the Personnel product filter still uses the active catalog');
 assert(!overview.includes('standing') && !overview.includes('expiration'), 'Needs Attention and coverage do not gain qualification alerts');
 assert(!capabilities.includes('trainer_authority') && !capabilities.includes('expiration'), 'Program Capabilities does not edit qualifications');
-assert(!migrationNames.some((name) => /^0(2[5-9]|[3-9]\d)_/.test(name)), 'qualification editing adds no migration');
+assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
+assert(!migrationNames.some((name) => /^0(2[6-9]|[3-9]\d)_/.test(name)), 'no migration after 025 was added');
 
 if (errors.length) {
   console.error('validate-facilitator-qualification-editing failed:');

@@ -78,10 +78,12 @@ import {
 import { personnelDisplayName } from './personnel-identity.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
+  FACILITATOR_EMPTY_T4T_EXPERIENCE,
   FACILITATOR_EMPTY_PERSONNEL,
   FACILITATOR_EMPTY_PRODUCTS,
   FACILITATOR_EMPTY_QUALIFICATIONS,
   FACILITATOR_EXPERIENCE_HEADING,
+  FACILITATOR_T4T_EXPERIENCE_HEADING,
   FACILITATOR_NO_DATA_GAPS,
   FACILITATOR_NO_FACILITATOR_RECORDS,
   FACILITATOR_NO_PRODUCT_EXPERIENCE,
@@ -11252,6 +11254,7 @@ const FACILITATOR_VIEW_LABELS = {
 
 let facilitatorPersonnel = [];
 let facilitatorProducts = [];
+let facilitatorT4tExperienceAvailable = false;
 let facilitatorQualificationPersonId = null;
 let facilitatorQualificationSaving = false;
 let facilitatorQualificationNotice = '';
@@ -11602,6 +11605,43 @@ function openFacilitatorDetail(personId) {
     body.appendChild(wrap);
   }
 
+  if (facilitatorT4tExperienceAvailable) {
+    const t4tHeading = document.createElement('h4');
+    t4tHeading.className = 'facilitator-detail-heading';
+    t4tHeading.textContent = FACILITATOR_T4T_EXPERIENCE_HEADING;
+    body.appendChild(t4tHeading);
+    const t4tRows = person.t4tExperience ?? [];
+    if (!t4tRows.length) {
+      appendDetailLine(body, FACILITATOR_EMPTY_T4T_EXPERIENCE, 'facilitator-detail-note');
+    } else {
+      const t4tWrap = document.createElement('div');
+      t4tWrap.className = 'table-wrap';
+      const t4tTable = document.createElement('table');
+      t4tTable.className = 'events-table';
+      const t4tHead = document.createElement('thead');
+      const t4tHeadRow = document.createElement('tr');
+      for (const label of ['Product', 'T4Ts Conducted', 'First Recorded T4T Facilitation', 'Most Recent T4T Facilitation']) {
+        const cell = document.createElement('th');
+        cell.textContent = label;
+        t4tHeadRow.appendChild(cell);
+      }
+      t4tHead.appendChild(t4tHeadRow);
+      t4tTable.appendChild(t4tHead);
+      const t4tBody = document.createElement('tbody');
+      for (const row of t4tRows) {
+        const line = document.createElement('tr');
+        appendFacilitatorCell(line, row.productName);
+        appendFacilitatorCell(line, String(row.eventsConducted), 'facilitator-count');
+        appendFacilitatorCell(line, formatRecordedFacilitationDate(row.firstRecordedOn));
+        appendFacilitatorCell(line, formatRecordedFacilitationDate(row.mostRecentOn));
+        t4tBody.appendChild(line);
+      }
+      t4tTable.appendChild(t4tBody);
+      t4tWrap.appendChild(t4tTable);
+      body.appendChild(t4tWrap);
+    }
+  }
+
   if (!modal.open) modal.showModal();
 }
 
@@ -11886,11 +11926,13 @@ async function renderFacilitatorManagement() {
     const sources = await fetchFacilitatorManagementSources();
     if (generation !== facilitatorLoadGeneration) return;
     facilitatorProducts = sources.products;
+    facilitatorT4tExperienceAvailable = sources.t4tExperienceAvailable === true;
     facilitatorPersonnel = summarizeFacilitatorPersonnel(
       sources.people,
       sources.experience,
       sources.qualifications,
       sources.products,
+      sources.t4tExperience,
     );
     syncFacilitatorProductFilter();
     paintFacilitatorOverview();

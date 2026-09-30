@@ -1188,14 +1188,15 @@ const FACILITATOR_MANAGEMENT_PERSON_COLUMNS = [
 ].join(', ');
 
 export async function fetchFacilitatorManagementSources() {
-  const [people, experience, qualifications, products] = await Promise.all([
+  const experienceColumns = 'person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on';
+  const [people, experience, qualifications, products, t4tExperience] = await Promise.all([
     supabase
       .from('people')
       .select(FACILITATOR_MANAGEMENT_PERSON_COLUMNS)
       .order('name', { ascending: true }),
     supabase
       .from('facilitator_product_experience')
-      .select('person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on'),
+      .select(experienceColumns),
     supabase
       .from('facilitator_qualifications')
       .select('id, person_id, product_id, standing, t4t_completed_on, first_facilitated_on, trainer_authority, expiration_on, governing_source, notes'),
@@ -1203,15 +1204,27 @@ export async function fetchFacilitatorManagementSources() {
       .from('facilitator_products')
       .select('id, name, code, active, sort_order')
       .order('sort_order', { ascending: true }),
+    supabase
+      .from('facilitator_t4t_product_experience')
+      .select(experienceColumns),
   ]);
 
   const failure = [people, experience, qualifications, products].find((result) => result.error);
   if (failure) throw failure.error;
-  return {
+  const sources = {
     people: people.data ?? [],
     experience: experience.data ?? [],
     qualifications: qualifications.data ?? [],
     products: products.data ?? [],
+  };
+  if (t4tExperience.error) {
+    if (!isMissingEventCurriculumSchemaError(t4tExperience.error)) throw t4tExperience.error;
+    return { ...sources, t4tExperience: [], t4tExperienceAvailable: false };
+  }
+  return {
+    ...sources,
+    t4tExperience: t4tExperience.data ?? [],
+    t4tExperienceAvailable: true,
   };
 }
 

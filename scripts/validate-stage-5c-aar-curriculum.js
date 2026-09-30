@@ -97,7 +97,8 @@ assert(eventCurriculumDiff.trim() === '', 'Stage 5B curriculum choice behavior i
 assert(!model.includes('is_t4t'), 'AAR display does not read or store the Event T4T column');
 const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
 assert(migrationNames.includes('024_event_workshop_t4t.sql'), 'Stage 5E migration 024 is present');
-assert(!migrationNames.some((name) => /^0(2[5-9]|[3-9]\d)_/.test(name)), 'no migration after 024 was added');
+assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
+assert(!migrationNames.some((name) => /^0(2[6-9]|[3-9]\d)_/.test(name)), 'no migration after 025 was added');
 assert(!app.includes('manualExperience') && !app.includes('qualification management'), 'Stage 5C does not add manual experience or qualification management');
 
 const repaired = [

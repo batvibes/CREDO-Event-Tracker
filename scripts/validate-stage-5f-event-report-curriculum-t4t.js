@@ -182,7 +182,8 @@ assert(app.includes('return direction === SORT_DESC ? sorted.reverse() : sorted;
 assert(app.includes("bindSortableTableHeaders(\n    '#aar-history-view .aar-history-table',\n    AAR_HISTORY_TABLE_SORT_COLUMNS,"), 'AAR History still binds headers through the shared sorter');
 
 const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
-assert(!migrationNames.some((name) => /^025_/.test(name)), 'Stage 5F adds no migration');
+assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
+assert(!migrationNames.some((name) => /^0(2[6-9]|[3-9]\d)_/.test(name)), 'no migration after 025 was added');
 
 let migration023Diff = '';
 let migration024Diff = '';
