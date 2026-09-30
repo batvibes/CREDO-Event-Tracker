@@ -162,7 +162,7 @@ const facilitatorRead = read('js/db.js').slice(
   read('js/db.js').indexOf('export async function fetchFacilitatorManagementSources'),
   read('js/db.js').indexOf('export async function fetchTeamDirectoryPersonnel'),
 );
-assert(facilitatorRead.includes(".select('id, name, code, active, sort_order')"), 'the facilitator catalog read includes the active flag');
+assert(facilitatorRead.includes(".select('id, name, code, active, sort_order, governing_source')"), 'the facilitator catalog read includes the active flag and product authority default');
 assert(!facilitatorRead.includes(".eq('active'"), 'the catalog query returns the active flag instead of hiding rows in SQL');
 
 const protectedPaths = [

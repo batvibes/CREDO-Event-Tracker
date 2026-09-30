@@ -111,7 +111,8 @@ assert(app.includes('facilitatorProductFilterOptions(facilitatorProducts)'), 'th
 assert(!overview.includes('standing') && !overview.includes('expiration'), 'Needs Attention and coverage do not gain qualification alerts');
 assert(!capabilities.includes('trainer_authority') && !capabilities.includes('expiration'), 'Program Capabilities does not edit qualifications');
 assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
-assert(!migrationNames.some((name) => /^0(2[6-9]|[3-9]\d)_/.test(name)), 'no migration after 025 was added');
+assert(migrationNames.includes('026_facilitator_product_authority_defaults.sql'), 'verified product authority defaults use migration 026');
+assert(!migrationNames.some((name) => /^0(2[7-9]|[3-9]\d)_/.test(name)), 'no migration after 026 was added');
 
 if (errors.length) {
   console.error('validate-facilitator-qualification-editing failed:');

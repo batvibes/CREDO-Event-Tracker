@@ -162,7 +162,7 @@ const db = read('js/db.js');
 const html = read('index.html');
 const fetchSources = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf('export async function fetchTeamDirectoryPersonnel'));
 const view = html.slice(html.indexOf('id="view-facilitators"'), html.indexOf('id="view-settings"'));
-assert(fetchSources.includes(".select('id, name, code, active, sort_order')"), 'the facilitator product read includes active and sort_order');
+assert(fetchSources.includes(".select('id, name, code, active, sort_order, governing_source')"), 'the facilitator product read includes active, sort_order, and the authority default');
 assert(fetchSources.includes(".from('facilitator_product_experience')"), 'experience still comes from the derived view');
 assert(!fetchSources.includes(".from('events')"), 'Facilitator Management does not read raw Events');
 assert(!fetchSources.includes('facilitator_unclassified_workshop_history'), 'the unclassified workshop queue is not loaded');

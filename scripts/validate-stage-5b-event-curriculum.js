@@ -165,7 +165,7 @@ assert(!/<(select|input)\b/i.test(aarArticle), 'the AAR template has no curricul
 assert(!facilitator.includes('curriculum_product_id'), 'Facilitator Management does not edit Event curriculum');
 assert(!facilitator.includes('facilitator_event_type_allowed_products'), 'Facilitator Management does not read allowed curricula');
 const facilitatorRead = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf('export async function fetchTeamDirectoryPersonnel'));
-assert(facilitatorRead.includes(".select('id, name, code, active, sort_order')"), 'Facilitator Management receives the product active flag');
+assert(facilitatorRead.includes(".select('id, name, code, active, sort_order, governing_source')"), 'Facilitator Management receives the product active flag and authority default');
 
 let migrationDiff = '';
 try {

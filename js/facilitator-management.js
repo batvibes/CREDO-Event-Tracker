@@ -79,6 +79,19 @@ export function facilitatorQualificationProductChoices(products, qualifications)
   return facilitatorProductFilterOptions(products).filter((product) => !taken.has(product.id));
 }
 
+export function facilitatorProductAuthorityDefault(product) {
+  return cleanText(product?.governing_source ?? product?.governingSource);
+}
+
+export function nextQualificationSourceSuggestion({ origin, currentValue, productDefault }) {
+  if (origin === 'manual' || origin === 'stored') {
+    return { value: currentValue ?? '', origin };
+  }
+  const suggestion = cleanText(productDefault);
+  if (!suggestion) return { value: '', origin: 'empty' };
+  return { value: suggestion, origin: 'suggested' };
+}
+
 function cleanQualificationNote(value) {
   if (value == null) return '';
   return String(value).replace(/\r\n/g, '\n').trim();
@@ -226,6 +239,7 @@ function productCatalog(products) {
       sortOrder: Number.isFinite(Number(product.sort_order ?? product.sortOrder))
         ? Number(product.sort_order ?? product.sortOrder)
         : Number.MAX_SAFE_INTEGER,
+      governingSource: cleanText(product.governing_source ?? product.governingSource),
     });
   }
   return byId;

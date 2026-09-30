@@ -1202,7 +1202,7 @@ export async function fetchFacilitatorManagementSources() {
       .select('id, person_id, product_id, standing, t4t_completed_on, first_facilitated_on, trainer_authority, expiration_on, governing_source, notes'),
     supabase
       .from('facilitator_products')
-      .select('id, name, code, active, sort_order')
+      .select('id, name, code, active, sort_order, governing_source')
       .order('sort_order', { ascending: true }),
     supabase
       .from('facilitator_t4t_product_experience')

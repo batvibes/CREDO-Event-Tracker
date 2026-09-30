@@ -94,8 +94,10 @@ import {
   FACILITATOR_QUALIFICATIONS_HEADING,
   FACILITATOR_STANDING_OPTIONS,
   facilitatorQualificationDisplayFields,
+  facilitatorProductAuthorityDefault,
   facilitatorQualificationProductChoices,
   facilitatorQualificationSaveInput,
+  nextQualificationSourceSuggestion,
   buildFacilitatorOverview,
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
@@ -11741,6 +11743,7 @@ function paintFacilitatorQualificationEditor(qualification) {
   const footer = document.getElementById('facilitator-qualification-footer');
   if (!person || !title || !body || !footer) return;
   const creating = !qualification;
+  let qualificationSourceOrigin = creating ? 'empty' : 'stored';
   facilitatorQualificationNotice = '';
   title.textContent = creating ? 'Add Qualification' : 'Edit Qualification';
   body.replaceChildren();
@@ -11752,14 +11755,15 @@ function paintFacilitatorQualificationEditor(qualification) {
   });
 
   const details = appendQualificationSection(form, 'Section 01 — Qualification Details');
+  let productSelect = null;
   if (creating) {
-    const product = document.createElement('select');
-    product.id = 'facilitator-qualification-product';
-    product.appendChild(new Option('Select a product', ''));
+    productSelect = document.createElement('select');
+    productSelect.id = 'facilitator-qualification-product';
+    productSelect.appendChild(new Option('Select a product', ''));
     for (const choice of facilitatorQualificationProductChoices(facilitatorProducts, person.qualificationProducts)) {
-      product.appendChild(new Option(choice.name, choice.id));
+      productSelect.appendChild(new Option(choice.name, choice.id));
     }
-    appendQualificationField(details, 'Product', product);
+    appendQualificationField(details, 'Product', productSelect);
   } else {
     const field = document.createElement('div');
     field.className = 'facilitator-qualification-fixed';
@@ -11821,6 +11825,21 @@ function paintFacilitatorQualificationEditor(qualification) {
   source.id = 'facilitator-qualification-source';
   source.type = 'text';
   source.value = qualification?.governingSource || '';
+  source.addEventListener('input', () => {
+    qualificationSourceOrigin = 'manual';
+  });
+  if (productSelect) {
+    productSelect.addEventListener('change', () => {
+      const selected = facilitatorProducts.find((row) => row.id === productSelect.value) ?? null;
+      const next = nextQualificationSourceSuggestion({
+        origin: qualificationSourceOrigin,
+        currentValue: source.value,
+        productDefault: facilitatorProductAuthorityDefault(selected),
+      });
+      qualificationSourceOrigin = next.origin;
+      source.value = next.value;
+    });
+  }
   appendQualificationField(documentation, 'Qualification Authority / Source', source);
   const sourceHelp = document.createElement('p');
   sourceHelp.className = 'facilitator-qualification-note';
