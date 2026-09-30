@@ -67,6 +67,7 @@ import { aarCurriculumDisplayName } from './aar-curriculum.js';
 import {
   ALL_T4T_EVENTS_REPORT_LABEL,
   ALL_T4T_EVENTS_REPORT_OPTION,
+  compareHistoryCurriculumLabels,
   eventMatchesEventTypeReport,
   historyCurriculumLabel,
   isWorkshopCurriculumEventType,
@@ -314,6 +315,7 @@ const AAR_HISTORY_TABLE_SORT_COLUMNS = [
   { key: 'date', index: 0 },
   { key: 'sequenceNumber', index: 1 },
   { key: 'eventType', index: 2 },
+  { key: 'curriculum', index: 3 },
   { key: 'command', index: 4 },
   { key: 'location', index: 5 },
   { key: 'venueCost', index: 6 },
@@ -816,6 +818,10 @@ const AAR_HISTORY_SORT_COMPARATORS = {
   date: compareEventDates,
   sequenceNumber: (a, b) => compareTextValues(a.aarSequenceNumber, b.aarSequenceNumber),
   eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
+  curriculum: (a, b) => compareHistoryCurriculumLabels(
+    historyCurriculumLabel(a, eventCurriculumChoices),
+    historyCurriculumLabel(b, eventCurriculumChoices),
+  ),
   command: (a, b) => compareWithTbdLast(a.command, b.command),
   location: (a, b) => compareWithTbdLast(a.location, b.location),
   venueCost: (a, b) => compareAarHistoryCostValues(resolveAarVenueCost(a), resolveAarVenueCost(b)),

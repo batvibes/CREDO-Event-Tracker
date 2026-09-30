@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ALL_T4T_EVENTS_REPORT_OPTION,
   eventMatchesEventTypeReport,
+  compareHistoryCurriculumLabels,
   filterEventsForEventTypeReport,
   historyCurriculumLabel,
   nextWorkshopCurriculumFilter,
@@ -95,6 +96,38 @@ assert(historyCurriculumLabel({ eventType: 'Marriage Enrichment Workshop', curri
 assert(historyCurriculumLabel({ eventType: 'Personal Growth Workshop', curriculumProductId: null, isT4t: true }, choices) === null, 'a null curriculum does not display bare T4T');
 assert(historyCurriculumLabel({ eventType: 'SafeTalk T4T', curriculumProductId: null, isT4t: false }, choices) === null, 'SafeTalk T4T does not copy its Event Type into the curriculum column');
 assert(historyCurriculumLabel({ eventType: 'ASIST T4T', curriculumProductId: 'lenses', isT4t: false }, choices) === null, 'ASIST T4T does not duplicate its Event Type or invent a curriculum');
+
+const curriculumSortEvents = [
+  { eventType: 'Marriage Enrichment Workshop', curriculumProductId: null, isT4t: true },
+  { eventType: 'Personal Growth Workshop', curriculumProductId: 'lenses', isT4t: true },
+  { eventType: 'Marriage Enrichment Workshop', curriculumProductId: 'prep', isT4t: false },
+  { eventType: 'Personal Growth Workshop', curriculumProductId: 'lenses', isT4t: false },
+  { eventType: 'Marriage Enrichment Workshop', curriculumProductId: 'gottman', isT4t: false },
+  { eventType: 'Marriage Enrichment Workshop', curriculumProductId: 'prep', isT4t: true },
+  { eventType: 'Personal Growth Workshop', curriculumProductId: 'strengths', isT4t: false },
+  { eventType: 'SafeTalk T4T', curriculumProductId: null, isT4t: false },
+  { eventType: 'Personal Growth Workshop', curriculumProductId: 'chapter', isT4t: false },
+];
+const curriculumSortLabel = (event) => historyCurriculumLabel(event, choices);
+const curriculumAscending = [...curriculumSortEvents].sort((left, right) => (
+  compareHistoryCurriculumLabels(curriculumSortLabel(left), curriculumSortLabel(right))
+));
+const curriculumAscendingLabels = curriculumAscending.map(curriculumSortLabel);
+assert(curriculumAscendingLabels.join('|') === [
+  '4 Lenses',
+  '4 Lenses T4T',
+  'CliftonStrengths, Strengths Discovery Encounter',
+  'Gottman, Seven Principles of Making Marriage Work',
+  'Navigating Your Next Chapter',
+  'PREP 8.0',
+  'PREP 8.0 T4T',
+  null,
+  null,
+].join('|'), 'ascending curriculum sort uses the displayed name and keeps blank values last');
+const curriculumDescendingLabels = [...curriculumAscending].reverse().map(curriculumSortLabel);
+assert(curriculumDescendingLabels[0] === null && curriculumDescendingLabels.at(-1) === '4 Lenses', 'descending curriculum sort reverses the ascending order');
+assert(compareHistoryCurriculumLabels(null, '4 Lenses') > 0, 'a non-applicable curriculum sorts after a resolved name');
+assert(compareHistoryCurriculumLabels('PREP 8.0', 'PREP 8.0 T4T') < 0, 'a T4T suffix sorts with its displayed value');
 assert(!/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(filters), 'report filters do not hard-code product UUIDs');
 assert(!filters.includes('Gottman') && !filters.includes('4 Lenses'), 'report filters do not keep a second curriculum name list');
 
@@ -124,7 +157,29 @@ assert(app.includes('curriculumChoicesForEventType(eventCurriculumChoices, event
 assert(app.includes(`<option value="${'${ALL_T4T_EVENTS_REPORT_OPTION}'}">${'${ALL_T4T_EVENTS_REPORT_LABEL}'}</option>`), 'All T4T Events is added only to the report Event Type control');
 assert(!app.slice(app.indexOf('function populateModalEventTypeSelect'), app.indexOf('function populateEventTypeSelect')).includes('ALL_T4T_EVENTS_REPORT_OPTION'), 'Event Details does not offer All T4T Events');
 assert(!html.includes('All T4T Events'), 'All T4T Events is not a stored option in the page markup');
-assert(app.includes("{ key: 'command', index: 4 }"), 'AAR History sorting stays aligned after the new column');
+const historySortColumns = app.slice(
+  app.indexOf('const AAR_HISTORY_TABLE_SORT_COLUMNS'),
+  app.indexOf('const MIR_HISTORY_TABLE_SORT_COLUMNS'),
+);
+const historyComparators = app.slice(
+  app.indexOf('const AAR_HISTORY_SORT_COMPARATORS'),
+  app.indexOf('const MIR_HISTORY_SORT_COMPARATORS'),
+);
+assert(historySortColumns.includes("{ key: 'curriculum', index: 3 }"), 'Curriculum / Product uses the AAR History header sort');
+assert(historySortColumns.includes("{ key: 'date', index: 0 }"), 'the Date header remains sortable');
+assert(historySortColumns.includes("{ key: 'sequenceNumber', index: 1 }"), 'the Sequence Number header remains sortable');
+assert(historySortColumns.includes("{ key: 'eventType', index: 2 }"), 'the Event Type header remains sortable');
+assert(historySortColumns.includes("{ key: 'command', index: 4 }"), 'the Command header remains sortable');
+assert(historySortColumns.includes("{ key: 'location', index: 5 }"), 'the Location header remains sortable');
+assert(historySortColumns.includes("{ key: 'venueCost', index: 6 }"), 'the Venue Cost header remains sortable');
+assert(historySortColumns.includes("{ key: 'cateringCost', index: 7 }"), 'the Catering Cost header remains sortable');
+assert(historySortColumns.includes("{ key: 'lastModified', index: 8 }"), 'the Last Modified header remains sortable');
+assert(historyComparators.includes('compareHistoryCurriculumLabels('), 'curriculum sorting uses the displayed curriculum label');
+assert(historyComparators.includes('historyCurriculumLabel(a, eventCurriculumChoices)'), 'curriculum sorting reads the shared history label');
+assert(!historyComparators.includes('AAR_EMPTY_DISPLAY'), 'the em dash is not the curriculum sort key');
+assert(historyComparators.includes('compareWithTbdLast(a.command, b.command)'), 'Command keeps its existing comparator');
+assert(app.includes('return direction === SORT_DESC ? sorted.reverse() : sorted;'), 'descending sort still reverses the shared table sort');
+assert(app.includes("bindSortableTableHeaders(\n    '#aar-history-view .aar-history-table',\n    AAR_HISTORY_TABLE_SORT_COLUMNS,"), 'AAR History still binds headers through the shared sorter');
 
 const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
 assert(!migrationNames.some((name) => /^025_/.test(name)), 'Stage 5F adds no migration');

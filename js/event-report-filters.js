@@ -67,3 +67,11 @@ export function historyCurriculumLabel(event, choices) {
     event?.isT4t === true,
   );
 }
+
+export function compareHistoryCurriculumLabels(leftLabel, rightLabel) {
+  const leftBlank = !leftLabel;
+  const rightBlank = !rightLabel;
+  if (leftBlank && !rightBlank) return 1;
+  if (!leftBlank && rightBlank) return -1;
+  return String(leftLabel ?? '').localeCompare(String(rightLabel ?? ''), undefined, { sensitivity: 'base' });
+}
