@@ -229,6 +229,16 @@
                 <option value="">Select event type</option>
               </select>
             </label>
+            <label class="reports-filter-field" id="report-curriculum-field" hidden>
+              <span class="reports-filter-label">Curriculum / Product</span>
+              <select id="report-curriculum" class="filter-select">
+                <option value="">All Curricula</option>
+              </select>
+            </label>
+            <label class="reports-filter-field reports-filter-check" id="report-t4t-field" hidden>
+              <span class="reports-filter-label">T4T</span>
+              <input type="checkbox" id="report-t4t">
+            </label>
             <button type="button" class="btn btn-primary" id="report-generate-btn">Generate Report</button>
             <button type="button" class="btn btn-secondary" id="report-clear-btn">Clear Filters</button>
             <button type="button" class="btn btn-secondary" id="report-export-btn">Export PDF</button>
@@ -383,6 +393,7 @@
                         <th>Date</th>
                         <th>Sequence Number</th>
                         <th>Event Type</th>
+                        <th>Curriculum / Product</th>
                         <th>Command</th>
                         <th>Location</th>
                         <th>Venue Cost</th>

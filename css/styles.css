@@ -1815,7 +1815,7 @@ body:has(#new-event-modal[open]) {
 #view-reports .aar-history-table {
   table-layout: fixed;
   width: 100%;
-  min-width: 64rem;
+  min-width: 76rem;
 }
 
 #view-reports .aar-history-table thead th {
@@ -1855,37 +1855,33 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-reports .aar-history-table th:nth-child(3),
-#view-reports .aar-history-table td:nth-child(3) {
-  width: calc((100% - 43.5rem) / 3);
-}
-
+#view-reports .aar-history-table td:nth-child(3),
 #view-reports .aar-history-table th:nth-child(4),
-#view-reports .aar-history-table td:nth-child(4) {
-  width: calc((100% - 43.5rem) / 3);
-}
-
+#view-reports .aar-history-table td:nth-child(4),
 #view-reports .aar-history-table th:nth-child(5),
-#view-reports .aar-history-table td:nth-child(5) {
-  width: calc((100% - 43.5rem) / 3);
-}
-
+#view-reports .aar-history-table td:nth-child(5),
 #view-reports .aar-history-table th:nth-child(6),
 #view-reports .aar-history-table td:nth-child(6) {
-  width: 4.75rem;
+  width: calc((100% - 43.5rem) / 4);
 }
 
 #view-reports .aar-history-table th:nth-child(7),
 #view-reports .aar-history-table td:nth-child(7) {
-  width: 5rem;
+  width: 4.75rem;
 }
 
 #view-reports .aar-history-table th:nth-child(8),
 #view-reports .aar-history-table td:nth-child(8) {
-  width: 11.5rem;
+  width: 5rem;
 }
 
 #view-reports .aar-history-table th:nth-child(9),
 #view-reports .aar-history-table td:nth-child(9) {
+  width: 11.5rem;
+}
+
+#view-reports .aar-history-table th:nth-child(10),
+#view-reports .aar-history-table td:nth-child(10) {
   width: 12rem;
 }
 
@@ -1893,12 +1889,12 @@ body:has(#new-event-modal[open]) {
 #view-reports .aar-history-table td:nth-child(1),
 #view-reports .aar-history-table th:nth-child(2),
 #view-reports .aar-history-table td:nth-child(2),
-#view-reports .aar-history-table th:nth-child(6),
-#view-reports .aar-history-table td:nth-child(6),
 #view-reports .aar-history-table th:nth-child(7),
 #view-reports .aar-history-table td:nth-child(7),
 #view-reports .aar-history-table th:nth-child(8),
-#view-reports .aar-history-table td:nth-child(8) {
+#view-reports .aar-history-table td:nth-child(8),
+#view-reports .aar-history-table th:nth-child(9),
+#view-reports .aar-history-table td:nth-child(9) {
   white-space: nowrap;
 }
 
@@ -1907,7 +1903,9 @@ body:has(#new-event-modal[open]) {
 #view-reports .aar-history-table th:nth-child(4),
 #view-reports .aar-history-table td:nth-child(4),
 #view-reports .aar-history-table th:nth-child(5),
-#view-reports .aar-history-table td:nth-child(5) {
+#view-reports .aar-history-table td:nth-child(5),
+#view-reports .aar-history-table th:nth-child(6),
+#view-reports .aar-history-table td:nth-child(6) {
   white-space: normal;
   word-break: break-word;
 }
@@ -2507,6 +2505,21 @@ body:has(#new-event-modal[open]) {
   border-color: #e5e7eb;
   opacity: 0.75;
   cursor: not-allowed;
+}
+
+.reports-filter-bar .reports-filter-field[hidden] {
+  display: none;
+}
+
+.reports-filter-bar .reports-filter-check {
+  min-width: 3.5rem;
+}
+
+.reports-filter-bar .reports-filter-check input {
+  width: 1rem;
+  height: 1rem;
+  margin: 8px 0 0;
+  accent-color: #00205b;
 }
 
 .reports-filter-bar .btn {

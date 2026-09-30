@@ -64,6 +64,15 @@ import {
   reconcileCurriculumProductId,
 } from './event-curriculum.js';
 import { aarCurriculumDisplayName } from './aar-curriculum.js';
+import {
+  ALL_T4T_EVENTS_REPORT_LABEL,
+  ALL_T4T_EVENTS_REPORT_OPTION,
+  eventMatchesEventTypeReport,
+  historyCurriculumLabel,
+  isWorkshopCurriculumEventType,
+  nextWorkshopCurriculumFilter,
+  reportWorkshopControlsVisible,
+} from './event-report-filters.js';
 import { personnelDisplayName } from './personnel-identity.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
@@ -305,11 +314,11 @@ const AAR_HISTORY_TABLE_SORT_COLUMNS = [
   { key: 'date', index: 0 },
   { key: 'sequenceNumber', index: 1 },
   { key: 'eventType', index: 2 },
-  { key: 'command', index: 3 },
-  { key: 'location', index: 4 },
-  { key: 'venueCost', index: 5 },
-  { key: 'cateringCost', index: 6 },
-  { key: 'lastModified', index: 7 },
+  { key: 'command', index: 4 },
+  { key: 'location', index: 5 },
+  { key: 'venueCost', index: 6 },
+  { key: 'cateringCost', index: 7 },
+  { key: 'lastModified', index: 8 },
 ];
 
 const MIR_HISTORY_TABLE_SORT_COLUMNS = [
@@ -1225,10 +1234,16 @@ function populateReportFilterOptions() {
     ...getReportCommands().map((command) => `<option value="${command}">${command}</option>`),
   ].join('');
 
-  document.getElementById('report-event-type').innerHTML = [
+  const eventTypeSelect = document.getElementById('report-event-type');
+  const selectedEventType = eventTypeSelect.value;
+  eventTypeSelect.innerHTML = [
     '<option value="">Select event type</option>',
     ...eventTypes.map((type) => `<option value="${type}">${type}</option>`),
+    `<option value="${ALL_T4T_EVENTS_REPORT_OPTION}">${ALL_T4T_EVENTS_REPORT_LABEL}</option>`,
   ].join('');
+  if ([...eventTypeSelect.options].some((option) => option.value === selectedEventType)) {
+    eventTypeSelect.value = selectedEventType;
+  }
 }
 
 function setReportFieldEnabled(fieldId, inputId, enabled) {
@@ -1247,10 +1262,58 @@ function updateReportFilterState() {
   setReportFieldEnabled('report-end-field', 'report-end-date', reportType === 'date-range');
   setReportFieldEnabled('report-command-field', 'report-command', reportType === 'command');
   setReportFieldEnabled('report-event-type-field', 'report-event-type', reportType === 'event-type');
+  syncReportCurriculumControls();
+}
+
+function syncReportCurriculumControls() {
+  const reportType = document.getElementById('report-type').value;
+  const eventType = document.getElementById('report-event-type').value;
+  const curriculumField = document.getElementById('report-curriculum-field');
+  const curriculumSelect = document.getElementById('report-curriculum');
+  const t4tField = document.getElementById('report-t4t-field');
+  const t4tInput = document.getElementById('report-t4t');
+  if (!curriculumField || !curriculumSelect || !t4tField || !t4tInput) return;
+
+  const visible = reportWorkshopControlsVisible(reportType, eventType);
+  if (!visible.curriculum) {
+    curriculumSelect.replaceChildren(new Option('All Curricula', ''));
+    curriculumSelect.value = '';
+    curriculumSelect.dataset.eventType = '';
+    t4tInput.checked = false;
+    curriculumField.hidden = true;
+    t4tField.hidden = true;
+    return;
+  }
+
+  const previousType = curriculumSelect.dataset.eventType || '';
+  const current = nextWorkshopCurriculumFilter(previousType, eventType, curriculumSelect.value);
+  const choices = curriculumChoicesForEventType(eventCurriculumChoices, eventType);
+  curriculumSelect.replaceChildren(new Option('All Curricula', ''));
+  choices.forEach((choice) => {
+    curriculumSelect.append(new Option(choice.name, choice.productId));
+  });
+  curriculumSelect.value = current && [...curriculumSelect.options].some((option) => option.value === current)
+    ? current
+    : '';
+  curriculumSelect.dataset.eventType = eventType;
+  curriculumField.hidden = false;
+  t4tField.hidden = !visible.t4t;
+}
+
+function readEventTypeReportCriteria() {
+  const reportType = document.getElementById('report-type').value;
+  const eventType = document.getElementById('report-event-type').value;
+  const visible = reportWorkshopControlsVisible(reportType, eventType);
+  return {
+    eventType,
+    curriculumProductId: visible.curriculum ? document.getElementById('report-curriculum').value : null,
+    t4t: visible.t4t ? document.getElementById('report-t4t').checked === true : false,
+  };
 }
 
 function filterReportEvents() {
   const reportType = document.getElementById('report-type').value;
+  const eventTypeCriteria = reportType === 'event-type' ? readEventTypeReportCriteria() : null;
 
   if (reportType === 'all') {
     return [...events];
@@ -1296,9 +1359,7 @@ function filterReportEvents() {
     }
 
     if (reportType === 'event-type') {
-      const eventType = document.getElementById('report-event-type').value;
-      if (!eventType) return false;
-      return event.eventType === eventType;
+      return eventMatchesEventTypeReport(event, eventTypeCriteria);
     }
 
     return true;
@@ -1380,7 +1441,15 @@ function getReportFilterSummary() {
     return `Command: ${document.getElementById('report-command').value || 'All'}`;
   }
   if (reportType === 'event-type') {
-    return `Event Type: ${document.getElementById('report-event-type').value || 'All'}`;
+    const eventType = document.getElementById('report-event-type').value;
+    if (eventType === ALL_T4T_EVENTS_REPORT_OPTION) return `Event Type: ${ALL_T4T_EVENTS_REPORT_LABEL}`;
+    if (isWorkshopCurriculumEventType(eventType)) {
+      const curriculum = document.getElementById('report-curriculum');
+      const curriculumLabel = curriculum.options[curriculum.selectedIndex]?.text || 'All Curricula';
+      const t4tLabel = document.getElementById('report-t4t').checked ? 'T4T' : 'Non-T4T';
+      return `Event Type: ${eventType}; Curriculum / Product: ${curriculumLabel}; ${t4tLabel}`;
+    }
+    return `Event Type: ${eventType || 'All'}`;
   }
   return 'All Events';
 }
@@ -1410,6 +1479,7 @@ function setupReports() {
   updateReportFilterState();
 
   document.getElementById('report-type').addEventListener('change', updateReportFilterState);
+  document.getElementById('report-event-type').addEventListener('change', syncReportCurriculumControls);
   document.getElementById('report-generate-btn').addEventListener('click', generateReport);
   document.getElementById('report-clear-btn').addEventListener('click', clearReportFilters);
   document.getElementById('report-export-btn').addEventListener('click', exportReportPdf);
@@ -3800,7 +3870,7 @@ function renderAarHistoryLog() {
 
   if (finalized.length === 0) {
     tbody.innerHTML =
-      '<tr><td colspan="9"><div class="aar-empty-state">No finalized AARs yet.</div></td></tr>';
+      '<tr><td colspan="10"><div class="aar-empty-state">No finalized AARs yet.</div></td></tr>';
     return;
   }
 
@@ -3822,6 +3892,10 @@ function renderAarHistoryLog() {
     const typeCell = document.createElement('td');
     typeCell.textContent = event.eventType;
     row.appendChild(typeCell);
+
+    const curriculumCell = document.createElement('td');
+    curriculumCell.textContent = historyCurriculumLabel(event, eventCurriculumChoices) || AAR_EMPTY_DISPLAY;
+    row.appendChild(curriculumCell);
 
     const commandCell = document.createElement('td');
     commandCell.textContent = displayValue(event.command, 'command');
