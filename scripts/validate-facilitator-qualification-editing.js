@@ -150,7 +150,8 @@ assert(!capabilities.includes('trainer_authority') && !capabilities.includes('ex
 assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
 assert(migrationNames.includes('026_facilitator_product_authority_defaults.sql'), 'verified product authority defaults use migration 026');
 assert(migrationNames.includes('027_facilitator_qualification_delete.sql'), 'qualification removal uses migration 027');
-assert(!migrationNames.some((name) => /^0(2[8-9]|[3-9]\d)_/.test(name)), 'no migration after 027 was added');
+assert(migrationNames.includes('028_facilitator_t4t_completion_history.sql'), 'T4T completion history uses migration 028');
+assert(!migrationNames.some((name) => /^0(29|[3-9]\d)_/.test(name)), 'no migration after 028 was added');
 
 if (errors.length) {
   console.error('validate-facilitator-qualification-editing failed:');
