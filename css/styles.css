@@ -6911,11 +6911,23 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-detail-modal {
-  width: min(860px, calc(100vw - 32px));
+  width: min(880px, calc(100vw - 32px));
+  margin: auto;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
 }
 
 #facilitator-detail-modal .facilitator-detail-content {
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+}
+
+#facilitator-detail-modal .modal-header,
+#facilitator-detail-modal .modal-footer {
+  flex-shrink: 0;
 }
 
 #facilitator-detail-modal .facilitator-detail-meta,
@@ -6926,8 +6938,10 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-detail-modal .modal-body {
-  max-height: min(70vh, 720px);
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 #facilitator-detail-modal .facilitator-section-header {
@@ -6998,12 +7012,27 @@ body:has(#new-event-modal[open]) {
   white-space: pre-wrap;
 }
 
+#facilitator-detail-modal .table-wrap {
+  max-width: 100%;
+}
+
+#facilitator-detail-modal .events-table th,
+#facilitator-detail-modal .events-table td {
+  padding: 10px 12px;
+}
+
 #facilitator-detail-modal .events-table th {
   white-space: normal;
 }
 
 #facilitator-detail-modal .events-table td:first-child {
   white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  #facilitator-detail-modal .events-table td:first-child {
+    white-space: normal;
+  }
 }
 
 #facilitator-qualification-modal {
