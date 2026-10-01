@@ -4180,6 +4180,7 @@ function openPersonnelEditor(person = null, options = {}) {
   const title = document.getElementById('personnel-editor-title');
   if (!modal || !body || !footer || !title) return;
   const roleSurface = options.roleSurface === 'facilitator' ? 'facilitator' : 'team';
+  modal.dataset.roleSurface = roleSurface;
   title.textContent = roleSurface === 'facilitator'
     ? (person?.id ? 'Edit Facilitator' : 'Add Facilitator')
     : (person?.id ? 'Edit Person' : 'Add Person');
@@ -11328,8 +11329,10 @@ function syncFacilitatorProductFilter() {
 
 function appendFacilitatorCell(row, text, className) {
   const cell = document.createElement('td');
+  const value = text || '—';
   if (className) cell.className = className;
-  cell.textContent = text || '—';
+  if (value === '—') cell.classList.add('facilitator-muted-value');
+  cell.textContent = value;
   row.appendChild(cell);
 }
 
@@ -11536,7 +11539,9 @@ function openFacilitatorDetail(personId) {
 
   title.textContent = person.displayName || 'Facilitator';
   body.replaceChildren();
-  if (canEditTeam()) {
+  const header = modal.querySelector('.modal-header');
+  header?.querySelector('.facilitator-detail-actions')?.remove();
+  if (canEditTeam() && header) {
     const actions = document.createElement('div');
     actions.className = 'facilitator-detail-actions';
     const edit = document.createElement('button');
@@ -11545,7 +11550,7 @@ function openFacilitatorDetail(personId) {
     edit.textContent = 'Edit Facilitator';
     edit.addEventListener('click', () => openPersonnelEditor(person, { roleSurface: 'facilitator' }));
     actions.appendChild(edit);
-    body.appendChild(actions);
+    header.insertBefore(actions, header.querySelector('.modal-close'));
   }
   const place = [person.commandOrganization, person.installation].filter(Boolean).join(' · ');
   const status = person.active === true ? '' : 'Inactive';
