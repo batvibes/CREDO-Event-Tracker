@@ -56,7 +56,8 @@ assert(!overviewPanel.includes('Recorded Instances') && !overviewPanel.includes(
 assert(overviewPanel.includes('id="facilitator-anniversary-section" hidden'), 'an empty T4T alert section starts hidden');
 assert(overviewPanel.includes('>Facilitator<') && overviewPanel.includes('>Status<') && overviewPanel.includes('>Progress<') && overviewPanel.includes('>Deadline<'), 'T4T alerts keep Facilitator, Product, Status, Progress, and Deadline');
 const capabilitiesPanel = view.slice(view.indexOf('id="facilitator-capabilities-panel"'));
-assert(capabilitiesPanel.includes('>Personnel<') && capabilitiesPanel.includes('Recorded Experience') && capabilitiesPanel.includes('Recorded Instances') && capabilitiesPanel.includes('Qualification Records'), 'Program Capabilities columns stay in place');
+assert(capabilitiesPanel.includes('>Instructors<') && capabilitiesPanel.includes('Recorded Instances') && capabilitiesPanel.includes('>Most Recent<') && capabilitiesPanel.includes('Qualification Records'), 'Program Capabilities keeps Instructors, Recorded Instances, Most Recent, and Qualification Records');
+assert(!capabilitiesPanel.includes('>Personnel<') && !capabilitiesPanel.includes('Recorded Experience'), 'Program Capabilities no longer shows Personnel or Recorded Experience');
 assert(app.includes("showFacilitatorView('overview')"), 'opening Facilitator Management starts on Overview');
 assert(app.includes('buildFacilitatorOverview'), 'Overview is derived from the loaded personnel model');
 const overviewPaint = app.slice(app.indexOf('function paintFacilitatorOverview'), app.indexOf('function paintFacilitatorPersonnel'));

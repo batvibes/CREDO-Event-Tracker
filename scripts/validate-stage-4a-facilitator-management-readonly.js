@@ -50,7 +50,7 @@ const fetchSources = extractFunction(db, 'export async function fetchFacilitator
 assert(html.includes('data-view="facilitators"'), 'Facilitator Management is a sidebar destination');
 assert(html.includes('Facilitator Management'), 'the destination is labeled Facilitator Management');
 assert(html.includes('id="view-facilitators"'), 'the Facilitator Management view exists');
-assert(html.includes('>Personnel<'), 'Personnel is the Stage 4A view');
+assert(html.includes('id="facilitator-personnel-heading">Facilitators<'), 'Facilitators is the Stage 4A view');
 assert(html.includes('id="facilitator-personnel-table"'), 'the Personnel table exists');
 assert(html.includes('>Name<') && html.includes('Command / Organization') && html.includes('>Installation<'), 'name, command, and installation columns exist');
 assert(html.includes('>Products<') && html.includes('Events Conducted') && html.includes('Most Recent'), 'experience summary columns exist');

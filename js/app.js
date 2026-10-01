@@ -11274,10 +11274,9 @@ const FACILITATOR_SORT_COLUMNS = [
 const FACILITATOR_CAPABILITY_SORT_COLUMNS = [
   { key: 'catalog', index: 0 },
   { key: 'personnel', index: 1 },
-  { key: 'experience', index: 2 },
-  { key: 'instances', index: 3 },
-  { key: 'recent', index: 4 },
-  { key: 'qualifications', index: 5 },
+  { key: 'instances', index: 2 },
+  { key: 'recent', index: 3 },
+  { key: 'qualifications', index: 4 },
 ];
 const FACILITATOR_VIEW_LABELS = {
   overview: 'Overview',
@@ -11445,7 +11444,7 @@ function paintFacilitatorProgramCapabilities() {
   if (!body) return;
   const visible = visibleFacilitatorCapabilities();
   if (!visible.length) {
-    appendFacilitatorEmptyRow(body, 6, FACILITATOR_EMPTY_PRODUCTS);
+    appendFacilitatorEmptyRow(body, 5, FACILITATOR_EMPTY_PRODUCTS);
     return;
   }
   body.replaceChildren();
@@ -11466,7 +11465,6 @@ function paintFacilitatorProgramCapabilities() {
     nameCell.textContent = product.productName;
     row.appendChild(nameCell);
     appendFacilitatorCell(row, String(product.personnelCount), 'facilitator-count');
-    appendFacilitatorCell(row, String(product.recordedExperienceCount), 'facilitator-count');
     appendFacilitatorCell(row, String(product.recordedInstances), 'facilitator-count');
     appendFacilitatorCell(row, formatRecordedFacilitationDate(product.mostRecentOn));
     appendFacilitatorCell(row, String(product.qualificationRecordCount), 'facilitator-count');
@@ -12184,7 +12182,7 @@ async function renderFacilitatorManagement() {
     const coverageBody = document.getElementById('facilitator-coverage-body');
     if (coverageBody) appendFacilitatorEmptyRow(coverageBody, 3, 'Facilitators could not be loaded.');
     const capabilities = document.getElementById('facilitator-capabilities-body');
-    if (capabilities) appendFacilitatorEmptyRow(capabilities, 6, 'Facilitators could not be loaded.');
+    if (capabilities) appendFacilitatorEmptyRow(capabilities, 5, 'Facilitators could not be loaded.');
     return false;
   }
 }

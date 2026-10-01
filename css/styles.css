@@ -6964,6 +6964,15 @@ body:has(#new-event-modal[open]) {
   max-width: 40rem;
 }
 
+#view-facilitators .facilitator-capabilities-wrap {
+  max-width: 64rem;
+}
+
+#facilitator-capabilities-table th:not(:first-child),
+#facilitator-capabilities-table td:not(:first-child) {
+  white-space: nowrap;
+}
+
 #view-facilitators .facilitator-summary-note,
 #view-facilitators .facilitator-section-heading {
   margin: 18px 0 8px;
