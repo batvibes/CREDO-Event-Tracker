@@ -431,8 +431,11 @@ export function buildFacilitatorOverview(personnel, products) {
     .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.name, right.name));
   const coverage = catalog.map((product) => {
     const rows = [];
+    const instructorIds = new Set();
     for (const person of personnel ?? []) {
       const evidence = combinedProductEvidence(person, product.id);
+      const hasQualification = person.qualificationProducts?.some((row) => row.productId === product.id) === true;
+      if (evidence || hasQualification) instructorIds.add(person.id);
       if (evidence) rows.push(evidence);
     }
     const mostRecentOn = rows.reduce((latest, row) => {
@@ -445,6 +448,7 @@ export function buildFacilitatorOverview(personnel, products) {
       productName: product.name,
       sortOrder: product.sortOrder,
       peopleWithExperience: rows.length,
+      instructors: instructorIds.size,
       recordedInstances: rows.reduce((sum, row) => sum + row.eventsConducted, 0),
       mostRecentOn,
     };

@@ -44,13 +44,31 @@ assert(view.includes('id="facilitator-overview-panel"'), 'the Overview panel exi
 assert(view.includes('id="facilitator-personnel-panel"'), 'the Personnel panel remains');
 assert(view.includes('Product Coverage'), 'Product Coverage is shown');
 assert(!view.includes('Recent Recorded Facilitation'), 'Recent Recorded Facilitation is not shown');
-assert(view.includes('Needs Attention'), 'factual data gaps have a section');
-assert(view.includes('>People<') && view.includes('Recorded Instances') && view.includes('Most Recent'), 'coverage shows people, instances, and the latest date');
+const overviewPanel = view.slice(view.indexOf('id="facilitator-overview-panel"'), view.indexOf('id="facilitator-personnel-panel"'));
+const coverageHeading = overviewPanel.indexOf('>Product Coverage<');
+assert(coverageHeading >= 0 && coverageHeading < overviewPanel.indexOf('>T4T Anniversary Alerts<'), 'Product Coverage starts the Overview');
+assert(!overviewPanel.includes('Needs Attention') && !overviewPanel.includes('facilitator-attention'), 'Needs Attention is not rendered on Overview');
+assert(!overviewPanel.includes('id="facilitator-summary"'), 'the four Overview metric cards are gone');
+assert(!overviewPanel.includes('Active Facilitator Personnel') && !overviewPanel.includes('Products With Recorded Experience') && !overviewPanel.includes('Products Without Recorded Experience') && !overviewPanel.includes('Recorded Facilitation Instances'), 'the removed KPI labels are absent');
+assert(overviewPanel.includes('>Product<') && overviewPanel.includes('>Instructors<') && overviewPanel.includes('>Most Recent<'), 'Product Coverage columns are Product, Instructors, and Most Recent');
+assert(!overviewPanel.includes('>People<'), 'Product Coverage no longer labels the count People');
+assert(!overviewPanel.includes('Recorded Instances') && !overviewPanel.includes('Recorded Experience'), 'Product Coverage no longer shows lifetime counts or a recorded-experience column');
+assert(overviewPanel.includes('id="facilitator-anniversary-section" hidden'), 'an empty T4T alert section starts hidden');
+assert(overviewPanel.includes('>Facilitator<') && overviewPanel.includes('>Status<') && overviewPanel.includes('>Progress<') && overviewPanel.includes('>Deadline<'), 'T4T alerts keep Facilitator, Product, Status, Progress, and Deadline');
+const capabilitiesPanel = view.slice(view.indexOf('id="facilitator-capabilities-panel"'));
+assert(capabilitiesPanel.includes('>Personnel<') && capabilitiesPanel.includes('Recorded Experience') && capabilitiesPanel.includes('Recorded Instances') && capabilitiesPanel.includes('Qualification Records'), 'Program Capabilities columns stay in place');
 assert(app.includes("showFacilitatorView('overview')"), 'opening Facilitator Management starts on Overview');
 assert(app.includes('buildFacilitatorOverview'), 'Overview is derived from the loaded personnel model');
-assert(app.includes('Recorded Facilitation Instances'), 'the participation total uses an honest label');
 const overviewPaint = app.slice(app.indexOf('function paintFacilitatorOverview'), app.indexOf('function paintFacilitatorPersonnel'));
+const overviewFunction = app.slice(app.indexOf('function paintFacilitatorOverview'), app.indexOf('function facilitatorCapabilityFilterState'));
 assert(!overviewPaint.includes('Total Events'), 'the participation total is not labeled as unique Events');
+assert(!overviewFunction.includes('Active Facilitator Personnel') && !overviewFunction.includes('Recorded Facilitation Instances'), 'Overview no longer paints KPI cards');
+assert(overviewFunction.includes('product.instructors') && overviewFunction.includes('formatRecordedFacilitationDate(product.mostRecentOn)'), 'Overview paints instructor counts and the existing facilitation date');
+assert(!overviewFunction.includes('recordedInstances') && !overviewFunction.includes('FACILITATOR_NO_PRODUCT_EXPERIENCE'), 'Overview no longer paints lifetime counts or a recorded-experience flag');
+assert(overviewFunction.includes('button.dataset.facilitatorProduct = product.productId'), 'a product name still opens the existing product view');
+assert(!overviewFunction.includes('facilitator-attention') && !overviewFunction.includes('overview.attention'), 'Overview does not paint the data-gap list');
+assert(overviewFunction.includes('anniversarySection.hidden = anniversaryAlerts.length === 0'), 'T4T Anniversary Alerts are hidden when there are no current alerts');
+assert(overviewFunction.includes('buildQualificationAnniversaryWarnings('), 'T4T alerts still render from the existing alert list');
 assert(app.includes('openFacilitatorDetail') && app.includes('data-facilitator-person'), 'a facilitator name reuses the existing person detail');
 assert(app.includes('data-facilitator-product'), 'a product row can open the product-centric view');
 assert(view.includes('Program Capabilities'), 'Program Capabilities is available beside Overview');
@@ -115,7 +133,28 @@ const empty = overview.coverage.find((row) => row.productId === 'empty');
 assert(empty.peopleWithExperience === 0 && empty.recordedInstances === 0 && empty.mostRecentOn == null, 'a product without experience remains visible at zero');
 const first = overview.coverage.find((row) => row.productId === 'first');
 assert(first.peopleWithExperience === 2 && first.recordedInstances === 5, 'people are distinct and instances are not qualification rows');
+assert(first.instructors === 2 && empty.instructors === 0, 'instructors follow the same distinct people and keep a zero-coverage product visible');
 assert(first.mostRecentOn === '2026-01-15', 'product recency uses the latest recorded facilitation date');
+const both = summarizeFacilitatorPersonnel(
+  [{ id: 'quinn', name: 'Quinn', active: true, is_facilitator: true }],
+  [{ person_id: 'quinn', product_id: 'first', events_conducted: 2, most_recent_facilitation_on: '2026-03-01' }],
+  [{ person_id: 'quinn', product_id: 'first' }],
+  products,
+);
+const bothCoverage = buildFacilitatorOverview(both, products).coverage.find((row) => row.productId === 'first');
+assert(bothCoverage.instructors === 1 && bothCoverage.peopleWithExperience === 1, 'a person with experience and a qualification counts once');
+assert(bothCoverage.mostRecentOn === '2026-03-01', 'a qualification does not replace the recorded facilitation date');
+const recordOnly = summarizeFacilitatorPersonnel(
+  [{ id: 'ria', name: 'Ria', active: true, is_facilitator: false }],
+  [],
+  [{ person_id: 'ria', product_id: 'second' }],
+  products,
+);
+const recordCoverage = buildFacilitatorOverview(recordOnly, products);
+const recordSecond = recordCoverage.coverage.find((row) => row.productId === 'second');
+assert(recordCoverage.coverage.map((row) => row.productName).join('|') === 'First Product|Second Product|Empty Product', 'qualification-only coverage still lists the full catalog');
+assert(recordSecond.instructors === 1 && recordSecond.peopleWithExperience === 0 && recordSecond.mostRecentOn == null, 'a qualification record counts an instructor without inventing a facilitation date');
+assert(recordCoverage.attention.length === 0, 'Needs Attention logic is unchanged for a person who already has a qualification record');
 assert(!Object.prototype.hasOwnProperty.call(overview, 'recent'), 'Overview no longer builds a recent facilitation list');
 assert(!overviewPaint.includes('facilitator-recent-body'), 'Overview no longer renders Recent Recorded Facilitation');
 assert(overview.attention.map((item) => `${item.personId}:${item.condition}`).join('|') === `blake:${FACILITATOR_NO_EXPERIENCE_OR_RECORD}|ada:${FACILITATOR_QUALIFICATION_NOT_ENTERED}`, 'attention lists only the two factual personnel gaps');

@@ -65,7 +65,6 @@ const overviewModel = model.slice(
 );
 const detail = app.slice(app.indexOf('function openFacilitatorDetail'), app.indexOf('function closeFacilitatorDetail'));
 const profileAlert = detail.slice(detail.indexOf('presentQualificationFollowUp'), detail.indexOf('followUp.activityLine'));
-const attentionHeading = view.indexOf('Needs Attention');
 const anniversaryHeading = view.indexOf('T4T Anniversary Alerts');
 
 for (const code of [
@@ -224,12 +223,13 @@ assert(alerts.map((row) => `${row.status}:${row.displayName}:${row.productName}`
 assert(alerts.filter((row) => row.status === 'needs_verification').every((row) => row.deadline == null), 'Needs Verification rows have no deadline');
 assert(!alerts.some((row) => row.personId === 'john' || row.personId === 'sam' || row.personId === 'pat'), 'inactive people, inactive records, retreats, T4T course products, and unrecognized records stay out of the alert list');
 
-assert(attentionHeading >= 0 && anniversaryHeading > attentionHeading, 'T4T Anniversary Alerts follows Needs Attention');
+assert(!view.includes('>Needs Attention<'), 'the data-gap heading is not on Facilitator Management');
+assert(anniversaryHeading > view.indexOf('>Product Coverage<'), 'T4T Anniversary Alerts follows Product Coverage');
 assert(view.includes('id="facilitator-anniversary-body"'), 'the anniversary table has a body');
 assert(!/Overdue|Upcoming|Urgent|Needs Verification/.test(view), 'status words are rendered from the alert result');
 assert(!/overdue|standing|readiness|expired/i.test(overviewModel), 'the existing overview model stays free of anniversary status language');
 assert(app.includes('buildQualificationAnniversaryWarnings('), 'Overview paints the derived alert list');
-assert(app.includes('FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS'), 'an empty anniversary list has its own empty state');
+assert(app.includes('anniversarySection.hidden = anniversaryAlerts.length === 0'), 'an empty anniversary list hides the section');
 assert(app.includes('button.dataset.facilitatorPerson = alert.personId'), 'an anniversary name reuses the facilitator profile control');
 assert(detail.includes('followUp.warningLine'), 'the profile shows the derived status line');
 assert(!displayFields.includes('anniversary') && !displayFields.includes('Needs Verification'), 'stored qualification fields stay unchanged');

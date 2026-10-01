@@ -93,10 +93,7 @@ import {
   FACILITATOR_EXPERIENCE_HEADING,
   FACILITATOR_T4T_COMPLETION_HEADING,
   FACILITATOR_T4T_EXPERIENCE_HEADING,
-  FACILITATOR_NO_DATA_GAPS,
-  FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS,
   FACILITATOR_NO_FACILITATOR_RECORDS,
-  FACILITATOR_NO_PRODUCT_EXPERIENCE,
   FACILITATOR_PRODUCT_EXPERIENCE_NO,
   FACILITATOR_PRODUCT_EXPERIENCE_YES,
   FACILITATOR_QUALIFICATION_NONE,
@@ -11370,38 +11367,14 @@ function appendFacilitatorEmptyRow(body, columnCount, message) {
 }
 
 function paintFacilitatorOverview() {
-  const summary = document.getElementById('facilitator-summary');
-  const note = document.getElementById('facilitator-summary-note');
   const coverageBody = document.getElementById('facilitator-coverage-body');
-  const attentionBody = document.getElementById('facilitator-attention-body');
-  if (!summary || !coverageBody || !attentionBody) return;
+  if (!coverageBody) return;
   const overview = buildFacilitatorOverview(facilitatorPersonnel, facilitatorProducts);
-  summary.replaceChildren();
-  for (const metric of [
-    ['Active Facilitator Personnel', overview.activeFacilitatorPersonnel],
-    ['Products With Recorded Experience', overview.productsWithRecordedExperience],
-    ['Products Without Recorded Experience', overview.productsWithoutRecordedExperience],
-    ['Recorded Facilitation Instances', overview.recordedFacilitationInstances],
-  ]) {
-    const card = document.createElement('div');
-    card.className = 'facilitator-summary-card';
-    const label = document.createElement('div');
-    label.className = 'facilitator-summary-label';
-    label.textContent = metric[0];
-    const value = document.createElement('div');
-    value.className = 'facilitator-summary-value';
-    value.textContent = String(metric[1]);
-    card.append(label, value);
-    summary.appendChild(card);
-  }
-  if (note) {
-    note.textContent = 'Recorded Facilitation Instances count each person once for each product. They are not a count of unique Events.';
-  }
 
   coverageBody.replaceChildren();
   for (const product of overview.coverage) {
     const row = document.createElement('tr');
-    if (product.peopleWithExperience === 0) row.className = 'facilitator-coverage-none';
+    if (product.instructors === 0) row.className = 'facilitator-coverage-none';
     const nameCell = document.createElement('td');
     const button = document.createElement('button');
     button.type = 'button';
@@ -11410,43 +11383,21 @@ function paintFacilitatorOverview() {
     button.textContent = product.productName;
     nameCell.appendChild(button);
     row.appendChild(nameCell);
-    appendFacilitatorCell(row, String(product.peopleWithExperience), 'facilitator-count');
-    appendFacilitatorCell(row, String(product.recordedInstances), 'facilitator-count');
+    appendFacilitatorCell(row, String(product.instructors), 'facilitator-count');
     appendFacilitatorCell(row, formatRecordedFacilitationDate(product.mostRecentOn));
-    appendFacilitatorCell(
-      row,
-      product.peopleWithExperience > 0 ? 'Recorded experience' : FACILITATOR_NO_PRODUCT_EXPERIENCE,
-    );
     coverageBody.appendChild(row);
   }
 
-  if (!overview.attention.length) {
-    appendFacilitatorEmptyRow(attentionBody, 2, FACILITATOR_NO_DATA_GAPS);
-  } else {
-    attentionBody.replaceChildren();
-    for (const item of overview.attention) {
-      const row = document.createElement('tr');
-      const nameCell = document.createElement('td');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'facilitator-text-button';
-      button.dataset.facilitatorPerson = item.personId;
-      button.textContent = item.displayName;
-      nameCell.appendChild(button);
-      row.appendChild(nameCell);
-      appendFacilitatorCell(row, item.condition);
-      attentionBody.appendChild(row);
-    }
-  }
-
   const anniversaryBody = document.getElementById('facilitator-anniversary-body');
+  const anniversarySection = document.getElementById('facilitator-anniversary-section');
   if (!anniversaryBody) return;
   const anniversaryAlerts = buildQualificationAnniversaryWarnings(
     facilitatorPersonnel,
     facilitatorLivingWorksWorkshops,
   );
+  if (anniversarySection) anniversarySection.hidden = anniversaryAlerts.length === 0;
   if (!anniversaryAlerts.length) {
-    appendFacilitatorEmptyRow(anniversaryBody, 5, FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS);
+    anniversaryBody.replaceChildren();
     return;
   }
   anniversaryBody.replaceChildren();
@@ -12230,10 +12181,8 @@ async function renderFacilitatorManagement() {
     cell.textContent = 'Facilitators could not be loaded.';
     row.appendChild(cell);
     body.appendChild(row);
-    const summary = document.getElementById('facilitator-summary');
-    const note = document.getElementById('facilitator-summary-note');
-    if (summary) summary.replaceChildren();
-    if (note) note.textContent = 'Facilitators could not be loaded.';
+    const coverageBody = document.getElementById('facilitator-coverage-body');
+    if (coverageBody) appendFacilitatorEmptyRow(coverageBody, 3, 'Facilitators could not be loaded.');
     const capabilities = document.getElementById('facilitator-capabilities-body');
     if (capabilities) appendFacilitatorEmptyRow(capabilities, 6, 'Facilitators could not be loaded.');
     return false;
