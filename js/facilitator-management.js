@@ -173,6 +173,41 @@ export function facilitatorQualificationSaveInput(input) {
   };
 }
 
+const T4T_COMPLETION_HISTORY_PRODUCT_CODES = new Set([
+  'gottman_seven_principles',
+  'prep_8_0',
+  'four_lenses',
+  'cliftonstrengths_strengths_discovery_encounter',
+  'navigating_your_next_chapter',
+  'safetalk',
+  'asist',
+]);
+
+export function qualificationT4tHistoryRecord(qualification, completions) {
+  const productCode = cleanText(qualification?.productCode);
+  if (!T4T_COMPLETION_HISTORY_PRODUCT_CODES.has(productCode)) return null;
+  const completedOn = asDate(qualification?.t4tCompletedOn);
+  const personId = qualification?.personId ?? null;
+  const productId = qualification?.productId ?? null;
+  if (!completedOn || !personId || !productId) return null;
+  const alreadyRecorded = (completions ?? []).some((row) => {
+    const rowPerson = row?.person_id ?? row?.personId ?? null;
+    const rowProduct = row?.product_id ?? row?.productId ?? null;
+    const rowDate = asDate(row?.completed_on ?? row?.completedOn);
+    return rowPerson === personId && rowProduct === productId && rowDate === completedOn;
+  });
+  if (alreadyRecorded) return null;
+  const governingSource = cleanText(qualification?.governingSource);
+  return {
+    personId,
+    productId,
+    completedOn,
+    sourceEventId: null,
+    governingSource: governingSource || null,
+    notes: null,
+  };
+}
+
 function cleanText(value) {
   if (value == null) return '';
   return String(value).trim().replace(/\s+/g, ' ');

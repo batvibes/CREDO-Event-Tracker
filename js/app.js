@@ -105,6 +105,7 @@ import {
   facilitatorProductAuthorityDefault,
   facilitatorQualificationProductChoices,
   facilitatorQualificationSaveInput,
+  qualificationT4tHistoryRecord,
   nextQualificationSourceSuggestion,
   buildFacilitatorOverview,
   buildQualificationAnniversaryWarnings,
@@ -12018,6 +12019,26 @@ async function submitFacilitatorQualification(qualification) {
   if (cancel) cancel.disabled = true;
   try {
     await saveFacilitatorQualification(prepared.value);
+    const history = qualificationT4tHistoryRecord({
+      ...prepared.value,
+      productCode: facilitatorProducts.find((row) => row.id === prepared.value.productId)?.code,
+    }, person.t4tCompletions);
+    if (history) {
+      try {
+        await recordFacilitatorT4tCompletion(history);
+      } catch (historyError) {
+        const duplicate = historyError?.code === 'T4T_COMPLETION_DUPLICATE' || historyError?.hint === 'T4T_COMPLETION_DUPLICATE';
+        if (!duplicate) {
+          try {
+            await renderFacilitatorManagement();
+            openFacilitatorDetail(person.id);
+          } catch {
+            // The qualification is already saved. Keep the history error visible.
+          }
+          throw new Error('The qualification was saved, but the T4T completion history could not be recorded.');
+        }
+      }
+    }
     const reloaded = await renderFacilitatorManagement();
     const refreshed = facilitatorPersonnel.find((record) => record.id === person.id);
     const visible = reloaded && refreshed?.qualificationProducts.some((row) => row.productId === prepared.value.productId);

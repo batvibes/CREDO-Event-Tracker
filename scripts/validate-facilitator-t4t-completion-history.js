@@ -100,6 +100,10 @@ assert(completionProfile.includes('completions.length'), 'a person with no compl
 assert(completionProfile.includes('facilitatorT4tCompletionDisplayFields'), 'history rows use the completion display fields');
 assert(!completionProfile.includes("createElement('button')"), 'completion history has no write or delete control');
 assert(!completionProfile.includes('record_facilitator_t4t_completion') && !completionProfile.includes('saveFacilitatorQualification'), 'the profile does not record or save from completion history');
+const qualificationSave = app.slice(app.indexOf('async function submitFacilitatorQualification'), app.indexOf('function paintFacilitatorQualificationRemoval'));
+assert(qualificationSave.includes('qualificationT4tHistoryRecord') && qualificationSave.includes('recordFacilitatorT4tCompletion'), 'a qualification T4T date ensures history through the existing record function');
+assert(!qualificationSave.includes('delete from') && !qualificationSave.includes(".from('facilitator_t4t_completions')"), 'changing or clearing a qualification date does not delete history');
+assert(body.includes('p_source_event_id is not null and not exists'), 'a manual history row may omit the source Event');
 assert(!detail.includes('sourceEventId'), 'an unresolved source Event id is not shown');
 
 const products = [

@@ -12,6 +12,7 @@ import {
   facilitatorQualificationDisplayFields,
   facilitatorQualificationProductChoices,
   facilitatorQualificationSaveInput,
+  qualificationT4tHistoryRecord,
   summarizeFacilitatorPersonnel,
 } from '../js/facilitator-management.js';
 
@@ -98,6 +99,33 @@ assert(!saveWrapper.includes(".from('facilitator_qualifications')") && !/\.(inse
 assert(!app.includes(".from('facilitator_qualifications')"), 'the application shell does not write qualification rows directly');
 assert(!cancel.includes('saveFacilitatorQualification'), 'Cancel does not call the save RPC');
 assert(submit.includes('renderFacilitatorManagement') && submit.includes('openFacilitatorDetail'), 'a successful save reloads Facilitator Management and refreshes the profile');
+assert(submit.includes('qualificationT4tHistoryRecord') && submit.includes('recordFacilitatorT4tCompletion'), 'a saved T4T Completed date ensures completion history through the existing RPC');
+assert(submit.includes('T4T_COMPLETION_DUPLICATE'), 'an equivalent history row is left in place');
+assert(submit.includes('The qualification was saved, but the T4T completion history could not be recorded.'), 'a history failure stays visible after the qualification save');
+assert(!submit.includes('deleteFacilitatorT4t') && !submit.includes(".from('facilitator_t4t_completions')"), 'qualification editing does not delete or rewrite completion history');
+assert(!read('js/t4t-completion-entry.js').includes('qualificationT4tHistoryRecord'), 'event-driven attendance does not use the qualification history path');
+
+const jane = { personId: 'jane', productId: 'asist', productCode: 'asist', t4tCompletedOn: '2024-04-10', governingSource: 'LivingWorks', notes: 'Legacy qualification note.' };
+const created = qualificationT4tHistoryRecord(jane, []);
+assert(created?.completedOn === '2024-04-10' && created.sourceEventId === null && created.governingSource === 'LivingWorks' && created.notes === null, 'a new T4T Completed date plans one manual history row');
+assert(!Object.prototype.hasOwnProperty.call(created, 'standing') && !Object.prototype.hasOwnProperty.call(created, 'active'), 'the history plan does not change standing or reactivate a person');
+assert(qualificationT4tHistoryRecord(jane, [{ personId: 'jane', productId: 'asist', completedOn: '2024-04-10' }]) === null, 'saving the same date again does not plan another row');
+assert(qualificationT4tHistoryRecord(jane, [{ person_id: 'jane', product_id: 'asist', completed_on: '2024-04-10', source_event_id: 'event-1', governing_source: 'LivingWorks' }]) === null, 'an event-driven row for the same date blocks a second row');
+const changed = qualificationT4tHistoryRecord({ ...jane, t4tCompletedOn: '2026-05-12' }, [{ personId: 'jane', productId: 'asist', completedOn: '2024-04-10' }]);
+assert(changed?.completedOn === '2026-05-12' && changed.sourceEventId === null, 'a changed qualification date appends a new history row');
+assert(qualificationT4tHistoryRecord({ ...jane, t4tCompletedOn: '' }, [{ personId: 'jane', productId: 'asist', completedOn: '2024-04-10' }]) === null, 'clearing the qualification date plans no history change');
+assert(qualificationT4tHistoryRecord({ ...jane, t4tCompletedOn: null, governingSource: '' }, []) === null, 'a blank T4T Completed date creates nothing');
+assert(qualificationT4tHistoryRecord({ ...jane, governingSource: '  ' }, []).governingSource === null, 'a blank governing source is not invented');
+assert(submit.includes('productCode: facilitatorProducts.find'), 'qualification history uses the saved product code before calling the record RPC');
+assert(submit.indexOf('saveFacilitatorQualification') < submit.indexOf('qualificationT4tHistoryRecord'), 'the qualification still saves before any history decision');
+for (const productCode of ['safetalk', 'gottman_seven_principles', 'prep_8_0', 'four_lenses', 'cliftonstrengths_strengths_discovery_encounter', 'navigating_your_next_chapter']) {
+  const planned = qualificationT4tHistoryRecord({ ...jane, productCode }, []);
+  assert(planned?.productId === jane.productId && planned.completedOn === '2024-04-10' && planned.sourceEventId === null, `${productCode} with a T4T date plans completion history`);
+}
+for (const productCode of ['safetalk_t4t', 'asist_t4t', 'marriage_enrichment_retreat', 'family_enrichment_retreat', 'personal_growth_retreat', 'marriage_enrichment_workshop']) {
+  assert(qualificationT4tHistoryRecord({ ...jane, productCode }, []) === null, `${productCode} with a T4T date does not plan completion history`);
+}
+assert(qualificationT4tHistoryRecord({ ...jane, productCode: '' }, []) === null, 'a qualification without a completion-target code does not plan history');
 
 const hiddenInstructor = facilitatorQualificationDisplayFields({ trainerAuthority: false, t4tCompletedOn: '2026-05-18', standing: 'developing' });
 assert(!hiddenInstructor.some((field) => field.label === 'Train-the-Trainer Instructor'), 'a false instructor flag stays omitted from the profile');
