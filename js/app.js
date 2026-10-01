@@ -18,6 +18,8 @@ import {
   fetchEvents,
   fetchFacilitatorManagementSources,
   deleteFacilitatorQualification,
+  fetchT4tCompletionEntrySources,
+  recordFacilitatorT4tCompletion,
   saveFacilitatorQualification,
   fetchLocations,
   loadEventCurriculumSupport,
@@ -77,6 +79,11 @@ import {
   reportWorkshopControlsVisible,
 } from './event-report-filters.js';
 import { personnelDisplayName } from './personnel-identity.js';
+import {
+  mountT4tCompletionWorkflow,
+  t4tCompletionActionVisible,
+  T4T_COMPLETION_ACTION_LABEL,
+} from './t4t-completion-entry.js';
 import {
   FACILITATOR_EMPTY_EXPERIENCE,
   FACILITATOR_EMPTY_T4T_EXPERIENCE,
@@ -219,6 +226,8 @@ let eventTypes = [];
 let eventTypeRecords = [];
 let eventCurriculumAvailable = false;
 let eventCurriculumChoices = [];
+let t4tCompletionProducts = [];
+let t4tCompletionWorkflow = null;
 let eventT4tAvailable = false;
 let aarGlobalTemplates = {
   credoRequirements: '',
@@ -12381,6 +12390,54 @@ async function deleteEvent(eventId) {
   }
 }
 
+async function openT4tCompletionDialog(eventId) {
+  if (!canEditEvents()) return;
+  const event = events.find((entry) => entry.id === eventId);
+  if (!event || !t4tCompletionActionVisible({
+    canEdit: true,
+    event,
+    products: t4tCompletionProducts,
+  })) return;
+
+  const dialog = document.getElementById('t4t-completion-modal');
+  if (!dialog) return;
+  t4tCompletionWorkflow?.destroy();
+  t4tCompletionWorkflow = mountT4tCompletionWorkflow(dialog, {
+    event: {
+      id: event.id,
+      eventType: event.eventType,
+      isT4t: event.isT4t === true,
+      curriculumProductId: event.curriculumProductId ?? null,
+      startDate: event.startDate ?? '',
+      date: event.date ?? '',
+    },
+    eventDateLabel: formatEventDateDisplay(event),
+    initialProducts: t4tCompletionProducts,
+    loadSources: fetchT4tCompletionEntrySources,
+    savePerson: (payload) => saveDirectoryPerson(payload),
+    recordCompletion: recordFacilitatorT4tCompletion,
+    onRecorded: () => renderFacilitatorManagement(),
+  });
+  if (!dialog.open) dialog.showModal();
+}
+
+function createT4tCompletionButton(event) {
+  if (!t4tCompletionActionVisible({
+    canEdit: canEditEvents(),
+    event,
+    products: t4tCompletionProducts,
+  })) return null;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'event-t4t-completion-btn';
+  btn.textContent = T4T_COMPLETION_ACTION_LABEL;
+  btn.addEventListener('click', (clickEvent) => {
+    clickEvent.stopPropagation();
+    openT4tCompletionDialog(event.id);
+  });
+  return btn;
+}
+
 function createEditButton(eventId) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -12475,12 +12532,17 @@ function renderTable() {
     const deleteCell = document.createElement('td');
     deleteCell.className = 'col-delete';
     deleteCell.addEventListener('click', (e) => e.stopPropagation());
+    const actions = document.createElement('div');
+    actions.className = 'event-row-action-stack';
     if (canEditEvents()) {
-      deleteCell.appendChild(createEditButton(event.id));
+      actions.appendChild(createEditButton(event.id));
     }
+    const completionButton = createT4tCompletionButton(event);
+    if (completionButton) actions.appendChild(completionButton);
     if (canDeleteEvents()) {
-      deleteCell.appendChild(createDeleteButton(event.id));
+      actions.appendChild(createDeleteButton(event.id));
     }
+    deleteCell.appendChild(actions);
     row.appendChild(deleteCell);
 
     const dateCell = document.createElement('td');
@@ -13077,6 +13139,7 @@ async function loadAllData() {
   eventTypeRecords = types;
   eventCurriculumAvailable = curriculumSupport.available === true;
   eventCurriculumChoices = curriculumSupport.choices || [];
+  t4tCompletionProducts = curriculumSupport.products || [];
   eventT4tAvailable = curriculumSupport.t4tAvailable === true;
   syncEventTypeNames();
   team = teamData;

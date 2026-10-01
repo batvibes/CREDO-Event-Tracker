@@ -56,7 +56,8 @@ const aliasSnapshot = JSON.stringify(aliases);
 
 assert(personnelDisplayName('LCDR', 'John Adams') === 'LCDR John Adams', 'existing display names stay unchanged');
 assert(!matcherSource.includes('supabase') && !matcherSource.includes('.from(') && !matcherSource.includes('.rpc('), 'the matcher does not write to the database');
-assert(!app.includes('matchDirectoryPerson'), 'bulk roster UI was not added');
+assert(!app.includes('matchDirectoryPerson'), 'event UI delegates matching to the T4T completion workflow');
+assert(read('js/t4t-completion-entry.js').includes('matchDirectoryPerson'), 'the T4T completion workflow uses the identity matcher');
 assert(!facilitator.includes('matchDirectoryPerson'), 'Facilitator Management does not match or create people');
 assert(!db.includes('matchDirectoryPerson'), 'the database layer does not record matches');
 assert(!matcherSource.includes('save_facilitator_qualification') && !matcherSource.includes('record_facilitator_t4t_completion'), 'the matcher does not change qualifications or completion history');

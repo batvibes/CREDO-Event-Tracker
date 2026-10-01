@@ -908,7 +908,7 @@ export async function loadEventCurriculumSupport() {
     if (isMissingEventCurriculumSchemaError(columnProbe.error)) {
       eventCurriculumSchemaAvailable = false;
       eventT4tSchemaAvailable = false;
-      return { available: false, t4tAvailable: false, choices: [] };
+      return { available: false, t4tAvailable: false, choices: [], products: [] };
     }
     throw columnProbe.error;
   }
@@ -921,7 +921,7 @@ export async function loadEventCurriculumSupport() {
     if (isMissingEventCurriculumSchemaError(allowedProbe.error)) {
       eventCurriculumSchemaAvailable = false;
       eventT4tSchemaAvailable = false;
-      return { available: false, t4tAvailable: false, choices: [] };
+      return { available: false, t4tAvailable: false, choices: [], products: [] };
     }
     throw allowedProbe.error;
   }
@@ -959,7 +959,7 @@ export async function loadEventCurriculumSupport() {
   }
 
   eventT4tSchemaAvailable = true;
-  return { available: true, t4tAvailable: true, choices };
+  return { available: true, t4tAvailable: true, choices, products: productsResult.data ?? [] };
 }
 
 export async function fetchEventTypes() {
@@ -1679,6 +1679,57 @@ export async function saveFacilitatorQualification(qualification) {
   });
 
   if (error) throw qualificationRpcError(error);
+  return data;
+}
+
+export async function fetchT4tCompletionEntrySources() {
+  const [sources, aliases] = await Promise.all([
+    fetchFacilitatorManagementSources(),
+    fetchPersonnelAliases(),
+  ]);
+  return {
+    people: sources.people ?? [],
+    aliases,
+    products: sources.products ?? [],
+    completions: sources.t4tCompletions ?? [],
+  };
+}
+
+function t4tCompletionRpcError(error) {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '');
+  let code = hint;
+  if (!code && /already recorded for that person, product, and date/i.test(message)) code = 'T4T_COMPLETION_DUPLICATE';
+  if (!code && /for that event is already recorded/i.test(message)) code = 'T4T_COMPLETION_EVENT_DUPLICATE';
+  if (code === 'T4T_COMPLETION_DUPLICATE' || code === 'T4T_COMPLETION_EVENT_DUPLICATE') {
+    const duplicate = new Error(message || 'That completion is already recorded.');
+    duplicate.code = code;
+    duplicate.hint = code;
+    return duplicate;
+  }
+  if (code === 'PERSONNEL_NOT_FOUND') return new Error('That personnel record was not found.');
+  if (code === 'FACILITATOR_PRODUCT_NOT_FOUND') return new Error('That facilitator product was not found.');
+  if (code === 'EVENT_NOT_FOUND') return new Error('That event was not found.');
+  if (code === 'T4T_COMPLETION_PRODUCT_INVALID') {
+    return new Error('T4T completion records use the ordinary qualification product.');
+  }
+  if (code === 'T4T_COMPLETION_DATE_REQUIRED') return new Error('A completion date is required.');
+  if (error?.code === '42501' || /not authorized/i.test(message)) {
+    return new Error('You are not authorized to record facilitator T4T completions.');
+  }
+  return new Error(message || 'The T4T completion could not be recorded.');
+}
+
+export async function recordFacilitatorT4tCompletion(completion) {
+  const { data, error } = await supabase.rpc('record_facilitator_t4t_completion', {
+    p_person_id: completion?.personId ?? null,
+    p_product_id: completion?.productId ?? null,
+    p_completed_on: completion?.completedOn ?? null,
+    p_source_event_id: completion?.sourceEventId ?? null,
+    p_governing_source: completion?.governingSource ?? null,
+    p_notes: completion?.notes ?? null,
+  });
+  if (error) throw t4tCompletionRpcError(error);
   return data;
 }
 

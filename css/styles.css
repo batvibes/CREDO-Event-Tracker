@@ -517,9 +517,9 @@ body {
 }
 
 .events-table .col-delete {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
+  width: 156px;
+  min-width: 156px;
+  max-width: 168px;
   padding: 0;
   text-align: center;
   vertical-align: middle;
@@ -3841,11 +3841,147 @@ body:has(#new-event-modal[open]) {
 /* Main Events table column rebalance */
 #view-events .events-table {
   table-layout: fixed;
-  min-width: 1180px;
+  min-width: 1292px;
 }
 
 #view-events .events-table .col-delete {
-  width: 44px;
+  width: 156px;
+}
+
+#view-events .event-row-action-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px;
+}
+
+#view-events .event-edit-btn,
+#view-events .event-t4t-completion-btn {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: normal;
+  cursor: pointer;
+}
+
+#view-events .event-t4t-completion-btn:hover,
+#view-events .event-edit-btn:hover {
+  background: #f9fafb;
+}
+
+#t4t-completion-modal {
+  width: min(880px, calc(100vw - 32px));
+  margin: auto;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+}
+
+#t4t-completion-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+}
+
+#t4t-completion-modal .modal-header,
+#t4t-completion-modal .modal-footer {
+  flex-shrink: 0;
+}
+
+#t4t-completion-modal .modal-body {
+  overflow-y: auto;
+}
+
+#t4t-completion-modal .t4t-completion-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+#t4t-completion-modal .t4t-completion-facts div {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+  gap: 4px 12px;
+}
+
+#t4t-completion-modal .t4t-completion-facts dt {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+#t4t-completion-modal .t4t-completion-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#t4t-completion-modal .t4t-completion-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-completion-help,
+#t4t-completion-modal .t4t-completion-note,
+#t4t-completion-modal .t4t-completion-detail {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+#t4t-completion-modal .t4t-completion-card {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f9fb;
+}
+
+#t4t-completion-modal .t4t-completion-entered,
+#t4t-completion-modal .t4t-completion-person,
+#t4t-completion-modal .t4t-completion-status,
+#t4t-completion-modal .t4t-completion-summary p {
+  margin: 0 0 6px;
+}
+
+#t4t-completion-modal .t4t-completion-status {
+  font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-completion-inactive {
+  margin: 4px 0 8px;
+  color: #8a5a00;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+#t4t-completion-modal .t4t-completion-error {
+  margin: 0 0 12px;
+  color: #b42318;
+}
+
+#t4t-completion-modal .t4t-completion-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#t4t-completion-modal .t4t-completion-candidate .btn {
+  margin-top: 8px;
 }
 
 #view-events .events-table th:nth-child(2),
