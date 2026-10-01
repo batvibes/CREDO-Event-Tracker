@@ -20,7 +20,7 @@
 import { personnelDisplayName } from './personnel-identity.js';
 import { calendarDate, localCalendarToday } from './t4t-completion-entry.js';
 
-export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitator personnel found.';
+export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitators found.';
 export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
 export const FACILITATOR_EMPTY_T4T_EXPERIENCE = 'No recorded T4T facilitation experience.';
 export const FACILITATOR_T4T_EXPERIENCE_HEADING = 'T4T Facilitation Experience';
@@ -218,6 +218,10 @@ function mapPerson(row) {
     installation: cleanText(row?.installation),
     active: explicitTrue(row?.active),
     isFacilitator: explicitTrue(row?.is_facilitator ?? row?.isFacilitator),
+    isCredoStaff: explicitTrue(row?.is_credo_staff ?? row?.isCredoStaff),
+    isPoc: explicitTrue(row?.is_poc ?? row?.isPoc),
+    staffBilletOrRole: cleanText(row?.staff_billet_or_role ?? row?.staffBilletOrRole),
+    staffPrdEaos: cleanText(row?.staff_prd_eaos ?? row?.staffPrdEaos),
   };
 }
 
@@ -355,6 +359,10 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
       installation: person.installation,
       active: person.active,
       isFacilitator: person.isFacilitator,
+      isCredoStaff: person.isCredoStaff,
+      isPoc: person.isPoc,
+      staffBilletOrRole: person.staffBilletOrRole,
+      staffPrdEaos: person.staffPrdEaos,
       productCount: experience.length,
       eventsConducted: experience.reduce((sum, row) => sum + row.eventsConducted, 0),
       mostRecentOn,

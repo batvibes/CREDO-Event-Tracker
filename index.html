@@ -1191,9 +1191,7 @@
           </div>
         </header>
         <nav class="team-directory-tabs" id="team-directory-tabs" role="tablist" aria-label="Personnel directory">
-          <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="team-tab-all" data-team-tab="all" aria-selected="true" aria-controls="team-directory-panel">All Personnel</button>
-          <button type="button" class="team-directory-tab" role="tab" id="team-tab-staff" data-team-tab="staff" aria-selected="false" aria-controls="team-directory-panel">CREDO Staff</button>
-          <button type="button" class="team-directory-tab" role="tab" id="team-tab-facilitators" data-team-tab="facilitators" aria-selected="false" aria-controls="team-directory-panel">Facilitators</button>
+          <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="team-tab-staff" data-team-tab="staff" aria-selected="true" aria-controls="team-directory-panel">CREDO Staff</button>
           <button type="button" class="team-directory-tab" role="tab" id="team-tab-poc" data-team-tab="poc" aria-selected="false" aria-controls="team-directory-panel">Points of Contact</button>
         </nav>
         <section class="content-section" id="team-content"></section>
@@ -1208,7 +1206,7 @@
         </header>
         <nav class="team-directory-tabs" id="facilitator-view-tabs" role="tablist" aria-label="Facilitator Management">
           <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="facilitator-tab-overview" data-facilitator-view="overview" aria-selected="true" aria-controls="facilitator-overview-panel">Overview</button>
-          <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-personnel" data-facilitator-view="personnel" aria-selected="false" aria-controls="facilitator-personnel-panel">Personnel</button>
+          <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-personnel" data-facilitator-view="personnel" aria-selected="false" aria-controls="facilitator-personnel-panel">Facilitators</button>
           <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-capabilities" data-facilitator-view="capabilities" aria-selected="false" aria-controls="facilitator-capabilities-panel">Program Capabilities</button>
         </nav>
         <section class="content-section" id="facilitator-overview-panel" aria-label="Overview">
@@ -1260,7 +1258,8 @@
         <section class="content-section" id="facilitator-personnel-panel" hidden aria-labelledby="facilitator-personnel-heading">
           <div class="section-header">
             <div class="section-header-start facilitator-toolbar">
-              <h3 id="facilitator-personnel-heading">Facilitator Personnel</h3>
+              <h3 id="facilitator-personnel-heading">Facilitators</h3>
+              <button type="button" class="btn btn-secondary" id="add-facilitator-btn" hidden>Add Facilitator</button>
               <input type="search" id="facilitator-search" class="settings-search-input facilitator-search" placeholder="Search by name" aria-label="Search facilitators by name">
               <select id="facilitator-active-filter" class="filter-select" aria-label="Active status">
                 <option value="all">All</option>

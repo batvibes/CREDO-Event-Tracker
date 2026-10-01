@@ -127,10 +127,7 @@ for (const relativePath of [
   'supabase/migrations/021_facilitator_experience_foundation.sql',
   'supabase/migrations/022_facilitator_event_type_product_mappings.sql',
   'js/monthly-report-pptx-export.js',
-  'js/team-personnel-directory.js',
-  'js/team-personnel-editor.js',
   'js/event-reference-fields.js',
-  'js/settings-reference-lists.js',
   'js/personnel-identity.js',
 ]) {
   const diff = execFileSync('git', ['diff', '--', relativePath], { cwd: ROOT, encoding: 'utf8' });

@@ -1185,7 +1185,11 @@ const FACILITATOR_MANAGEMENT_PERSON_COLUMNS = [
   'command_organization',
   'installation',
   'active',
+  'is_credo_staff',
   'is_facilitator',
+  'is_poc',
+  'staff_billet_or_role',
+  'staff_prd_eaos',
 ].join(', ');
 
 export async function fetchFacilitatorManagementSources() {

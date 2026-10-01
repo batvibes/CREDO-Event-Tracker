@@ -126,6 +126,7 @@ import {
 import {
   isCommandHighlightsNotesVisible,
   isTeamDirectoryTab,
+  mapTeamDirectoryPerson,
   renderTeamDirectoryView,
 } from './team-personnel-directory.js';
 import { mountPersonnelEditor } from './team-personnel-editor.js';
@@ -239,7 +240,7 @@ let aarGlobalTemplates = {
 let team = { ...DEFAULT_TEAM };
 let teamMembers = [];
 let teamDirectoryPersonnel = [];
-let teamDirectoryTab = 'all';
+let teamDirectoryTab = 'staff';
 let teamDirectoryTabsBound = false;
 let personnelEditorBound = false;
 let personnelEditorCleanup = null;
@@ -4169,29 +4170,47 @@ function bindPersonnelEditorModal() {
   });
 }
 
-function openPersonnelEditor(person = null) {
+function syncFacilitatorWriteControls() {
+  const add = document.getElementById('add-facilitator-btn');
+  if (add) add.hidden = !canEditTeam();
+}
+
+function openPersonnelEditor(person = null, options = {}) {
+  bindPersonnelEditorModal();
   const modal = document.getElementById('personnel-editor-modal');
   const body = document.getElementById('personnel-editor-body');
   const footer = document.getElementById('personnel-editor-footer');
   const title = document.getElementById('personnel-editor-title');
   if (!modal || !body || !footer || !title) return;
-  title.textContent = person?.id ? 'Edit Person' : 'Add Person';
+  const roleSurface = options.roleSurface === 'facilitator' ? 'facilitator' : 'team';
+  title.textContent = roleSurface === 'facilitator'
+    ? (person?.id ? 'Edit Facilitator' : 'Add Facilitator')
+    : (person?.id ? 'Edit Person' : 'Add Person');
   personnelEditorCleanup?.();
   personnelEditorCleanup = mountPersonnelEditor({
     body,
     footer,
     person,
-    others: teamDirectoryPersonnel,
+    roleSurface,
+    others: roleSurface === 'facilitator' ? facilitatorSourcePeople : teamDirectoryPersonnel,
     onSave: async (values) => {
       await saveDirectoryPerson(values);
+      const detailOpen = document.getElementById('facilitator-detail-modal')?.open === true;
+      const personId = values.id;
+      await renderFacilitatorManagement();
+      if (roleSurface === 'facilitator' && detailOpen && personId) openFacilitatorDetail(personId);
       await renderTeam();
     },
     onArchive: async (id) => {
       await archiveDirectoryPerson(id);
+      document.getElementById('facilitator-detail-modal')?.close();
+      await renderFacilitatorManagement();
       await renderTeam();
     },
     onReconcile: async (survivorId, retiredId, identity) => {
       await reconcileDirectoryPeople(survivorId, retiredId, identity);
+      document.getElementById('facilitator-detail-modal')?.close();
+      await renderFacilitatorManagement();
       await renderTeam();
     },
   });
@@ -4199,9 +4218,9 @@ function openPersonnelEditor(person = null) {
 }
 
 function renderTeamDirectoryPanel(panel) {
-  const tab = isTeamDirectoryTab(teamDirectoryTab) ? teamDirectoryTab : 'all';
+  const tab = isTeamDirectoryTab(teamDirectoryTab) ? teamDirectoryTab : 'staff';
   const label = document.querySelector(`#team-directory-tabs [data-team-tab="${tab}"]`)?.textContent?.trim()
-    || 'All Personnel';
+    || 'CREDO Staff';
   renderTeamDirectoryView(panel, teamDirectoryPersonnel, tab, label, {
     editable: canEditTeam(),
     onEdit: openPersonnelEditor,
@@ -11265,11 +11284,12 @@ const FACILITATOR_CAPABILITY_SORT_COLUMNS = [
 ];
 const FACILITATOR_VIEW_LABELS = {
   overview: 'Overview',
-  personnel: 'Personnel',
+  personnel: 'Facilitators',
   capabilities: 'Program Capabilities',
 };
 
 let facilitatorPersonnel = [];
+let facilitatorSourcePeople = [];
 let facilitatorLivingWorksWorkshops = null;
 let facilitatorProducts = [];
 let facilitatorT4tExperienceAvailable = false;
@@ -11329,6 +11349,7 @@ function showFacilitatorView(view) {
     if (panel) panel.hidden = facilitatorInternalView !== name;
   }
   if (subtitle) subtitle.textContent = FACILITATOR_VIEW_LABELS[facilitatorInternalView];
+  syncFacilitatorWriteControls();
   document.querySelectorAll('#facilitator-view-tabs .team-directory-tab').forEach((button) => {
     const selected = button.dataset.facilitatorView === facilitatorInternalView;
     button.classList.toggle('team-directory-tab-active', selected);
@@ -11566,6 +11587,17 @@ function openFacilitatorDetail(personId) {
 
   title.textContent = person.displayName || 'Facilitator';
   body.replaceChildren();
+  if (canEditTeam()) {
+    const actions = document.createElement('div');
+    actions.className = 'facilitator-detail-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'btn btn-secondary';
+    edit.textContent = 'Edit Facilitator';
+    edit.addEventListener('click', () => openPersonnelEditor(person, { roleSurface: 'facilitator' }));
+    actions.appendChild(edit);
+    body.appendChild(actions);
+  }
   const place = [person.commandOrganization, person.installation].filter(Boolean).join(' · ');
   const status = person.active === true ? '' : 'Inactive';
   const meta = [place, status].filter(Boolean).join(' · ');
@@ -12156,11 +12188,21 @@ async function renderFacilitatorManagement() {
   const generation = ++facilitatorLoadGeneration;
   const body = document.getElementById('facilitator-personnel-body');
   try {
-    const sources = await fetchFacilitatorManagementSources();
+    const [sources, aliases] = await Promise.all([
+      fetchFacilitatorManagementSources(),
+      fetchPersonnelAliases().catch((error) => {
+        console.error(error);
+        return [];
+      }),
+    ]);
     if (generation !== facilitatorLoadGeneration) return;
     facilitatorProducts = sources.products;
     facilitatorLivingWorksWorkshops = sources.livingWorksWorkshops ?? null;
     facilitatorT4tExperienceAvailable = sources.t4tExperienceAvailable === true;
+    facilitatorSourcePeople = attachPersonnelAliases(
+      (sources.people ?? []).map(mapTeamDirectoryPerson),
+      aliases,
+    );
     facilitatorPersonnel = summarizeFacilitatorPersonnel(
       sources.people,
       sources.experience,
@@ -12173,6 +12215,7 @@ async function renderFacilitatorManagement() {
     paintFacilitatorOverview();
     paintFacilitatorPersonnel();
     paintFacilitatorProgramCapabilities();
+    syncFacilitatorWriteControls();
     refreshSortHeaderIndicators('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort);
     refreshSortHeaderIndicators('#facilitator-capabilities-table', FACILITATOR_CAPABILITY_SORT_COLUMNS, facilitatorCapabilitySort);
     return true;
@@ -12184,15 +12227,15 @@ async function renderFacilitatorManagement() {
     row.className = 'facilitator-empty';
     const cell = document.createElement('td');
     cell.colSpan = 6;
-    cell.textContent = 'Facilitator personnel could not be loaded.';
+    cell.textContent = 'Facilitators could not be loaded.';
     row.appendChild(cell);
     body.appendChild(row);
     const summary = document.getElementById('facilitator-summary');
     const note = document.getElementById('facilitator-summary-note');
     if (summary) summary.replaceChildren();
-    if (note) note.textContent = 'Facilitator personnel could not be loaded.';
+    if (note) note.textContent = 'Facilitators could not be loaded.';
     const capabilities = document.getElementById('facilitator-capabilities-body');
-    if (capabilities) appendFacilitatorEmptyRow(capabilities, 6, 'Facilitator personnel could not be loaded.');
+    if (capabilities) appendFacilitatorEmptyRow(capabilities, 6, 'Facilitators could not be loaded.');
     return false;
   }
 }
@@ -12290,6 +12333,10 @@ function openFacilitatorProduct(productId) {
 }
 
 function setupFacilitatorManagement() {
+  document.getElementById('add-facilitator-btn')?.addEventListener('click', () => {
+    openPersonnelEditor(null, { roleSurface: 'facilitator' });
+  });
+  syncFacilitatorWriteControls();
   bindSortableTableHeaders('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort, () => {
     paintFacilitatorPersonnel();
   });

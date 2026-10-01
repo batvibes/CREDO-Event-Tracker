@@ -6,7 +6,7 @@ export const SETTINGS_REFERENCE_CATEGORIES = [
   { key: 'people', label: 'People' },
 ];
 
-export const SETTINGS_PEOPLE_NOTE = 'Personnel records are managed on the Team page. This list shows the active roster used by Events and cannot be edited here.';
+export const SETTINGS_PEOPLE_NOTE = 'CREDO Staff and Points of Contact are managed on the Team page. Facilitators are managed in Facilitator Management. This list shows the active roster used by Events and cannot be edited here.';
 export const SETTINGS_STAFF_NOTE = 'CREDO Staff is managed under Team.';
 
 export function normalizeSettingsSearchQuery(query) {

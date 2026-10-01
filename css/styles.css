@@ -3645,6 +3645,45 @@ body:has(#new-event-modal[open]) {
   background: #f4f7fb;
 }
 
+#personnel-editor-modal .personnel-editor-reuse {
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #e6ebf1;
+  border-radius: 4px;
+  background: #f7f9fc;
+}
+
+#personnel-editor-modal .personnel-editor-reuse-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#personnel-editor-modal .personnel-editor-reuse-identity p,
+#personnel-editor-modal .personnel-editor-reuse .personnel-editor-help {
+  margin: 0;
+}
+
+#personnel-editor-modal .personnel-editor-reuse-name {
+  color: #1f2937;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+#personnel-editor-modal .personnel-editor-reuse-inactive {
+  color: #8a5a00;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+#personnel-editor-modal .personnel-editor-reuse .btn {
+  align-self: flex-start;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+}
+
 #view-team .team-directory-empty,
 #view-team .team-staff-table .team-empty-row td {
   padding: 22px 8px;
@@ -6990,6 +7029,12 @@ body:has(#new-event-modal[open]) {
   width: 100%;
 }
 
+#view-facilitators #add-facilitator-btn {
+  margin-left: auto;
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+}
+
 #view-facilitators .facilitator-search {
   width: 220px;
   max-width: 100%;
@@ -7053,6 +7098,17 @@ body:has(#new-event-modal[open]) {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+#facilitator-detail-modal .facilitator-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+#facilitator-detail-modal .facilitator-detail-actions .btn {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
 }
 
 #facilitator-detail-modal .facilitator-section-header {

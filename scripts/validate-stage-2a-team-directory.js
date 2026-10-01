@@ -43,12 +43,13 @@ const dbSource = read('js/db.js');
 const appSource = read('js/app.js');
 const htmlSource = read('index.html');
 
-assert(TEAM_DIRECTORY_TABS.map((tab) => tab.label).join('|') === 'All Personnel|CREDO Staff|Facilitators|Points of Contact', 'four Team tabs exist');
-assert(htmlSource.includes('>All Personnel<'), 'All Personnel tab is in the Team page');
-assert(htmlSource.includes('>CREDO Staff<'), 'CREDO Staff tab is in the Team page');
-assert(htmlSource.includes('>Facilitators<'), 'Facilitators tab is in the Team page');
-assert(htmlSource.includes('>Points of Contact<'), 'Points of Contact tab is in the Team page');
-assert(htmlSource.includes('id="team-tab-all"') && htmlSource.includes('aria-selected="true"'), 'All Personnel is the default tab');
+const teamView = htmlSource.slice(htmlSource.indexOf('id="view-team"'), htmlSource.indexOf('id="view-facilitators"'));
+assert(TEAM_DIRECTORY_TABS.map((tab) => tab.label).join('|') === 'CREDO Staff|Points of Contact', 'Team tabs are CREDO Staff and Points of Contact');
+assert(!teamView.includes('All Personnel'), 'All Personnel is not a Team tab');
+assert(!teamView.includes('>Facilitators<'), 'Facilitators is not a Team tab');
+assert(teamView.includes('>CREDO Staff<'), 'CREDO Staff tab is in the Team page');
+assert(teamView.includes('>Points of Contact<'), 'Points of Contact tab is in the Team page');
+assert(teamView.includes('id="team-tab-staff"') && teamView.includes('aria-selected="true"'), 'CREDO Staff is the default tab');
 assert(htmlSource.includes('<h1>Team</h1>'), 'Team header remains');
 assert(htmlSource.includes('<h2>Personnel Directory</h2>'), 'Team subtitle is the personnel directory');
 assert(!htmlSource.includes('CREDO MCI West Staff'), 'old staff-only subtitle is gone');
@@ -217,8 +218,9 @@ assert(!/staffCellText[\s\S]*staffStatusNextAction/.test(directorySource), 'Team
 assert(directorySource.includes('staffStatusNextAction: cleanText(row?.staff_status_next_action)'), 'staff status remains mapped for the personnel record');
 assert(dbSource.includes('staff_status_next_action'), 'directory fetch still reads staff_status_next_action');
 assert(/status_next_action/.test(dbSource), 'legacy team_members status field remains in the data layer');
-assert(TEAM_DIRECTORY_EMPTY_MESSAGES.facilitators === 'No active Facilitators have been designated yet.', 'Facilitator empty state copy');
+assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'CREDO Staff empty state copy');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active Points of Contact have been designated yet.', 'POC empty state copy');
+assert(!Object.values(TEAM_DIRECTORY_EMPTY_MESSAGES).some((message) => /facilitator/i.test(message)), 'Team empty states do not mention facilitators');
 
 let diffNames = '';
 let status = '';

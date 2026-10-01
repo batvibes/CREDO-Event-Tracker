@@ -7,9 +7,7 @@
 import { personnelDisplayName } from './personnel-identity.js';
 
 export const TEAM_DIRECTORY_TABS = [
-  { id: 'all', label: 'All Personnel' },
   { id: 'staff', label: 'CREDO Staff' },
-  { id: 'facilitators', label: 'Facilitators' },
   { id: 'poc', label: 'Points of Contact' },
 ];
 
@@ -24,9 +22,7 @@ export const TEAM_STAFF_COLUMNS = [
 ];
 
 export const TEAM_DIRECTORY_EMPTY_MESSAGES = {
-  all: 'No active personnel records yet.',
   staff: 'No active CREDO Staff have been designated yet.',
-  facilitators: 'No active Facilitators have been designated yet.',
   poc: 'No active Points of Contact have been designated yet.',
 };
 
@@ -114,7 +110,8 @@ export function filterTeamDirectory(personnel, tab) {
   if (tab === 'staff') return sortStaff(active.filter((person) => person.isCredoStaff === true));
   if (tab === 'facilitators') return sortByName(active.filter((person) => person.isFacilitator === true));
   if (tab === 'poc') return sortByName(active.filter((person) => person.isPoc === true));
-  return sortByName(active);
+  if (tab === 'all') return sortByName(active);
+  return sortStaff(active.filter((person) => person.isCredoStaff === true));
 }
 
 function appendRoleBadges(parent, person) {
@@ -280,7 +277,7 @@ function renderStaffDirectory(doc, people, onEdit) {
 }
 
 export function renderTeamDirectoryView(panel, personnel, tab, headingLabel, options = {}) {
-  const selectedTab = isTeamDirectoryTab(tab) ? tab : 'all';
+  const selectedTab = isTeamDirectoryTab(tab) ? tab : 'staff';
   const people = filterTeamDirectory(personnel, selectedTab);
   const doc = panel.ownerDocument;
   const onEdit = options.editable ? options.onEdit : null;
@@ -289,7 +286,7 @@ export function renderTeamDirectoryView(panel, personnel, tab, headingLabel, opt
   const heading = doc.createElement('h2');
   heading.className = 'visually-hidden';
   heading.id = 'team-directory-heading';
-  heading.textContent = headingLabel || TEAM_DIRECTORY_TABS.find((entry) => entry.id === selectedTab)?.label || 'All Personnel';
+  heading.textContent = headingLabel || TEAM_DIRECTORY_TABS.find((entry) => entry.id === selectedTab)?.label || 'CREDO Staff';
   panel.appendChild(heading);
   panel.appendChild(
     selectedTab === 'staff'

@@ -1,4 +1,4 @@
-import { fullNameIncludesRank, personnelDisplayName } from './personnel-identity.js';
+import { fullNameIncludesRank, matchDirectoryPerson, personnelDisplayName } from './personnel-identity.js';
 
 function clean(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
@@ -25,6 +25,74 @@ function textInput(value, options = {}) {
   return input;
 }
 
+export function personnelEditorRoleValues(roleSurface, person, input = {}) {
+  if (roleSurface === 'facilitator') {
+    return {
+      isCredoStaff: person?.isCredoStaff === true,
+      isFacilitator: input.isFacilitator === true,
+      isPoc: person?.isPoc === true,
+      staffBilletOrRole: clean(person?.staffBilletOrRole),
+      staffPrdEaos: clean(person?.staffPrdEaos),
+    };
+  }
+  return {
+    isCredoStaff: input.isCredoStaff === true,
+    isFacilitator: person?.isFacilitator === true,
+    isPoc: input.isPoc === true,
+    staffBilletOrRole: clean(input.staffBilletOrRole),
+    staffPrdEaos: clean(input.staffPrdEaos),
+  };
+}
+
+const EXACT_IDENTITY_MATCHES = new Set(['personal-name', 'display', 'alias']);
+
+function exactIdentityCandidates(input, people) {
+  const match = matchDirectoryPerson(input, people, []);
+  return (match.candidates || []).filter((candidate) => EXACT_IDENTITY_MATCHES.has(candidate.match));
+}
+
+export function facilitatorReusePlan(identity, people = []) {
+  const name = clean(typeof identity === 'string' ? identity : identity?.name);
+  const rankTitle = clean(typeof identity === 'string' ? '' : identity?.rankTitle);
+  const displayName = personnelDisplayName(rankTitle, name);
+  const byId = new Map();
+  for (const candidate of exactIdentityCandidates(name, people)) {
+    byId.set(candidate.personId, candidate);
+  }
+  if (displayName && displayName !== name) {
+    for (const candidate of exactIdentityCandidates(displayName, people)) {
+      if (!byId.has(candidate.personId)) byId.set(candidate.personId, candidate);
+    }
+  }
+  const candidates = [...byId.values()].sort((left, right) => (
+    left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' })
+    || String(left.personId).localeCompare(String(right.personId))
+  ));
+  if (candidates.length === 1) return { status: 'reuse', candidates };
+  if (candidates.length > 1) return { status: 'choose', candidates };
+  return { status: 'new', candidates: [] };
+}
+
+export function facilitatorReuseValues(person) {
+  return {
+    id: person?.id ?? null,
+    rankTitle: clean(person?.rankTitle),
+    name: clean(person?.name),
+    commandOrganization: clean(person?.commandOrganization),
+    installation: clean(person?.installation),
+    active: person?.active === true,
+    isCredoStaff: person?.isCredoStaff === true,
+    isFacilitator: true,
+    isPoc: person?.isPoc === true,
+    staffBilletOrRole: clean(person?.staffBilletOrRole),
+    staffPrdEaos: clean(person?.staffPrdEaos),
+  };
+}
+
+function isExistingPersonNameError(error) {
+  return error?.code === 'REFERENCE_NAME_EXISTS' || /already exists/i.test(String(error?.message || ''));
+}
+
 export function validatePersonnelEditor(values) {
   const name = clean(values.name);
   const rankTitle = clean(values.rankTitle);
@@ -43,6 +111,7 @@ export function mountPersonnelEditor({
   footer,
   person = null,
   others = [],
+  roleSurface = 'team',
   onSave,
   onArchive,
   onReconcile,
@@ -58,6 +127,8 @@ export function mountPersonnelEditor({
   let reconcileConfirm = false;
   let message = '';
   let busy = false;
+  let reuseCandidates = null;
+  let reuseSelectedId = '';
 
   const rankInput = textInput(person?.rankTitle, { maxLength: 40 });
   const nameInput = textInput(person?.name, { required: true, maxLength: 200 });
@@ -68,7 +139,9 @@ export function mountPersonnelEditor({
   staffInput.checked = person?.isCredoStaff === true;
   const facilitatorInput = document.createElement('input');
   facilitatorInput.type = 'checkbox';
-  facilitatorInput.checked = person?.isFacilitator === true;
+  facilitatorInput.checked = roleSurface === 'facilitator'
+    ? (person?.id ? person.isFacilitator === true : true)
+    : person?.isFacilitator === true;
   const pocInput = document.createElement('input');
   pocInput.type = 'checkbox';
   pocInput.checked = person?.isPoc === true;
@@ -82,11 +155,13 @@ export function mountPersonnelEditor({
       name: clean(nameInput.value),
       commandOrganization: clean(commandInput.value),
       installation: clean(installationInput.value),
-      isCredoStaff: staffInput.checked,
-      isFacilitator: facilitatorInput.checked,
-      isPoc: pocInput.checked,
-      staffBilletOrRole: clean(billetInput.value),
-      staffPrdEaos: clean(prdInput.value),
+      ...personnelEditorRoleValues(roleSurface, person, {
+        isCredoStaff: staffInput.checked,
+        isFacilitator: facilitatorInput.checked,
+        isPoc: pocInput.checked,
+        staffBilletOrRole: clean(billetInput.value),
+        staffPrdEaos: clean(prdInput.value),
+      }),
     };
   }
 
@@ -127,11 +202,14 @@ export function mountPersonnelEditor({
     rolesTitle.textContent = 'Roles';
     const roleList = document.createElement('div');
     roleList.className = 'personnel-editor-checks';
-    roleList.append(
-      checkbox(staffInput, 'CREDO Staff'),
-      checkbox(facilitatorInput, 'Facilitator'),
-      checkbox(pocInput, 'Point of Contact'),
-    );
+    if (roleSurface === 'facilitator') {
+      roleList.append(checkbox(facilitatorInput, 'Current Facilitator'));
+    } else {
+      roleList.append(
+        checkbox(staffInput, 'CREDO Staff'),
+        checkbox(pocInput, 'Point of Contact'),
+      );
+    }
     roles.append(rolesTitle, roleList);
 
     const staffFields = document.createElement('div');
@@ -144,7 +222,10 @@ export function mountPersonnelEditor({
     staffRow.append(field('Billet / Role', billetInput), field('PRD / EAOS', prdInput));
     staffFields.append(staffTitle, staffRow);
 
-    body.append(general, roles, staffFields);
+    body.append(general, roles);
+    if (roleSurface !== 'facilitator') body.appendChild(staffFields);
+
+    if (reuseCandidates?.length) body.appendChild(renderReusePrompt());
 
     if (message) {
       const note = document.createElement('p');
@@ -177,10 +258,108 @@ export function mountPersonnelEditor({
     save.className = 'btn btn-primary';
     save.textContent = 'Save';
     save.disabled = busy || reconciliationArmed();
+    if (reuseCandidates?.length) save.disabled = true;
     if (reconciliationArmed()) {
       save.title = 'Clear the reconciliation selection to save this record.';
     }
     footer.append(cancel, save);
+  }
+
+  function clearReusePrompt(focus) {
+    if (!reuseCandidates) return;
+    reuseCandidates = null;
+    reuseSelectedId = '';
+    render();
+    focus?.focus();
+  }
+
+  function reusePerson(personId) {
+    return others.find((entry) => entry.id === personId) || null;
+  }
+
+  function renderReuseIdentity(person) {
+    const identity = document.createElement('div');
+    identity.className = 'personnel-editor-reuse-identity';
+    const name = document.createElement('p');
+    name.className = 'personnel-editor-reuse-name';
+    name.textContent = personnelDisplayName(person?.rankTitle, person?.name) || '—';
+    identity.appendChild(name);
+    const command = document.createElement('p');
+    command.textContent = clean(person?.commandOrganization) || '—';
+    const installation = document.createElement('p');
+    installation.textContent = clean(person?.installation) || '—';
+    identity.append(command, installation);
+    if (person?.active === false) {
+      const inactive = document.createElement('p');
+      inactive.className = 'personnel-editor-reuse-inactive';
+      inactive.textContent = 'Inactive';
+      identity.appendChild(inactive);
+    }
+    return identity;
+  }
+
+  function renderReusePrompt() {
+    const section = document.createElement('div');
+    section.className = 'personnel-editor-section personnel-editor-reuse';
+    const title = document.createElement('h4');
+    title.textContent = 'Existing Person Found';
+    const help = document.createElement('p');
+    help.className = 'personnel-editor-help';
+    help.textContent = 'Use the existing person to set Current Facilitator. Their other information stays as it is.';
+    section.append(title, help);
+
+    const selected = reuseCandidates.length === 1
+      ? reusePerson(reuseCandidates[0].personId) || reuseCandidates[0]
+      : reusePerson(reuseSelectedId);
+
+    if (reuseCandidates.length > 1) {
+      reuseCandidates.forEach((candidate) => {
+        const person = reusePerson(candidate.personId) || candidate;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'personnel-editor-match';
+        if (candidate.personId === reuseSelectedId) button.classList.add('is-selected');
+        button.textContent = personnelDisplayName(person.rankTitle, person.name || person.personalName);
+        button.addEventListener('click', () => {
+          reuseSelectedId = candidate.personId;
+          render();
+        });
+        section.appendChild(button);
+      });
+    }
+
+    if (selected && (reuseCandidates.length === 1 || reuseSelectedId)) {
+      section.appendChild(renderReuseIdentity(selected));
+      const useExisting = document.createElement('button');
+      useExisting.type = 'button';
+      useExisting.className = 'btn btn-primary';
+      useExisting.textContent = 'Use Existing Person';
+      useExisting.disabled = busy;
+      useExisting.addEventListener('click', () => commitReuse(selected.id || selected.personId));
+      section.appendChild(useExisting);
+    }
+    return section;
+  }
+
+  async function commitReuse(personId) {
+    const existing = reusePerson(personId);
+    if (!existing?.id) {
+      message = 'That personnel record was not found.';
+      render();
+      return;
+    }
+    busy = true;
+    message = '';
+    render();
+    try {
+      await onSave(facilitatorReuseValues(existing));
+      document.getElementById('personnel-editor-modal')?.close();
+    } catch (error) {
+      console.error(error);
+      message = error?.message || 'Failed to save personnel record.';
+      busy = false;
+      render();
+    }
   }
 
   function reconciliationArmed() {
@@ -475,6 +654,8 @@ export function mountPersonnelEditor({
     message = '';
     render();
   });
+  nameInput.addEventListener('input', () => clearReusePrompt(nameInput));
+  rankInput.addEventListener('input', () => clearReusePrompt(rankInput));
 
   const form = body.closest('form');
   const onSubmit = async (event) => {
@@ -487,6 +668,16 @@ export function mountPersonnelEditor({
       render();
       return;
     }
+    if (roleSurface === 'facilitator' && !editing) {
+      const plan = facilitatorReusePlan(values, others);
+      if (plan.status !== 'new') {
+        reuseCandidates = plan.candidates;
+        reuseSelectedId = '';
+        message = '';
+        render();
+        return;
+      }
+    }
     busy = true;
     message = '';
     render();
@@ -495,6 +686,17 @@ export function mountPersonnelEditor({
       document.getElementById('personnel-editor-modal')?.close();
     } catch (error) {
       console.error(error);
+      if (roleSurface === 'facilitator' && !editing && isExistingPersonNameError(error)) {
+        const plan = facilitatorReusePlan(values, others);
+        if (plan.status !== 'new') {
+          reuseCandidates = plan.candidates;
+          reuseSelectedId = '';
+          message = '';
+          busy = false;
+          render();
+          return;
+        }
+      }
       message = error?.message || 'Failed to save personnel record.';
       busy = false;
       render();

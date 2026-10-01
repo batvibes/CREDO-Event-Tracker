@@ -170,10 +170,7 @@ assert(!fs.existsSync(path.join(ROOT, 'supabase/migrations/023_facilitator_manag
 
 const protectedPaths = [
   'js/monthly-report-pptx-export.js',
-  'js/team-personnel-directory.js',
-  'js/team-personnel-editor.js',
   'js/event-reference-fields.js',
-  'js/settings-reference-lists.js',
   'js/personnel-identity.js',
   'supabase/migrations/020_facilitator_qualification_foundation.sql',
   'supabase/migrations/021_facilitator_experience_foundation.sql',
@@ -189,7 +186,7 @@ try {
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
-assert(protectedDiff.trim() === '', 'MIR, Manning, Team, and Stage 3 migrations are unchanged');
+assert(protectedDiff.trim() === '', 'MIR, identity, and event references are unchanged');
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationStatus = status.split('\n').map((line) => line.trim()).filter(Boolean);
 assert(migrationStatus.every((line) => line.includes('025_facilitator_t4t_product_experience.sql')), 'the only new migration is 025_facilitator_t4t_product_experience.sql');
