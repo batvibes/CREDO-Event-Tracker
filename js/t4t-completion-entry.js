@@ -6,7 +6,7 @@
  */
 import { matchDirectoryPerson, personnelDisplayName } from './personnel-identity.js';
 
-export const T4T_COMPLETION_ACTION_LABEL = 'Record T4T Completions';
+export const T4T_COMPLETION_ACTION_LABEL = 'Manage T4T Attendance';
 
 const DEDICATED_TARGETS = {
   'SafeTalk T4T': { productCode: 'safetalk', productName: 'safeTALK' },

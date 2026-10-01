@@ -68,6 +68,24 @@ assert(target({ eventType: 'Personal Growth Workshop', isT4t: true, curriculumPr
 assert(target({ eventType: 'Personal Growth Workshop', isT4t: true, curriculumProductId: 'strengths-id' }).productCode === 'cliftonstrengths_strengths_discovery_encounter', 'PGW T4T with CliftonStrengths uses that product');
 assert(target({ eventType: 'Personal Growth Workshop', isT4t: true, curriculumProductId: 'chapter-id' }).productCode === 'navigating_your_next_chapter', 'PGW T4T with Navigating Your Next Chapter uses that product');
 
+function actionVisible(event) {
+  return t4tCompletionActionVisible({ canEdit: true, event, products });
+}
+assert(actionVisible({ eventType: 'ASIST T4T' }) === true && target({ eventType: 'ASIST T4T' }).productName === 'ASIST', 'ASIST T4T shows attendance for ordinary ASIST');
+assert(actionVisible({ eventType: 'SafeTalk T4T' }) === true && target({ eventType: 'SafeTalk T4T' }).productName === 'safeTALK', 'SafeTalk T4T shows attendance for ordinary safeTALK');
+assert(actionVisible({ eventType: 'Marriage Enrichment Workshop', isT4t: true, curriculumProductId: 'prep-id' }) === true, 'MEW T4T with PREP shows attendance');
+assert(actionVisible({ eventType: 'Marriage Enrichment Workshop', isT4t: true, curriculumProductId: 'gottman-id' }) === true, 'MEW T4T with Gottman shows attendance');
+assert(actionVisible({ eventType: 'Personal Growth Workshop', isT4t: true, curriculumProductId: 'lenses-id' }) === true, 'PGW T4T with 4 Lenses shows attendance');
+assert(actionVisible({ eventType: 'Personal Growth Workshop', isT4t: true, curriculumProductId: 'strengths-id' }) === true, 'PGW T4T with CliftonStrengths shows attendance');
+assert(actionVisible({ eventType: 'Personal Growth Workshop', isT4t: true, curriculumProductId: 'chapter-id' }) === true, 'PGW T4T with Navigating Your Next Chapter shows attendance');
+assert(actionVisible({ eventType: 'ASIST Workshop' }) === false, 'an ordinary ASIST Workshop hides attendance');
+assert(actionVisible({ eventType: 'SafeTalk Workshop' }) === false, 'an ordinary safeTALK Workshop hides attendance');
+assert(actionVisible({ eventType: 'Marriage Enrichment Workshop', isT4t: false, curriculumProductId: 'prep-id' }) === false, 'an ordinary MEW hides attendance');
+assert(actionVisible({ eventType: 'Personal Growth Workshop', isT4t: false, curriculumProductId: 'lenses-id' }) === false, 'an ordinary PGW hides attendance');
+assert(actionVisible({ eventType: 'Marriage Enrichment Workshop', isT4t: true, curriculumProductId: null }) === false, 'MEW T4T without a curriculum hides attendance');
+assert(actionVisible({ eventType: 'Personal Growth Workshop', isT4t: true }) === false, 'PGW T4T without a curriculum hides attendance');
+assert(actionVisible(null) === false, 'a new unsaved event hides attendance');
+
 for (const event of [
   { eventType: 'SafeTalk Workshop' },
   { eventType: 'ASIST Workshop' },
@@ -245,7 +263,17 @@ assert(!opener.includes('endDate') && !opener.includes('facilitators') && !opene
 assert(!opener.includes('createPerson(') && !opener.includes('saveFacilitatorQualification'), 'the event action does not use legacy person creation or qualification save');
 assert(app.includes('T4T_COMPLETION_ACTION_LABEL') && app.includes('createT4tCompletionButton'), 'the edit surface uses the completion action');
 assert(!app.slice(app.indexOf('function renderTable'), app.indexOf('function render()')).includes('createT4tCompletionButton'), 'the events table action column does not host completion entry');
-assert(read('index.html').includes('>Record T4T Completions<'), 'the dialog title is Record T4T Completions');
+const html = read('index.html');
+const css = read('css/styles.css');
+assert(html.includes('id="event-t4t-completion-action" hidden>Manage T4T Attendance<'), 'the saved-event action is Manage T4T Attendance and starts hidden');
+assert(html.includes('id="t4t-completion-title">Manage T4T Attendance<'), 'the attendance dialog uses the same action name');
+assert(!html.includes('>Record T4T Completions<'), 'the old event action label is gone');
+const facilitatorView = html.slice(html.indexOf('id="view-facilitators"'), html.indexOf('id="view-settings"'));
+assert(!facilitatorView.includes('Manage T4T Attendance') && !facilitatorView.includes('event-t4t-completion-action'), 'Facilitator Management does not host attendance entry');
+assert(!app.slice(app.indexOf('function openFacilitatorDetail'), app.indexOf('function closeFacilitatorDetail')).includes('openT4tCompletionDialog'), 'a facilitator profile does not open attendance entry');
+const typeChange = app.slice(app.indexOf("typeSelect.addEventListener('change'"), app.indexOf("form.addEventListener('submit'"));
+assert(!typeChange.includes('createT4tCompletionButton'), 'unsaved Event Type edits do not change attendance eligibility');
+assert(css.includes('#new-event-modal #event-t4t-completion-action[hidden]') && css.includes('#new-event-modal #event-t4t-completion-action[hidden] {\n  display: none;\n}'), 'the attendance action stays hidden when its hidden attribute is set');
 
 assert(entrySources.includes('fetchFacilitatorManagementSources') && entrySources.includes('fetchPersonnelAliases'), 'matching loads facilitator people and aliases');
 assert(!entrySources.includes(".eq('active'"), 'the completion directory does not drop inactive people');

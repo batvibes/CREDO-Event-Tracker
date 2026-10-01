@@ -3891,6 +3891,10 @@ body:has(#new-event-modal[open]) {
   margin-right: auto;
 }
 
+#new-event-modal #event-t4t-completion-action[hidden] {
+  display: none;
+}
+
 #t4t-completion-modal {
   width: min(880px, calc(100vw - 32px));
   margin: auto;
