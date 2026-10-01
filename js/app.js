@@ -107,7 +107,6 @@ import {
   facilitatorQualificationSaveInput,
   qualificationT4tHistoryRecord,
   nextQualificationSourceSuggestion,
-  buildFacilitatorOverview,
   buildQualificationAnniversaryWarnings,
   presentQualificationFollowUp,
   buildFacilitatorProgramCapabilities,
@@ -11281,9 +11280,8 @@ const FACILITATOR_CAPABILITY_SORT_COLUMNS = [
   { key: 'qualifications', index: 4 },
 ];
 const FACILITATOR_VIEW_LABELS = {
-  overview: 'Overview',
-  personnel: 'Facilitators',
   capabilities: 'Program Capabilities',
+  personnel: 'Facilitators',
 };
 
 let facilitatorPersonnel = [];
@@ -11298,7 +11296,7 @@ let facilitatorSort = { column: 'name', direction: SORT_ASC };
 let facilitatorCapabilitySort = { column: 'catalog', direction: SORT_ASC };
 let facilitatorSelectedProductId = '';
 let facilitatorLoadGeneration = 0;
-let facilitatorInternalView = 'overview';
+let facilitatorInternalView = 'capabilities';
 
 function facilitatorFilterState() {
   return {
@@ -11338,9 +11336,8 @@ function appendFacilitatorCell(row, text, className) {
 }
 
 function showFacilitatorView(view) {
-  facilitatorInternalView = FACILITATOR_VIEW_LABELS[view] ? view : 'overview';
+  facilitatorInternalView = FACILITATOR_VIEW_LABELS[view] ? view : 'capabilities';
   const panels = {
-    overview: document.getElementById('facilitator-overview-panel'),
     personnel: document.getElementById('facilitator-personnel-panel'),
     capabilities: document.getElementById('facilitator-capabilities-panel'),
   };
@@ -11369,28 +11366,7 @@ function appendFacilitatorEmptyRow(body, columnCount, message) {
   body.appendChild(row);
 }
 
-function paintFacilitatorOverview() {
-  const coverageBody = document.getElementById('facilitator-coverage-body');
-  if (!coverageBody) return;
-  const overview = buildFacilitatorOverview(facilitatorPersonnel, facilitatorProducts);
-
-  coverageBody.replaceChildren();
-  for (const product of overview.coverage) {
-    const row = document.createElement('tr');
-    if (product.instructors === 0) row.className = 'facilitator-coverage-none';
-    const nameCell = document.createElement('td');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'facilitator-text-button';
-    button.dataset.facilitatorProduct = product.productId;
-    button.textContent = product.productName;
-    nameCell.appendChild(button);
-    row.appendChild(nameCell);
-    appendFacilitatorCell(row, String(product.instructors), 'facilitator-count');
-    appendFacilitatorCell(row, formatRecordedFacilitationDate(product.mostRecentOn));
-    coverageBody.appendChild(row);
-  }
-
+function paintFacilitatorAnniversaryAlerts() {
   const anniversaryBody = document.getElementById('facilitator-anniversary-body');
   const anniversarySection = document.getElementById('facilitator-anniversary-section');
   if (!anniversaryBody) return;
@@ -12187,7 +12163,7 @@ async function renderFacilitatorManagement() {
       sources.t4tCompletions,
     );
     syncFacilitatorProductFilter();
-    paintFacilitatorOverview();
+    paintFacilitatorAnniversaryAlerts();
     paintFacilitatorPersonnel();
     paintFacilitatorProgramCapabilities();
     syncFacilitatorWriteControls();
@@ -12205,8 +12181,6 @@ async function renderFacilitatorManagement() {
     cell.textContent = 'Facilitators could not be loaded.';
     row.appendChild(cell);
     body.appendChild(row);
-    const coverageBody = document.getElementById('facilitator-coverage-body');
-    if (coverageBody) appendFacilitatorEmptyRow(coverageBody, 3, 'Facilitators could not be loaded.');
     const capabilities = document.getElementById('facilitator-capabilities-body');
     if (capabilities) appendFacilitatorEmptyRow(capabilities, 5, 'Facilitators could not be loaded.');
     return false;
@@ -12321,14 +12295,9 @@ function setupFacilitatorManagement() {
     if (!button) return;
     showFacilitatorView(button.dataset.facilitatorView);
   });
-  document.getElementById('facilitator-overview-panel')?.addEventListener('click', (event) => {
+  document.getElementById('facilitator-anniversary-section')?.addEventListener('click', (event) => {
     const personButton = event.target.closest('[data-facilitator-person]');
-    if (personButton) {
-      openFacilitatorDetail(personButton.dataset.facilitatorPerson);
-      return;
-    }
-    const productButton = event.target.closest('[data-facilitator-product]');
-    if (productButton) openFacilitatorProduct(productButton.dataset.facilitatorProduct);
+    if (personButton) openFacilitatorDetail(personButton.dataset.facilitatorPerson);
   });
   document.getElementById('facilitator-search')?.addEventListener('input', paintFacilitatorPersonnel);
   document.getElementById('facilitator-active-filter')?.addEventListener('change', paintFacilitatorPersonnel);
@@ -12394,7 +12363,7 @@ function switchView(viewName) {
   } else if (viewName === 'team') {
     renderTeam();
   } else if (viewName === 'facilitators') {
-    showFacilitatorView('overview');
+    showFacilitatorView('capabilities');
     renderFacilitatorManagement();
   } else if (viewName === 'settings') {
     renderSettings();

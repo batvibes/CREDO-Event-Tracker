@@ -6921,7 +6921,6 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-facilitators {
-  --facilitator-overview-width: 48rem;
   --facilitator-roster-width: 72rem;
   --facilitator-capabilities-width: 64rem;
 }
@@ -6981,10 +6980,6 @@ body:has(#new-event-modal[open]) {
   padding: 16px 20px 20px;
 }
 
-#facilitator-overview-panel {
-  max-width: var(--facilitator-overview-width);
-}
-
 #facilitator-personnel-panel {
   max-width: var(--facilitator-roster-width);
 }
@@ -7012,12 +7007,10 @@ body:has(#new-event-modal[open]) {
   margin: 0;
 }
 
-#facilitator-overview-panel > .facilitator-section-heading:first-child {
-  margin-top: 0;
-}
-
 #facilitator-anniversary-section {
   margin-top: 20px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
 }
 
 #facilitator-capabilities-table th:not(:first-child),

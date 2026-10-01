@@ -224,11 +224,12 @@ assert(alerts.filter((row) => row.status === 'needs_verification').every((row) =
 assert(!alerts.some((row) => row.personId === 'john' || row.personId === 'sam' || row.personId === 'pat'), 'inactive people, inactive records, retreats, T4T course products, and unrecognized records stay out of the alert list');
 
 assert(!view.includes('>Needs Attention<'), 'the data-gap heading is not on Facilitator Management');
-assert(anniversaryHeading > view.indexOf('>Product Coverage<'), 'T4T Anniversary Alerts follows Product Coverage');
+assert(!view.includes('>Product Coverage<') && !view.includes('data-facilitator-view="overview"'), 'Overview Product Coverage is gone');
+assert(view.indexOf('id="facilitator-capabilities-table"') < anniversaryHeading && anniversaryHeading < view.indexOf('id="facilitator-personnel-panel"'), 'T4T Anniversary Alerts follow the Program Capabilities table');
 assert(view.includes('id="facilitator-anniversary-body"'), 'the anniversary table has a body');
 assert(!/Overdue|Upcoming|Urgent|Needs Verification/.test(view), 'status words are rendered from the alert result');
 assert(!/overdue|standing|readiness|expired/i.test(overviewModel), 'the existing overview model stays free of anniversary status language');
-assert(app.includes('buildQualificationAnniversaryWarnings('), 'Overview paints the derived alert list');
+assert(app.includes('buildQualificationAnniversaryWarnings('), 'Program Capabilities paints the derived alert list');
 assert(app.includes('anniversarySection.hidden = anniversaryAlerts.length === 0'), 'an empty anniversary list hides the section');
 assert(app.includes('button.dataset.facilitatorPerson = alert.personId'), 'an anniversary name reuses the facilitator profile control');
 assert(detail.includes('followUp.warningLine'), 'the profile shows the derived status line');

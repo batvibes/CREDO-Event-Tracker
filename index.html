@@ -1201,26 +1201,38 @@
         <header class="page-header">
           <div class="header-titles">
             <h1>Facilitator Management</h1>
-            <h2 id="facilitator-view-subtitle">Overview</h2>
+            <h2 id="facilitator-view-subtitle">Program Capabilities</h2>
           </div>
         </header>
         <nav class="team-directory-tabs" id="facilitator-view-tabs" role="tablist" aria-label="Facilitator Management">
-          <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="facilitator-tab-overview" data-facilitator-view="overview" aria-selected="true" aria-controls="facilitator-overview-panel">Overview</button>
+          <button type="button" class="team-directory-tab team-directory-tab-active" role="tab" id="facilitator-tab-capabilities" data-facilitator-view="capabilities" aria-selected="true" aria-controls="facilitator-capabilities-panel">Program Capabilities</button>
           <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-personnel" data-facilitator-view="personnel" aria-selected="false" aria-controls="facilitator-personnel-panel">Facilitators</button>
-          <button type="button" class="team-directory-tab" role="tab" id="facilitator-tab-capabilities" data-facilitator-view="capabilities" aria-selected="false" aria-controls="facilitator-capabilities-panel">Program Capabilities</button>
         </nav>
-        <section class="content-section" id="facilitator-overview-panel" aria-label="Overview">
-          <h3 class="facilitator-section-heading">Product Coverage</h3>
-          <div class="table-wrap facilitator-coverage-wrap">
-            <table class="events-table" id="facilitator-coverage-table">
+        <section class="content-section" id="facilitator-capabilities-panel" aria-labelledby="facilitator-capabilities-heading">
+          <div class="section-header">
+            <div class="section-header-start facilitator-toolbar">
+              <h3 id="facilitator-capabilities-heading">Program Capabilities</h3>
+              <input type="search" id="facilitator-product-search" class="settings-search-input facilitator-search" placeholder="Search products" aria-label="Search products">
+              <select id="facilitator-product-presence" class="filter-select" aria-label="Recorded personnel">
+                <option value="all">All products</option>
+                <option value="with">With recorded personnel</option>
+                <option value="without">No recorded personnel</option>
+              </select>
+            </div>
+          </div>
+          <p class="facilitator-summary-note">Instructors counts each person once when recorded facilitation, a qualification record, or both exist for the product. Qualification Records means a record is on file.</p>
+          <div class="table-wrap facilitator-capabilities-wrap">
+            <table class="events-table" id="facilitator-capabilities-table">
               <thead>
                 <tr>
                   <th>Product</th>
                   <th class="facilitator-count">Instructors</th>
+                  <th class="facilitator-count">Recorded Instances</th>
                   <th class="facilitator-metric">Most Recent</th>
+                  <th class="facilitator-count">Qualification Records</th>
                 </tr>
               </thead>
-              <tbody id="facilitator-coverage-body"></tbody>
+              <tbody id="facilitator-capabilities-body"></tbody>
             </table>
           </div>
           <section id="facilitator-anniversary-section" hidden>
@@ -1270,34 +1282,6 @@
                 </tr>
               </thead>
               <tbody id="facilitator-personnel-body"></tbody>
-            </table>
-          </div>
-        </section>
-        <section class="content-section" id="facilitator-capabilities-panel" hidden aria-labelledby="facilitator-capabilities-heading">
-          <div class="section-header">
-            <div class="section-header-start facilitator-toolbar">
-              <h3 id="facilitator-capabilities-heading">Program Capabilities</h3>
-              <input type="search" id="facilitator-product-search" class="settings-search-input facilitator-search" placeholder="Search products" aria-label="Search products">
-              <select id="facilitator-product-presence" class="filter-select" aria-label="Recorded personnel">
-                <option value="all">All products</option>
-                <option value="with">With recorded personnel</option>
-                <option value="without">No recorded personnel</option>
-              </select>
-            </div>
-          </div>
-          <p class="facilitator-summary-note">Instructors counts each person once when recorded facilitation, a qualification record, or both exist for the product. Qualification Records means a record is on file.</p>
-          <div class="table-wrap facilitator-capabilities-wrap">
-            <table class="events-table" id="facilitator-capabilities-table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th class="facilitator-count">Instructors</th>
-                  <th class="facilitator-count">Recorded Instances</th>
-                  <th class="facilitator-metric">Most Recent</th>
-                  <th class="facilitator-count">Qualification Records</th>
-                </tr>
-              </thead>
-              <tbody id="facilitator-capabilities-body"></tbody>
             </table>
           </div>
         </section>

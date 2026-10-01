@@ -67,7 +67,9 @@ const preserved = personnelEditorRoleValues('team', {
 assert(preserved.isFacilitator === true, 'a Team edit preserves the existing facilitator role');
 assert(preserved.isPoc === true && preserved.isCredoStaff === true, 'a Team edit still saves the Team roles that are shown');
 
-assert(facilitatorView.includes('>Overview<') && facilitatorView.includes('>Facilitators<') && facilitatorView.includes('>Program Capabilities<'), 'Facilitator Management tabs are Overview, Facilitators, and Program Capabilities');
+assert(!facilitatorView.includes('>Overview<') && !facilitatorView.includes('data-facilitator-view="overview"'), 'Facilitator Management no longer has an Overview tab');
+assert(facilitatorView.indexOf('data-facilitator-view="capabilities"') < facilitatorView.indexOf('data-facilitator-view="personnel"'), 'Program Capabilities is the first Facilitator Management tab');
+assert(facilitatorView.includes('>Facilitators<') && facilitatorView.includes('>Program Capabilities<'), 'Facilitator Management tabs are Program Capabilities and Facilitators');
 assert(facilitatorView.includes('id="add-facilitator-btn"') && facilitatorView.includes('>Add Facilitator<'), 'Add Facilitator is on the Facilitators tab');
 assert(facilitatorView.includes('id="add-facilitator-btn" hidden'), 'Add Facilitator is hidden until an editor is confirmed');
 assert(app.includes('add.hidden = !canEditTeam()'), 'viewers do not receive the add control');
