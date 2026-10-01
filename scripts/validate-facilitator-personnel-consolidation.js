@@ -109,6 +109,57 @@ const historical = summarizeFacilitatorPersonnel(
 );
 assert(historical.length === 1 && historical[0].isFacilitator === false, 'historical facilitators remain without an explicit facilitator flag');
 assert(historical[0].isCredoStaff === true && historical[0].isPoc === true, 'historical facilitator records keep their other roles');
+assert(historical[0].productCount === 1 && historical[0].eventsConducted === 2 && historical[0].mostRecentOn === '2024-06-01', 'an ordinary-only facilitator still counts only that experience');
+assert(historical[0].experience.length === 1 && historical[0].t4tExperience.length === 0, 'an ordinary-only profile keeps T4T facilitation empty');
+
+const rosterProducts = [
+  { id: 'lenses', name: '4 Lenses', code: 'four_lenses', active: true, sort_order: 6 },
+  { id: 'safetalk', name: 'safeTALK', code: 'safetalk', active: true, sort_order: 9 },
+  { id: 'safetalk-t4t', name: 'safeTALK T4T', code: 'safetalk_t4t', active: true, sort_order: 11 },
+  { id: 'asist', name: 'ASIST', code: 'asist', active: true, sort_order: 10 },
+  { id: 'asist-t4t', name: 'ASIST T4T', code: 'asist_t4t', active: true, sort_order: 12 },
+];
+const roster = summarizeFacilitatorPersonnel(
+  [
+    { id: 'kermit', name: 'Kermit Jones', active: true, is_facilitator: false },
+    { id: 'both', name: 'Both Kinds', active: true, is_facilitator: true },
+    { id: 'dedicated', name: 'Dedicated T4T', active: true, is_facilitator: false },
+    { id: 'future-only', name: 'Future Only', active: true, is_facilitator: true },
+  ],
+  [
+    { person_id: 'both', product_id: 'lenses', events_conducted: 2, first_recorded_facilitation_on: '2026-01-10', most_recent_facilitation_on: '2026-04-02' },
+    { person_id: 'both', product_id: 'safetalk', events_conducted: 1, first_recorded_facilitation_on: '2026-02-01', most_recent_facilitation_on: '2026-02-01' },
+    { person_id: 'dedicated', product_id: 'asist', events_conducted: 1, first_recorded_facilitation_on: '2025-08-01', most_recent_facilitation_on: '2025-08-01' },
+  ],
+  [],
+  rosterProducts,
+  [
+    { person_id: 'kermit', product_id: 'lenses', events_conducted: 1, first_recorded_facilitation_on: '2026-09-01', most_recent_facilitation_on: '2026-09-01' },
+    { person_id: 'both', product_id: 'lenses', events_conducted: 1, first_recorded_facilitation_on: '2026-05-18', most_recent_facilitation_on: '2026-05-18' },
+    { person_id: 'both', product_id: 'safetalk-t4t', events_conducted: 1, first_recorded_facilitation_on: '2026-03-15', most_recent_facilitation_on: '2026-03-15' },
+    { person_id: 'dedicated', product_id: 'asist-t4t', events_conducted: 2, first_recorded_facilitation_on: '2026-03-02', most_recent_facilitation_on: '2026-06-01' },
+    { person_id: null, product_id: 'lenses', events_conducted: 4, most_recent_facilitation_on: '2026-09-01' },
+    { person_id: 'kermit', product_id: null, events_conducted: 3, most_recent_facilitation_on: '2025-03-10' },
+    { person_id: 'kermit', product_id: 'missing-curriculum', events_conducted: 1, most_recent_facilitation_on: '2026-11-20' },
+  ],
+);
+const kermit = roster.find((person) => person.id === 'kermit');
+assert(kermit.productCount === 1 && kermit.eventsConducted === 1 && kermit.mostRecentOn === '2026-09-01', 'Kermit Jones roster summary is 1 / 1 / 09/01/26 from the 4 Lenses T4T');
+assert(kermit.experience.length === 0 && kermit.t4tExperience.length === 1 && kermit.t4tExperience[0].productName === '4 Lenses', 'Kermit’s profile keeps ordinary and T4T facilitation separate');
+assert(kermit.qualificationProducts.length === 0, 'roster summary does not create a qualification');
+const combined = roster.find((person) => person.id === 'both');
+assert(combined.productCount === 2 && combined.eventsConducted === 5 && combined.mostRecentOn === '2026-05-18', 'ordinary and T4T products dedupe, events add, and Most Recent is the later date');
+assert(combined.experience.length === 2 && combined.t4tExperience.length === 2, 'combined roster totals do not merge the profile lists');
+const dedicated = roster.find((person) => person.id === 'dedicated');
+assert(dedicated.productCount === 1 && dedicated.eventsConducted === 3 && dedicated.mostRecentOn === '2026-06-01', 'ASIST T4T counts as ASIST and its events are added once');
+assert(dedicated.t4tExperience[0].productName === 'ASIST T4T' && dedicated.experience[0].productName === 'ASIST', 'the profile still names the dedicated T4T product separately');
+assert(roster.find((person) => person.id === 'future-only').eventsConducted === 0, 'a facilitator with no past facilitation row stays at zero');
+assert(!roster.some((person) => person.id == null), 'an unresolved identity is not added to the roster');
+const experienceView = read('supabase/migrations/025_facilitator_t4t_product_experience.sql');
+assert(experienceView.includes('count(distinct token.event_id)::integer as events_conducted'), 'roster event totals use the views’ distinct Event counts');
+assert(experienceView.includes('token.recorded_on <= current_date'), 'future facilitation stays out of the aggregates the roster sums');
+assert(experienceView.includes('token.person_id is not null') && experienceView.includes('token.product_id is not null'), 'unresolved people and events without a product stay out of the aggregates');
+assert(experienceView.includes('and not (') && experienceView.includes('token.is_t4t is true'), 'one Event stays in only one aggregate, so the roster sum does not count it twice');
 
 const staff = {
   id: 'staff',

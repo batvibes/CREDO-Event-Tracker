@@ -9,10 +9,13 @@
  * T4T completion history is separate evidence. It does not add a person to this
  * roster by itself, and it does not change a qualification date or standing.
  * Stored qualification fields stay manual facts. Standing, T4T completion, and
- * trainer authority are not inferred from either experience aggregate. Overview and Program Capabilities union the two
- * aggregates so a T4T delivery is not dropped from those totals. An Event belongs to
- * only one aggregate, and a person is counted once per product. This module does
- * not write people, qualifications, roles, or Events.
+ * trainer authority are not inferred from either experience aggregate. The
+ * Facilitators roster summary counts unique products, distinct events, and the
+ * latest date across both aggregates. Dedicated SafeTalk T4T and ASIST T4T
+ * deliveries count as ordinary safeTALK and ASIST in that summary. Profile lists
+ * stay separate. Overview and Program Capabilities keep each aggregate's own
+ * product. An Event belongs to only one aggregate. This module does not write
+ * people, qualifications, roles, or Events.
  *
  * Later views can sit beside Personnel: Overview, Program Capabilities, and Development.
  */
@@ -264,6 +267,34 @@ function experienceList(byPerson, personId) {
     .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
 }
 
+const ROSTER_DEDICATED_T4T_CODES = {
+  safetalk_t4t: 'safetalk',
+  asist_t4t: 'asist',
+};
+
+function rosterFacilitationSummary(experience, t4tExperience, catalog) {
+  const productIdByCode = new Map();
+  for (const product of catalog.values()) {
+    if (product.code) productIdByCode.set(product.code, product.id);
+  }
+  const productIds = new Set();
+  let eventsConducted = 0;
+  let mostRecentOn = null;
+  for (const row of [...(experience ?? []), ...(t4tExperience ?? [])]) {
+    const source = catalog.get(row.productId);
+    const ordinaryCode = source ? ROSTER_DEDICATED_T4T_CODES[source.code] : null;
+    const ordinaryProductId = ordinaryCode ? productIdByCode.get(ordinaryCode) : null;
+    productIds.add(ordinaryProductId || row.productId);
+    eventsConducted += row.eventsConducted;
+    mostRecentOn = laterDate(mostRecentOn, row.mostRecentOn);
+  }
+  return {
+    productCount: productIds.size,
+    eventsConducted,
+    mostRecentOn,
+  };
+}
+
 function hasRecordedFacilitatorEvidence(person) {
   return (person?.experience?.length ?? 0) > 0 || (person?.t4tExperience?.length ?? 0) > 0;
 }
@@ -345,11 +376,7 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
       products,
     );
     seen.add(person.id);
-    const mostRecentOn = experience.reduce((latest, row) => {
-      if (!row.mostRecentOn) return latest;
-      if (!latest || row.mostRecentOn > latest) return row.mostRecentOn;
-      return latest;
-    }, null);
+    const roster = rosterFacilitationSummary(experience, t4tExperience, catalog);
     personnel.push({
       id: person.id,
       name: person.name,
@@ -363,9 +390,9 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
       isPoc: person.isPoc,
       staffBilletOrRole: person.staffBilletOrRole,
       staffPrdEaos: person.staffPrdEaos,
-      productCount: experience.length,
-      eventsConducted: experience.reduce((sum, row) => sum + row.eventsConducted, 0),
-      mostRecentOn,
+      productCount: roster.productCount,
+      eventsConducted: roster.eventsConducted,
+      mostRecentOn: roster.mostRecentOn,
       experience,
       t4tExperience,
       hasQualificationRecord: qualificationProducts.length > 0,
