@@ -110,9 +110,8 @@ import {
   facilitatorQualificationSaveInput,
   nextQualificationSourceSuggestion,
   buildFacilitatorOverview,
-  buildT4tAnniversaryAlerts,
-  evaluateT4tAnniversaryAlert,
-  formatT4tAnniversaryProfileLine,
+  buildQualificationAnniversaryWarnings,
+  presentQualificationFollowUp,
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
   facilitatorProductPersonnel,
@@ -11271,6 +11270,7 @@ const FACILITATOR_VIEW_LABELS = {
 };
 
 let facilitatorPersonnel = [];
+let facilitatorLivingWorksWorkshops = null;
 let facilitatorProducts = [];
 let facilitatorT4tExperienceAvailable = false;
 let facilitatorQualificationPersonId = null;
@@ -11420,9 +11420,12 @@ function paintFacilitatorOverview() {
 
   const anniversaryBody = document.getElementById('facilitator-anniversary-body');
   if (!anniversaryBody) return;
-  const anniversaryAlerts = buildT4tAnniversaryAlerts(facilitatorPersonnel);
+  const anniversaryAlerts = buildQualificationAnniversaryWarnings(
+    facilitatorPersonnel,
+    facilitatorLivingWorksWorkshops,
+  );
   if (!anniversaryAlerts.length) {
-    appendFacilitatorEmptyRow(anniversaryBody, 4, FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS);
+    appendFacilitatorEmptyRow(anniversaryBody, 5, FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS);
     return;
   }
   anniversaryBody.replaceChildren();
@@ -11438,6 +11441,7 @@ function paintFacilitatorOverview() {
     row.appendChild(nameCell);
     appendFacilitatorCell(row, alert.productName);
     appendFacilitatorCell(row, alert.label);
+    appendFacilitatorCell(row, alert.progress || '—');
     appendFacilitatorCell(
       row,
       alert.deadline ? formatRecordedFacilitationDate(alert.deadline) : alert.reason,
@@ -11610,14 +11614,18 @@ function openFacilitatorDetail(personId) {
         }
         card.appendChild(details);
       }
-      const anniversary = evaluateT4tAnniversaryAlert({
+      const followUp = presentQualificationFollowUp({
         productCode: qualification.productCode,
-        t4tCompletedOn: qualification.t4tCompletedOn,
         qualificationStanding: qualification.standing,
+        t4tCompletedOn: qualification.t4tCompletedOn,
         personActive: person.active,
+        workshops: Array.isArray(facilitatorLivingWorksWorkshops)
+          ? facilitatorLivingWorksWorkshops.filter((row) => row.personId === person.id && row.productId === qualification.productId)
+          : facilitatorLivingWorksWorkshops,
       });
-      const anniversaryLine = formatT4tAnniversaryProfileLine(anniversary);
-      if (anniversaryLine) appendDetailLine(card, anniversaryLine, 'facilitator-qualification-alert');
+      if (followUp.warningLine) appendDetailLine(card, followUp.warningLine, 'facilitator-qualification-alert');
+      if (followUp.previousCycleLine) appendDetailLine(card, followUp.previousCycleLine, 'facilitator-qualification-alert');
+      if (followUp.activityLine) appendDetailLine(card, followUp.activityLine, 'facilitator-qualification-alert');
       list.appendChild(card);
     }
     body.appendChild(list);
@@ -12151,6 +12159,7 @@ async function renderFacilitatorManagement() {
     const sources = await fetchFacilitatorManagementSources();
     if (generation !== facilitatorLoadGeneration) return;
     facilitatorProducts = sources.products;
+    facilitatorLivingWorksWorkshops = sources.livingWorksWorkshops ?? null;
     facilitatorT4tExperienceAvailable = sources.t4tExperienceAvailable === true;
     facilitatorPersonnel = summarizeFacilitatorPersonnel(
       sources.people,

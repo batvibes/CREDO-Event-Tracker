@@ -1,3 +1,4 @@
+import { ordinaryLivingWorksWorkshops } from './livingworks-workshops.js';
 import { supabase } from './supabase.js';
 import { mapTeamDirectoryPerson } from './team-personnel-directory.js';
 import {
@@ -1190,7 +1191,7 @@ const FACILITATOR_MANAGEMENT_PERSON_COLUMNS = [
 export async function fetchFacilitatorManagementSources() {
   const experienceColumns = 'person_id, product_id, events_conducted, first_recorded_facilitation_on, most_recent_facilitation_on';
   const completionColumns = 'id, person_id, product_id, completed_on, source_event_id, governing_source, notes, created_at';
-  const [people, experience, qualifications, products, t4tExperience, completions] = await Promise.all([
+  const [people, experience, qualifications, products, t4tExperience, completions, workshopTokens] = await Promise.all([
     supabase
       .from('people')
       .select(FACILITATOR_MANAGEMENT_PERSON_COLUMNS)
@@ -1211,6 +1212,9 @@ export async function fetchFacilitatorManagementSources() {
     supabase
       .from('facilitator_t4t_completions')
       .select(completionColumns),
+    supabase
+      .from('facilitator_event_tokens')
+      .select('event_id, person_id, product_id, recorded_on, event_type, is_t4t'),
   ]);
 
   const failure = [people, experience, qualifications, products].find((result) => result.error);
@@ -1223,11 +1227,15 @@ export async function fetchFacilitatorManagementSources() {
   };
   if (t4tExperience.error && !isMissingEventCurriculumSchemaError(t4tExperience.error)) throw t4tExperience.error;
   if (completions.error && !isMissingEventCurriculumSchemaError(completions.error)) throw completions.error;
+  if (workshopTokens.error && !isMissingEventCurriculumSchemaError(workshopTokens.error)) throw workshopTokens.error;
   return {
     ...sources,
     t4tExperience: t4tExperience.error ? [] : (t4tExperience.data ?? []),
     t4tExperienceAvailable: !t4tExperience.error,
     t4tCompletions: completions.error ? [] : (completions.data ?? []),
+    livingWorksWorkshops: workshopTokens.error
+      ? null
+      : ordinaryLivingWorksWorkshops(workshopTokens.data, products.data),
   };
 }
 

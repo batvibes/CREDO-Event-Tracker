@@ -51,7 +51,10 @@ const model = read('js/facilitator-management.js');
 const app = read('js/app.js');
 const html = read('index.html');
 const view = html.slice(html.indexOf('id="view-facilitators"'), html.indexOf('id="view-settings"'));
-const helper = model.slice(model.indexOf('const T4T_ANNIVERSARY_PRODUCT_CODES'));
+const helper = model.slice(
+  model.indexOf('const T4T_ANNIVERSARY_PRODUCT_CODES'),
+  model.indexOf('const LIVINGWORKS_ACTIVITY_RULES'),
+);
 const displayFields = model.slice(
   model.indexOf('export function facilitatorQualificationDisplayFields'),
   model.indexOf('export function facilitatorQualificationProductChoices'),
@@ -61,7 +64,7 @@ const overviewModel = model.slice(
   model.indexOf('export function buildFacilitatorProgramCapabilities'),
 );
 const detail = app.slice(app.indexOf('function openFacilitatorDetail'), app.indexOf('function closeFacilitatorDetail'));
-const profileAlert = detail.slice(detail.indexOf('evaluateT4tAnniversaryAlert'), detail.indexOf('anniversaryLine'));
+const profileAlert = detail.slice(detail.indexOf('presentQualificationFollowUp'), detail.indexOf('followUp.activityLine'));
 const attentionHeading = view.indexOf('Needs Attention');
 const anniversaryHeading = view.indexOf('T4T Anniversary Alerts');
 
@@ -225,10 +228,10 @@ assert(attentionHeading >= 0 && anniversaryHeading > attentionHeading, 'T4T Anni
 assert(view.includes('id="facilitator-anniversary-body"'), 'the anniversary table has a body');
 assert(!/Overdue|Upcoming|Urgent|Needs Verification/.test(view), 'status words are rendered from the alert result');
 assert(!/overdue|standing|readiness|expired/i.test(overviewModel), 'the existing overview model stays free of anniversary status language');
-assert(app.includes('buildT4tAnniversaryAlerts(facilitatorPersonnel)'), 'Overview paints the derived alert list');
+assert(app.includes('buildQualificationAnniversaryWarnings('), 'Overview paints the derived alert list');
 assert(app.includes('FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS'), 'an empty anniversary list has its own empty state');
 assert(app.includes('button.dataset.facilitatorPerson = alert.personId'), 'an anniversary name reuses the facilitator profile control');
-assert(detail.includes('formatT4tAnniversaryProfileLine'), 'the profile shows the derived status line');
+assert(detail.includes('followUp.warningLine'), 'the profile shows the derived status line');
 assert(!displayFields.includes('anniversary') && !displayFields.includes('Needs Verification'), 'stored qualification fields stay unchanged');
 assert(!profileAlert.includes('canEditEvents'), 'the profile status line is not limited to editors');
 assert(!detail.includes('saveFacilitatorQualification'), 'opening the profile does not save a qualification');

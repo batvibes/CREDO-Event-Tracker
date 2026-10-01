@@ -664,6 +664,10 @@ export function evaluateT4tAnniversaryAlert({
   }
   const deadline = anniversaryDeadline(completedOn);
   const daysRemaining = daysUntil(todayIso, deadline);
+  return anniversaryStatusForRemainingDays(daysRemaining, deadline);
+}
+
+function anniversaryStatusForRemainingDays(daysRemaining, deadline) {
   if (daysRemaining > 90) {
     return t4tAnniversaryResult(
       'none',
@@ -762,4 +766,354 @@ export function buildT4tAnniversaryAlerts(personnel, today = localCalendarToday(
       || compareText(String(left.personId ?? ''), String(right.personId ?? ''));
   });
   return alerts;
+}
+
+const LIVINGWORKS_ACTIVITY_RULES = Object.freeze({
+  safetalk: Object.freeze({ provisional: 3, registered: 2 }),
+  asist: Object.freeze({ provisional: 3, registered: 1 }),
+});
+
+function unavailableLivingWorksActivity(reason = '') {
+  return {
+    applicable: false,
+    phase: 'none',
+    requiredCount: null,
+    completedCount: null,
+    windowStart: null,
+    windowEnd: null,
+    remainingCount: null,
+    activityStatus: 'none',
+    reason,
+    ...emptyPreviousRegisteredCycle(),
+  };
+}
+
+function emptyPreviousRegisteredCycle() {
+  return {
+    previousCycleMissed: false,
+    previousWindowStart: null,
+    previousWindowEnd: null,
+    previousCompletedCount: null,
+    previousRequiredCount: null,
+  };
+}
+
+function addCalendarYears(isoDate, years) {
+  let cursor = isoDate;
+  for (let index = 0; index < years; index += 1) {
+    cursor = anniversaryDeadline(cursor);
+    if (!cursor) return '';
+  }
+  return cursor;
+}
+
+function nextCalendarDay(isoDate) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + 1));
+  return calendarDate(
+    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`,
+  );
+}
+
+function anniversaryCycle(anchor, cycleIndex) {
+  const windowEnd = addCalendarYears(anchor, cycleIndex + 1);
+  if (!windowEnd) return null;
+  if (cycleIndex === 0) return { windowStart: anchor, windowEnd };
+  const previousEnd = addCalendarYears(anchor, cycleIndex);
+  const windowStart = previousEnd ? nextCalendarDay(previousEnd) : '';
+  if (!windowStart) return null;
+  return { windowStart, windowEnd };
+}
+
+function currentAnniversaryCycleIndex(anchor, todayIso, phase) {
+  const first = anniversaryCycle(anchor, 0);
+  if (!first) return null;
+  if (phase === 'provisional' || todayIso <= first.windowEnd) return 0;
+  let cycle = 1;
+  while (cycle < 200) {
+    const window = anniversaryCycle(anchor, cycle);
+    if (!window) return null;
+    if (todayIso <= window.windowEnd) return cycle;
+    cycle += 1;
+  }
+  return null;
+}
+
+function previousRegisteredCycle(anchor, cycleIndex, workshops, todayIso, requiredCount) {
+  if (cycleIndex < 1) return emptyPreviousRegisteredCycle();
+  const previousWindow = anniversaryCycle(anchor, cycleIndex - 1);
+  if (!previousWindow) return emptyPreviousRegisteredCycle();
+  const previousCompletedCount = workshopsInWindow(
+    workshops,
+    previousWindow.windowStart,
+    previousWindow.windowEnd,
+    todayIso,
+  );
+  return {
+    previousCycleMissed: previousCompletedCount < requiredCount,
+    previousWindowStart: previousWindow.windowStart,
+    previousWindowEnd: previousWindow.windowEnd,
+    previousCompletedCount,
+    previousRequiredCount: requiredCount,
+  };
+}
+
+function workshopsInWindow(workshops, windowStart, windowEnd, todayIso) {
+  const eventIds = new Set();
+  for (const workshop of workshops ?? []) {
+    const recordedOn = calendarDate(workshop?.recordedOn);
+    const eventId = cleanText(workshop?.eventId);
+    if (!recordedOn || !eventId || recordedOn > todayIso) continue;
+    if (recordedOn < windowStart || recordedOn > windowEnd) continue;
+    eventIds.add(eventId);
+  }
+  return eventIds.size;
+}
+
+export function evaluateLivingWorksActivity({
+  productCode,
+  qualificationStanding,
+  t4tCompletedOn,
+  personActive,
+  workshops,
+  today,
+} = {}) {
+  const code = cleanText(productCode);
+  const rules = LIVINGWORKS_ACTIVITY_RULES[code];
+  if (!rules) {
+    return unavailableLivingWorksActivity('This product has no LivingWorks workshop requirement.');
+  }
+  if (personActive !== true) {
+    return unavailableLivingWorksActivity('The person is inactive.');
+  }
+  const standing = cleanText(qualificationStanding).toLowerCase();
+  const requiredCount = rules[standing];
+  if (requiredCount == null) {
+    return unavailableLivingWorksActivity('This standing has no LivingWorks workshop requirement.');
+  }
+  const todayIso = calendarDate(today) || localCalendarToday();
+  const completedOn = calendarDate(t4tCompletedOn);
+  if (!completedOn) {
+    return unavailableLivingWorksActivity('No T4T completion date is recorded.');
+  }
+  if (completedOn > todayIso) {
+    return unavailableLivingWorksActivity('T4T completion date is in the future.');
+  }
+  const cycleIndex = currentAnniversaryCycleIndex(completedOn, todayIso, standing);
+  const window = cycleIndex == null ? null : anniversaryCycle(completedOn, cycleIndex);
+  if (!window?.windowStart || !window?.windowEnd) {
+    return unavailableLivingWorksActivity('The anniversary window could not be calculated.');
+  }
+  const completedCount = workshopsInWindow(workshops, window.windowStart, window.windowEnd, todayIso);
+  const remainingCount = Math.max(0, requiredCount - completedCount);
+  const previousCycle = standing === 'registered'
+    ? previousRegisteredCycle(completedOn, cycleIndex, workshops, todayIso, requiredCount)
+    : emptyPreviousRegisteredCycle();
+  if (completedCount >= requiredCount) {
+    return {
+      applicable: true,
+      phase: standing,
+      requiredCount,
+      completedCount,
+      windowStart: window.windowStart,
+      windowEnd: window.windowEnd,
+      remainingCount,
+      activityStatus: 'met',
+      reason: 'The workshop requirement for this anniversary window is met.',
+      ...previousCycle,
+    };
+  }
+  const windowClosed = todayIso > window.windowEnd;
+  return {
+    applicable: true,
+    phase: standing,
+    requiredCount,
+    completedCount,
+    windowStart: window.windowStart,
+    windowEnd: window.windowEnd,
+    remainingCount,
+    activityStatus: windowClosed ? 'window_closed' : 'not_yet_met',
+    reason: windowClosed
+      ? 'The anniversary window ended before the workshop requirement was met.'
+      : 'The workshop requirement for this anniversary window is not yet met.',
+    ...previousCycle,
+  };
+}
+
+function livingWorksNoun(requiredCount) {
+  return requiredCount === 1 ? 'workshop' : 'workshops';
+}
+
+function formatCountProgress(completedCount, requiredCount) {
+  if (requiredCount == null || completedCount == null) return '';
+  return `${completedCount} of ${requiredCount} ${livingWorksNoun(requiredCount)}`;
+}
+
+export function formatLivingWorksProgress(activity) {
+  if (!activity?.applicable) return '';
+  return formatCountProgress(activity.completedCount, activity.requiredCount);
+}
+
+export function formatLivingWorksPreviousCycleLine(activity) {
+  if (!activity?.previousCycleMissed) return '';
+  const progress = formatCountProgress(activity.previousCompletedCount, activity.previousRequiredCount);
+  const date = formatRecordedFacilitationDate(activity.previousWindowEnd);
+  if (!progress || !date) return '';
+  return `Previous cycle: ${progress} through ${date} — Requirement Not Met`;
+}
+
+export function formatLivingWorksActivityLine(activity) {
+  const progress = formatLivingWorksProgress(activity);
+  if (!progress) return '';
+  const date = formatRecordedFacilitationDate(activity.windowEnd);
+  const label = activity.activityStatus === 'met'
+    ? 'Met'
+    : activity.activityStatus === 'window_closed'
+      ? 'Window Closed'
+      : 'Not Yet Met';
+  const line = `${progress} through ${date} — ${label}`;
+  return activity.previousCycleMissed ? `Current cycle: ${line}` : line;
+}
+
+function workshopsForQualification(workshops, personId, productId) {
+  if (!Array.isArray(workshops)) return [];
+  return workshops.filter((row) => row?.personId === personId && row?.productId === productId);
+}
+
+function qualificationFollowUp({
+  productCode,
+  qualificationStanding,
+  t4tCompletedOn,
+  personActive,
+  workshops,
+  today,
+  activityEnabled,
+}) {
+  const warning = evaluateT4tAnniversaryAlert({
+    productCode,
+    t4tCompletedOn,
+    qualificationStanding,
+    personActive,
+    today,
+  });
+  if (activityEnabled !== true) {
+    return { warning, activity: unavailableLivingWorksActivity() };
+  }
+  const activity = evaluateLivingWorksActivity({
+    productCode,
+    qualificationStanding,
+    t4tCompletedOn,
+    personActive,
+    workshops,
+    today,
+  });
+  if (activity.previousCycleMissed) {
+    const todayIso = calendarDate(today) || localCalendarToday();
+    return {
+      warning: anniversaryStatusForRemainingDays(daysUntil(todayIso, activity.previousWindowEnd), activity.previousWindowEnd),
+      activity,
+    };
+  }
+  if (!activity.applicable || activity.activityStatus !== 'met') {
+    if (!activity.applicable) return { warning, activity };
+    const todayIso = calendarDate(today) || localCalendarToday();
+    const daysRemaining = daysUntil(todayIso, activity.windowEnd);
+    return {
+      warning: anniversaryStatusForRemainingDays(daysRemaining, activity.windowEnd),
+      activity,
+    };
+  }
+  const todayIso = calendarDate(today) || localCalendarToday();
+  return {
+    warning: t4tAnniversaryResult(
+      'none',
+      '',
+      'The workshop requirement for this anniversary window is met.',
+      activity.windowEnd,
+      daysUntil(todayIso, activity.windowEnd),
+    ),
+    activity,
+  };
+}
+
+export function presentQualificationFollowUp({
+  productCode,
+  qualificationStanding,
+  t4tCompletedOn,
+  personActive,
+  workshops,
+  today,
+  activityEnabled = Array.isArray(workshops),
+} = {}) {
+  const followUp = qualificationFollowUp({
+    productCode,
+    qualificationStanding,
+    t4tCompletedOn,
+    personActive,
+    workshops,
+    today,
+    activityEnabled,
+  });
+  return {
+    warning: followUp.warning,
+    activity: followUp.activity,
+    warningLine: followUp.activity?.previousCycleMissed
+      ? ''
+      : formatT4tAnniversaryProfileLine(followUp.warning),
+    previousCycleLine: formatLivingWorksPreviousCycleLine(followUp.activity),
+    activityLine: formatLivingWorksActivityLine(followUp.activity),
+    progress: formatLivingWorksProgress(followUp.activity),
+  };
+}
+
+function sortAnniversaryAlerts(alerts) {
+  alerts.sort((left, right) => {
+    const rank = T4T_ANNIVERSARY_STATUS_ORDER[left.status] - T4T_ANNIVERSARY_STATUS_ORDER[right.status];
+    if (rank) return rank;
+    if (left.status === 'needs_verification') {
+      return compareText(left.displayName, right.displayName)
+        || compareText(left.productName, right.productName)
+        || compareText(String(left.personId ?? ''), String(right.personId ?? ''));
+    }
+    return (left.daysRemaining ?? 0) - (right.daysRemaining ?? 0)
+      || compareText(left.displayName, right.displayName)
+      || compareText(left.productName, right.productName)
+      || compareText(String(left.personId ?? ''), String(right.personId ?? ''));
+  });
+  return alerts;
+}
+
+export function buildQualificationAnniversaryWarnings(personnel, workshops, today = localCalendarToday()) {
+  const activityEnabled = Array.isArray(workshops);
+  const alerts = [];
+  for (const person of personnel ?? []) {
+    for (const qualification of person?.qualificationProducts ?? []) {
+      const followUp = qualificationFollowUp({
+        productCode: qualification?.productCode,
+        qualificationStanding: qualification?.standing,
+        t4tCompletedOn: qualification?.t4tCompletedOn,
+        personActive: person?.active,
+        workshops: workshopsForQualification(workshops, person?.id, qualification?.productId),
+        today,
+        activityEnabled,
+      });
+      if (followUp.warning.status === 'none') continue;
+      alerts.push({
+        personId: person.id,
+        displayName: person.displayName,
+        productId: qualification.productId,
+        productCode: qualification.productCode,
+        productName: qualification.productName,
+        status: followUp.warning.status,
+        deadline: followUp.warning.deadline,
+        daysRemaining: followUp.warning.daysRemaining,
+        label: followUp.warning.label,
+        reason: followUp.warning.reason,
+        progress: followUp.activity.previousCycleMissed
+          ? formatCountProgress(followUp.activity.previousCompletedCount, followUp.activity.previousRequiredCount)
+          : (followUp.activity.applicable ? formatLivingWorksProgress(followUp.activity) : ''),
+      });
+    }
+  }
+  return sortAnniversaryAlerts(alerts);
 }
