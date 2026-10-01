@@ -7123,6 +7123,12 @@ body:has(#new-event-modal[open]) {
   color: #00205b;
 }
 
+#facilitator-detail-modal .facilitator-qualification-alert {
+  margin: 8px 0 0;
+  color: #8a5a00;
+  font-size: 0.8125rem;
+}
+
 #facilitator-detail-modal .facilitator-qualification-fields {
   display: grid;
   grid-template-columns: minmax(148px, 210px) minmax(0, 1fr);

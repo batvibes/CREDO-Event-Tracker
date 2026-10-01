@@ -94,6 +94,7 @@ import {
   FACILITATOR_T4T_COMPLETION_HEADING,
   FACILITATOR_T4T_EXPERIENCE_HEADING,
   FACILITATOR_NO_DATA_GAPS,
+  FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS,
   FACILITATOR_NO_FACILITATOR_RECORDS,
   FACILITATOR_NO_PRODUCT_EXPERIENCE,
   FACILITATOR_PRODUCT_EXPERIENCE_NO,
@@ -109,6 +110,9 @@ import {
   facilitatorQualificationSaveInput,
   nextQualificationSourceSuggestion,
   buildFacilitatorOverview,
+  buildT4tAnniversaryAlerts,
+  evaluateT4tAnniversaryAlert,
+  formatT4tAnniversaryProfileLine,
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
   facilitatorProductPersonnel,
@@ -11413,6 +11417,33 @@ function paintFacilitatorOverview() {
       attentionBody.appendChild(row);
     }
   }
+
+  const anniversaryBody = document.getElementById('facilitator-anniversary-body');
+  if (!anniversaryBody) return;
+  const anniversaryAlerts = buildT4tAnniversaryAlerts(facilitatorPersonnel);
+  if (!anniversaryAlerts.length) {
+    appendFacilitatorEmptyRow(anniversaryBody, 4, FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS);
+    return;
+  }
+  anniversaryBody.replaceChildren();
+  for (const alert of anniversaryAlerts) {
+    const row = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'facilitator-text-button';
+    button.dataset.facilitatorPerson = alert.personId;
+    button.textContent = alert.displayName;
+    nameCell.appendChild(button);
+    row.appendChild(nameCell);
+    appendFacilitatorCell(row, alert.productName);
+    appendFacilitatorCell(row, alert.label);
+    appendFacilitatorCell(
+      row,
+      alert.deadline ? formatRecordedFacilitationDate(alert.deadline) : alert.reason,
+    );
+    anniversaryBody.appendChild(row);
+  }
 }
 
 function facilitatorCapabilityFilterState() {
@@ -11579,6 +11610,14 @@ function openFacilitatorDetail(personId) {
         }
         card.appendChild(details);
       }
+      const anniversary = evaluateT4tAnniversaryAlert({
+        productCode: qualification.productCode,
+        t4tCompletedOn: qualification.t4tCompletedOn,
+        qualificationStanding: qualification.standing,
+        personActive: person.active,
+      });
+      const anniversaryLine = formatT4tAnniversaryProfileLine(anniversary);
+      if (anniversaryLine) appendDetailLine(card, anniversaryLine, 'facilitator-qualification-alert');
       list.appendChild(card);
     }
     body.appendChild(list);

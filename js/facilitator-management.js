@@ -18,6 +18,7 @@
  */
 
 import { personnelDisplayName } from './personnel-identity.js';
+import { calendarDate, localCalendarToday } from './t4t-completion-entry.js';
 
 export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitator personnel found.';
 export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
@@ -28,6 +29,7 @@ export const FACILITATOR_EMPTY_QUALIFICATIONS = 'No qualification or training re
 export const FACILITATOR_QUALIFICATIONS_HEADING = 'Qualifications & Training';
 export const FACILITATOR_EXPERIENCE_HEADING = 'Recorded Facilitation Experience';
 export const FACILITATOR_NO_DATA_GAPS = 'No current data gaps identified.';
+export const FACILITATOR_NO_T4T_ANNIVERSARY_ALERTS = 'No current T4T anniversary alerts.';
 export const FACILITATOR_QUALIFICATION_NOT_ENTERED = 'Qualification record not yet entered';
 export const FACILITATOR_NO_EXPERIENCE_OR_RECORD = 'No recorded experience or qualification record';
 export const FACILITATOR_NO_PRODUCT_EXPERIENCE = 'No recorded experience';
@@ -311,6 +313,7 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
     productsForPerson.set(productId, {
       id: row.id ?? null,
       productId,
+      productCode: product.code,
       productName: product.name,
       sortOrder: product.sortOrder,
       standing: Object.prototype.hasOwnProperty.call(FACILITATOR_STANDING_LABELS, standing) ? standing : null,
@@ -577,4 +580,186 @@ export function facilitatorProductFilterOptions(products) {
       name: product.name,
       sortOrder: product.sortOrder,
     }));
+}
+
+const T4T_ANNIVERSARY_PRODUCT_CODES = new Set([
+  'gottman_seven_principles',
+  'prep_8_0',
+  'four_lenses',
+  'cliftonstrengths_strengths_discovery_encounter',
+  'navigating_your_next_chapter',
+  'safetalk',
+  'asist',
+]);
+
+const T4T_ANNIVERSARY_CURRENT_STANDINGS = new Set(['developing', 'provisional', 'registered']);
+
+const T4T_ANNIVERSARY_STATUS_ORDER = Object.freeze({
+  overdue: 0,
+  urgent: 1,
+  needs_attention: 2,
+  upcoming: 3,
+  needs_verification: 4,
+});
+
+export function t4tAnniversaryProductApplicable(productCode) {
+  return T4T_ANNIVERSARY_PRODUCT_CODES.has(cleanText(productCode));
+}
+
+function t4tAnniversaryResult(status, label, reason, deadline = null, daysRemaining = null) {
+  return { status, deadline, daysRemaining, label, reason };
+}
+
+function anniversaryDeadline(completedOn) {
+  const [year, month, day] = completedOn.split('-').map(Number);
+  const targetYear = year + 1;
+  const lastDay = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+  const targetDay = Math.min(day, lastDay);
+  return calendarDate(
+    `${targetYear}-${String(month).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`,
+  );
+}
+
+function calendarDayNumber(isoDate) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return Date.UTC(year, month - 1, day) / 86400000;
+}
+
+function daysUntil(today, deadline) {
+  return Math.round(calendarDayNumber(deadline) - calendarDayNumber(today));
+}
+
+export function evaluateT4tAnniversaryAlert({
+  productCode,
+  t4tCompletedOn,
+  qualificationStanding,
+  personActive,
+  today,
+} = {}) {
+  if (!t4tAnniversaryProductApplicable(productCode)) {
+    return t4tAnniversaryResult('none', '', 'This product is outside the T4T anniversary set.');
+  }
+  if (personActive !== true) {
+    return t4tAnniversaryResult('none', '', 'The person is inactive.');
+  }
+  const standing = cleanText(qualificationStanding).toLowerCase();
+  if (!T4T_ANNIVERSARY_CURRENT_STANDINGS.has(standing)) {
+    return t4tAnniversaryResult('none', '', 'The qualification record is not current.');
+  }
+  const todayIso = calendarDate(today) || localCalendarToday();
+  const completedOn = calendarDate(t4tCompletedOn);
+  if (!completedOn) {
+    return t4tAnniversaryResult(
+      'needs_verification',
+      'Needs Verification',
+      'No T4T completion date is recorded.',
+    );
+  }
+  if (completedOn > todayIso) {
+    return t4tAnniversaryResult(
+      'needs_verification',
+      'Needs Verification',
+      'T4T completion date is in the future.',
+    );
+  }
+  const deadline = anniversaryDeadline(completedOn);
+  const daysRemaining = daysUntil(todayIso, deadline);
+  if (daysRemaining > 90) {
+    return t4tAnniversaryResult(
+      'none',
+      '',
+      'More than 90 days remain before the T4T anniversary.',
+      deadline,
+      daysRemaining,
+    );
+  }
+  if (daysRemaining >= 31) {
+    return t4tAnniversaryResult(
+      'upcoming',
+      'Upcoming',
+      'The T4T anniversary is 90 to 31 days away.',
+      deadline,
+      daysRemaining,
+    );
+  }
+  if (daysRemaining >= 8) {
+    return t4tAnniversaryResult(
+      'needs_attention',
+      'Needs Attention',
+      'The T4T anniversary is 30 to 8 days away.',
+      deadline,
+      daysRemaining,
+    );
+  }
+  if (daysRemaining >= 0) {
+    return t4tAnniversaryResult(
+      'urgent',
+      'Urgent',
+      'The T4T anniversary is 7 to 0 days away.',
+      deadline,
+      daysRemaining,
+    );
+  }
+  return t4tAnniversaryResult(
+    'overdue',
+    'Overdue',
+    'The T4T anniversary date has passed.',
+    deadline,
+    daysRemaining,
+  );
+}
+
+export function formatT4tAnniversaryProfileLine(alert) {
+  if (!alert || alert.status === 'none') return '';
+  if (alert.status === 'needs_verification') {
+    if (alert.reason === 'T4T completion date is in the future.') {
+      return 'Needs Verification — T4T completion date is in the future.';
+    }
+    return 'Needs Verification — no T4T completion date recorded';
+  }
+  const date = formatRecordedFacilitationDate(alert.deadline);
+  if (alert.status === 'overdue') return `${alert.label} — anniversary was due ${date}`;
+  return `${alert.label} — anniversary due ${date}`;
+}
+
+export function buildT4tAnniversaryAlerts(personnel, today = localCalendarToday()) {
+  const alerts = [];
+  for (const person of personnel ?? []) {
+    for (const qualification of person?.qualificationProducts ?? []) {
+      const alert = evaluateT4tAnniversaryAlert({
+        productCode: qualification?.productCode,
+        t4tCompletedOn: qualification?.t4tCompletedOn,
+        qualificationStanding: qualification?.standing,
+        personActive: person?.active,
+        today,
+      });
+      if (alert.status === 'none') continue;
+      alerts.push({
+        personId: person.id,
+        displayName: person.displayName,
+        productId: qualification.productId,
+        productCode: qualification.productCode,
+        productName: qualification.productName,
+        status: alert.status,
+        deadline: alert.deadline,
+        daysRemaining: alert.daysRemaining,
+        label: alert.label,
+        reason: alert.reason,
+      });
+    }
+  }
+  alerts.sort((left, right) => {
+    const rank = T4T_ANNIVERSARY_STATUS_ORDER[left.status] - T4T_ANNIVERSARY_STATUS_ORDER[right.status];
+    if (rank) return rank;
+    if (left.status === 'needs_verification') {
+      return compareText(left.displayName, right.displayName)
+        || compareText(left.productName, right.productName)
+        || compareText(String(left.personId ?? ''), String(right.personId ?? ''));
+    }
+    return (left.daysRemaining ?? 0) - (right.daysRemaining ?? 0)
+      || compareText(left.displayName, right.displayName)
+      || compareText(left.productName, right.productName)
+      || compareText(String(left.personId ?? ''), String(right.personId ?? ''));
+  });
+  return alerts;
 }
