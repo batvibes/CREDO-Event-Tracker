@@ -214,7 +214,7 @@ assert(summary.recorded === 1 && summary.alreadyRecorded === 1 && summary.failed
 const moduleSource = read('js/t4t-completion-entry.js');
 const app = read('js/app.js');
 const db = read('js/db.js');
-const opener = app.slice(app.indexOf('async function openT4tCompletionDialog'), app.indexOf('function createEditButton'));
+const opener = app.slice(app.indexOf('async function openT4tCompletionDialog'), app.indexOf('function createDeleteButton'));
 const recordWrapper = db.slice(db.indexOf('export async function recordFacilitatorT4tCompletion'), db.indexOf('export async function deleteFacilitatorQualification'));
 const entrySources = db.slice(db.indexOf('export async function fetchT4tCompletionEntrySources'), db.indexOf('function t4tCompletionRpcError'));
 const facilitatorPeople = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf(".from('facilitator_product_experience')"));
@@ -243,7 +243,8 @@ assert(opener.includes('fetchT4tCompletionEntrySources') && opener.includes('ren
 assert(opener.includes('startDate: event.startDate') && opener.includes('date: event.date'), 'the workflow receives the start date and legacy date');
 assert(!opener.includes('endDate') && !opener.includes('facilitators') && !opener.includes('participants') && !opener.includes('roster'), 'the event handoff omits end date, facilitators, participant count, and roster status');
 assert(!opener.includes('createPerson(') && !opener.includes('saveFacilitatorQualification'), 'the event action does not use legacy person creation or qualification save');
-assert(app.includes('T4T_COMPLETION_ACTION_LABEL') && app.includes('createT4tCompletionButton'), 'the event row uses the completion action');
+assert(app.includes('T4T_COMPLETION_ACTION_LABEL') && app.includes('createT4tCompletionButton'), 'the edit surface uses the completion action');
+assert(!app.slice(app.indexOf('function renderTable'), app.indexOf('function render()')).includes('createT4tCompletionButton'), 'the events table action column does not host completion entry');
 assert(read('index.html').includes('>Record T4T Completions<'), 'the dialog title is Record T4T Completions');
 
 assert(entrySources.includes('fetchFacilitatorManagementSources') && entrySources.includes('fetchPersonnelAliases'), 'matching loads facilitator people and aliases');

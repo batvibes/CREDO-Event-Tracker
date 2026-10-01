@@ -12470,33 +12470,17 @@ async function openT4tCompletionDialog(eventId) {
 }
 
 function createT4tCompletionButton(event) {
-  if (!t4tCompletionActionVisible({
+  const btn = document.getElementById('event-t4t-completion-action');
+  if (!btn) return null;
+  const visible = Boolean(event) && t4tCompletionActionVisible({
     canEdit: canEditEvents(),
     event,
     products: t4tCompletionProducts,
-  })) return null;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'event-t4t-completion-btn';
-  btn.textContent = T4T_COMPLETION_ACTION_LABEL;
-  btn.addEventListener('click', (clickEvent) => {
-    clickEvent.stopPropagation();
-    openT4tCompletionDialog(event.id);
   });
-  return btn;
-}
-
-function createEditButton(eventId) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'event-edit-btn';
-  btn.setAttribute('aria-label', 'Edit event');
-  btn.textContent = 'Edit';
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openEditEventModal(eventId);
-  });
-  return btn;
+  btn.hidden = !visible;
+  if (visible) btn.dataset.eventId = event.id;
+  else delete btn.dataset.eventId;
+  return visible ? btn : null;
 }
 
 function createDeleteButton(eventId) {
@@ -12580,17 +12564,9 @@ function renderTable() {
     const deleteCell = document.createElement('td');
     deleteCell.className = 'col-delete';
     deleteCell.addEventListener('click', (e) => e.stopPropagation());
-    const actions = document.createElement('div');
-    actions.className = 'event-row-action-stack';
-    if (canEditEvents()) {
-      actions.appendChild(createEditButton(event.id));
-    }
-    const completionButton = createT4tCompletionButton(event);
-    if (completionButton) actions.appendChild(completionButton);
     if (canDeleteEvents()) {
-      actions.appendChild(createDeleteButton(event.id));
+      deleteCell.appendChild(createDeleteButton(event.id));
     }
-    deleteCell.appendChild(actions);
     row.appendChild(deleteCell);
 
     const dateCell = document.createElement('td');
@@ -12766,6 +12742,7 @@ function resetEventForm(form) {
   form.reset();
   form.querySelector('[name="dateType"][value="single"]').checked = true;
   document.getElementById('editing-event-id').value = '';
+  createT4tCompletionButton(null);
   document.getElementById('event-single-date').value = '';
   document.getElementById('event-range-start-date').value = '';
   document.getElementById('event-range-end-date').value = '';
@@ -12951,6 +12928,7 @@ function openEditEventModal(eventId) {
   document.getElementById('editing-event-id').value = eventId;
   populateEventFormFromRecord(form, event);
   document.getElementById('event-type-error').hidden = true;
+  createT4tCompletionButton(event);
   modal.showModal();
 }
 
@@ -13084,6 +13062,13 @@ function setupModal() {
   }
 
   modal.addEventListener('close', () => resetEventForm(form));
+
+  const completionAction = document.getElementById('event-t4t-completion-action');
+  completionAction.textContent = T4T_COMPLETION_ACTION_LABEL;
+  completionAction.addEventListener('click', () => {
+    const eventId = completionAction.dataset.eventId;
+    if (eventId) openT4tCompletionDialog(eventId);
+  });
 
   openBtn.addEventListener('click', openNewEventModal);
   closeBtn.addEventListener('click', closeModal);

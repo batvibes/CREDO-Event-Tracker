@@ -517,9 +517,9 @@ body {
 }
 
 .events-table .col-delete {
-  width: 156px;
-  min-width: 156px;
-  max-width: 168px;
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
   padding: 0;
   text-align: center;
   vertical-align: middle;
@@ -3841,40 +3841,15 @@ body:has(#new-event-modal[open]) {
 /* Main Events table column rebalance */
 #view-events .events-table {
   table-layout: fixed;
-  min-width: 1292px;
+  min-width: 1180px;
 }
 
 #view-events .events-table .col-delete {
-  width: 156px;
+  width: 44px;
 }
 
-#view-events .event-row-action-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-  padding: 6px;
-}
-
-#view-events .event-edit-btn,
-#view-events .event-t4t-completion-btn {
-  width: 100%;
-  padding: 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: normal;
-  cursor: pointer;
-}
-
-#view-events .event-t4t-completion-btn:hover,
-#view-events .event-edit-btn:hover {
-  background: #f9fafb;
+#new-event-modal #event-t4t-completion-action {
+  margin-right: auto;
 }
 
 #t4t-completion-modal {
