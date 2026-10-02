@@ -20,6 +20,7 @@ import {
   deleteFacilitatorQualification,
   fetchT4tCompletionEntrySources,
   recordFacilitatorT4tCompletion,
+  removeFacilitatorT4tCompletionFromEvent,
   saveFacilitatorQualification,
   fetchLocations,
   loadEventCurriculumSupport,
@@ -12453,6 +12454,7 @@ async function openT4tCompletionDialog(eventId) {
     loadSources: fetchT4tCompletionEntrySources,
     savePerson: (payload) => saveDirectoryPerson(payload),
     recordCompletion: recordFacilitatorT4tCompletion,
+    removeCompletion: removeFacilitatorT4tCompletionFromEvent,
     onRecorded: () => renderFacilitatorManagement(),
   });
   if (!dialog.open) dialog.showModal();

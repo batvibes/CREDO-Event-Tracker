@@ -1727,7 +1727,9 @@ function t4tCompletionRpcError(error) {
   }
   if (code === 'T4T_COMPLETION_DATE_REQUIRED') return new Error('A completion date is required.');
   if (error?.code === '42501' || /not authorized/i.test(message)) {
-    return new Error('You are not authorized to record facilitator T4T completions.');
+    return new Error(/remove/i.test(message)
+      ? 'You are not authorized to remove facilitator T4T completions.'
+      : 'You are not authorized to record facilitator T4T completions.');
   }
   return new Error(message || 'The T4T completion could not be recorded.');
 }
@@ -1740,6 +1742,16 @@ export async function recordFacilitatorT4tCompletion(completion) {
     p_source_event_id: completion?.sourceEventId ?? null,
     p_governing_source: completion?.governingSource ?? null,
     p_notes: completion?.notes ?? null,
+  });
+  if (error) throw t4tCompletionRpcError(error);
+  return data;
+}
+
+export async function removeFacilitatorT4tCompletionFromEvent(completion) {
+  const { data, error } = await supabase.rpc('remove_facilitator_t4t_completion_from_event', {
+    p_person_id: completion?.personId ?? null,
+    p_product_id: completion?.productId ?? null,
+    p_source_event_id: completion?.sourceEventId ?? null,
   });
   if (error) throw t4tCompletionRpcError(error);
   return data;

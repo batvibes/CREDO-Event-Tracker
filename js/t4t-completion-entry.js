@@ -1,7 +1,8 @@
 /**
- * Record T4T Completions.
+ * Manage T4T Attendance.
  * Identity comes from matchDirectoryPerson. Rank and command are display details.
- * Completion history is recorded through record_facilitator_t4t_completion.
+ * Additions use record_facilitator_t4t_completion.
+ * Removals use remove_facilitator_t4t_completion_from_event for this event and product.
  * Qualifications, facilitator text, and participant counts are not used.
  */
 import { matchDirectoryPerson, personnelDisplayName } from './personnel-identity.js';
@@ -270,6 +271,15 @@ export function completionAlreadyRecorded(completions, { personId, productId, co
   });
 }
 
+export function eventAttendanceRecorded(completions, { personId, productId, sourceEventId }) {
+  if (!personId || !productId || !sourceEventId) return false;
+  return (completions || []).some((row) => (
+    completionPersonId(row) === personId
+    && completionProductId(row) === productId
+    && completionEventId(row) === sourceEventId
+  ));
+}
+
 export function applyKnownCompletions(rows, completions, context) {
   return (rows || []).map((row) => {
     if (row.outcome === 'recorded' || row.outcome === 'failed') return row;
@@ -358,6 +368,85 @@ function button(doc, className, text, onClick, disabled) {
   return node;
 }
 
+export function attendeeFormValues(values) {
+  return {
+    rank: clean(values?.rank),
+    firstName: clean(values?.firstName),
+    lastName: clean(values?.lastName),
+    command: clean(values?.command),
+    installation: clean(values?.installation),
+  };
+}
+
+export function attendeeMatchText(values) {
+  const form = attendeeFormValues(values);
+  if (!form.firstName || !form.lastName) return '';
+  return personnelDisplayName(form.rank, `${form.firstName} ${form.lastName}`);
+}
+
+export function rosterAttendeeFromPerson(person, extras = {}) {
+  const rankTitle = clean(person?.rank_title ?? person?.rankTitle);
+  const personalName = clean(person?.name ?? person?.personalName);
+  const personId = person?.id ?? person?.personId ?? null;
+  return {
+    key: personId,
+    personId,
+    pendingPerson: null,
+    displayName: personnelDisplayName(rankTitle, personalName) || personalName || 'Person',
+    personalName,
+    rankTitle,
+    commandOrganization: clean(person?.command_organization ?? person?.commandOrganization),
+    installation: clean(person?.installation),
+    active: person?.active === false ? false : true,
+    completedOn: extras.completedOn ?? null,
+  };
+}
+
+export function eventSourcedAttendance(completions, { eventId, productId, people }) {
+  const rows = [];
+  const seen = new Set();
+  for (const row of completions || []) {
+    if (!eventId || completionEventId(row) !== eventId) continue;
+    if (!productId || completionProductId(row) !== productId) continue;
+    const personId = completionPersonId(row);
+    if (!personId || seen.has(personId)) continue;
+    seen.add(personId);
+    const person = (people || []).find((entry) => entry?.id === personId);
+    rows.push(rosterAttendeeFromPerson(person || { id: personId, name: 'Person' }, {
+      completedOn: completionDate(row),
+    }));
+  }
+  rows.sort((left, right) => left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' })
+    || String(left.personId).localeCompare(String(right.personId)));
+  return rows;
+}
+
+export function rosterIncludesPerson(roster, personId) {
+  if (!personId) return false;
+  return (roster || []).some((row) => row?.personId === personId);
+}
+
+export function attendanceRosterDiff(saved, working) {
+  const savedRows = saved || [];
+  const workingRows = working || [];
+  const savedIds = new Set(savedRows.map((row) => row.personId).filter(Boolean));
+  const workingIds = new Set(workingRows.map((row) => row.personId).filter(Boolean));
+  return {
+    add: workingRows.filter((row) => !row.personId || !savedIds.has(row.personId)),
+    remove: savedRows.filter((row) => row.personId && !workingIds.has(row.personId)),
+  };
+}
+
+export function attendanceCountLabel(count) {
+  const total = Number(count) || 0;
+  return total === 1 ? '1 attendee' : `${total} attendees`;
+}
+
+export function attendanceMetaLine(attendee) {
+  const parts = [clean(attendee?.commandOrganization), clean(attendee?.installation)].filter(Boolean);
+  return parts.length ? parts.join(' · ') : '—';
+}
+
 function field(doc, label, name, value, required) {
   const wrap = doc.createElement('label');
   wrap.className = 't4t-completion-field';
@@ -377,44 +466,81 @@ export function mountT4tCompletionWorkflow(dialog, options) {
   const doc = dialog.ownerDocument;
   let active = true;
   const event = options.event;
+  const emptyForm = () => ({
+    rank: '',
+    firstName: '',
+    lastName: '',
+    command: '',
+    installation: '',
+  });
   const state = {
     step: 'loading',
     busy: false,
     error: '',
+    notice: '',
     completedOn: defaultT4tCompletionDate(event),
-    rosterText: '',
-    reviews: [],
+    form: emptyForm(),
+    roster: [],
     people: [],
     aliases: [],
     completions: [],
     products: options.initialProducts || [],
     target: t4tCompletionTarget(event, options.initialProducts || []),
-    creatingIndex: null,
-    draft: null,
+    pending: null,
+    focusFirst: false,
   };
 
   function captureFields() {
     const date = body.querySelector('#t4t-completion-date');
-    const names = body.querySelector('#t4t-completion-names');
     if (date) state.completedOn = date.value;
-    if (names) state.rosterText = names.value;
-    const form = body.querySelector('[data-new-person-form]');
-    if (form && state.creatingIndex != null) {
-      state.draft = {
-        name: form.elements.name.value,
-        rankTitle: form.elements.rankTitle.value,
-        commandOrganization: form.elements.commandOrganization.value,
-        installation: form.elements.installation.value,
-      };
+    const read = (id) => body.querySelector(`#${id}`)?.value ?? '';
+    if (body.querySelector('#t4t-attendee-first')) {
+      state.form = attendeeFormValues({
+        rank: read('t4t-attendee-rank'),
+        firstName: read('t4t-attendee-first'),
+        lastName: read('t4t-attendee-last'),
+        command: read('t4t-attendee-command'),
+        installation: read('t4t-attendee-installation'),
+      });
     }
   }
 
-  function refreshKnown() {
-    state.reviews = applyKnownCompletions(state.reviews, state.completions, {
+  function clearForm() {
+    state.form = emptyForm();
+  }
+
+  function personById(personId) {
+    return state.people.find((person) => person.id === personId) || null;
+  }
+
+  function showSavedRoster() {
+    state.roster = eventSourcedAttendance(state.completions, {
+      eventId: event.id,
       productId: state.target.productId,
-      completedOn: state.completedOn,
-      sourceEventId: event.id,
+      people: state.people,
     });
+  }
+
+  function completionDateError() {
+    return completionDateMessage(state.completedOn) || (calendarDate(state.completedOn) ? '' : 'A completion date is required.');
+  }
+
+  function rememberCompletion(personId) {
+    state.completions = [...state.completions, {
+      person_id: personId,
+      product_id: state.target.productId,
+      completed_on: state.completedOn,
+      source_event_id: event.id,
+    }];
+  }
+
+  async function refreshFacilitatorManagement() {
+    try {
+      await options.onRecorded?.();
+    } catch (error) {
+      state.error = error?.message || 'Attendance was saved, and Facilitator Management could not be refreshed.';
+      render();
+    }
   }
 
   function renderFacts() {
@@ -450,277 +576,294 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     input.setAttribute('aria-invalid', futureMessage ? 'true' : 'false');
     input.addEventListener('change', () => {
       captureFields();
-      refreshKnown();
       render();
     });
     label.appendChild(input);
-    if (futureMessage) {
-      const note = doc.createElement('p');
-      note.className = 't4t-completion-error';
-      note.textContent = futureMessage;
-      label.appendChild(note);
-    }
     return label;
   }
 
-  function renderReviewCard(row, index) {
-    const card = doc.createElement('article');
-    card.className = 't4t-completion-card';
-    const entered = doc.createElement('p');
-    entered.className = 't4t-completion-entered';
-    entered.textContent = row.input;
-    card.appendChild(entered);
-    const status = doc.createElement('p');
-    status.className = 't4t-completion-status';
-    status.textContent = outcomeLabel(row);
-    card.appendChild(status);
-
-    if (row.note) {
-      const note = doc.createElement('p');
-      note.className = 't4t-completion-note';
-      note.textContent = row.note;
-      card.appendChild(note);
-    }
-
-    if (state.step === 'results') {
-      const chosen = selectedDetails(row);
-      if (chosen) appendCandidate(card, chosen);
-      return card;
-    }
-
-    if (row.resolution === 'ready' || row.outcome === 'already-recorded') {
-      const chosen = selectedDetails(row);
-      if (chosen) appendCandidate(card, chosen);
-      return card;
-    }
-
-    if (row.status === 'probable') {
-      const candidate = row.candidates[0];
-      if (candidate) appendCandidate(card, candidate);
-      card.appendChild(button(doc, 'btn btn-secondary', 'Use this person', () => {
-        captureFields();
-        state.reviews[index] = confirmParticipantChoice(state.reviews[index], candidate?.personId);
-        refreshKnown();
-        render();
-      }, state.busy || !candidate));
-      return card;
-    }
-
-    if (row.status === 'ambiguous') {
-      for (const candidate of row.candidates) {
-        const choice = appendCandidate(card, candidate);
-        choice.appendChild(button(
-          doc,
-          'btn btn-secondary',
-          'Use this person',
-          () => {
-            captureFields();
-            state.reviews[index] = confirmParticipantChoice(state.reviews[index], candidate.personId);
-            refreshKnown();
-            render();
-          },
-          state.busy,
-        ));
-      }
-      return card;
-    }
-
-    if (row.status === 'new') {
-      const title = doc.createElement('p');
-      title.className = 't4t-completion-person';
-      title.textContent = 'New Person';
-      card.appendChild(title);
-      if (state.creatingIndex !== index) {
-        card.appendChild(button(doc, 'btn btn-secondary', 'Create New Person', () => {
-          captureFields();
-          state.creatingIndex = index;
-          state.draft = {
-            name: row.input,
-            rankTitle: '',
-            commandOrganization: '',
-            installation: '',
-          };
-          render();
-        }, state.busy));
-        return card;
-      }
-
-      const form = doc.createElement('form');
-      form.dataset.newPersonForm = 'true';
-      form.className = 't4t-completion-new-person';
-      const draft = state.draft || {};
-      form.append(
-        field(doc, 'Name', 'name', draft.name, true),
-        field(doc, 'Rank / Title', 'rankTitle', draft.rankTitle, false),
-        field(doc, 'Command / Organization', 'commandOrganization', draft.commandOrganization, false),
-        field(doc, 'Installation', 'installation', draft.installation, false),
-      );
-      const actions = doc.createElement('div');
-      actions.className = 't4t-completion-inline-actions';
-      actions.append(
-        button(doc, 'btn btn-secondary', 'Keep Unresolved', () => {
-          state.creatingIndex = null;
-          state.draft = null;
-          render();
-        }, state.busy),
-        button(doc, 'btn btn-primary', 'Create New Person', () => {
-          createRowPerson(index, form);
-        }, state.busy),
-      );
-      form.appendChild(actions);
-      form.addEventListener('submit', (submitEvent) => {
-        submitEvent.preventDefault();
-        createRowPerson(index, form);
-      });
-      card.appendChild(form);
-    }
-    return card;
+  function renderDateNote() {
+    const futureMessage = completionDateMessage(state.completedOn);
+    const note = doc.createElement('p');
+    note.className = futureMessage ? 't4t-completion-error' : 't4t-completion-note';
+    note.textContent = futureMessage || 'This date is used for attendees added during this save. People already saved keep their recorded date.';
+    return note;
   }
 
-  async function createRowPerson(index, form) {
-    if (state.busy) return;
-    captureFields();
-    const payload = newDirectoryPersonInput({
-      name: form.elements.name.value,
-      rankTitle: form.elements.rankTitle.value,
-      commandOrganization: form.elements.commandOrganization.value,
-      installation: form.elements.installation.value,
+  function textField(labelText, id, value, required) {
+    const label = doc.createElement('label');
+    label.className = 't4t-completion-field';
+    label.append(doc.createTextNode(required ? `${labelText}*` : labelText));
+    const input = doc.createElement('input');
+    input.id = id;
+    input.value = value ?? '';
+    input.required = required === true;
+    input.autocomplete = 'off';
+    input.addEventListener('keydown', (keyEvent) => {
+      if (keyEvent.key !== 'Enter') return;
+      keyEvent.preventDefault();
+      addAttendee();
     });
-    if (!payload) {
-      state.reviews[index] = { ...state.reviews[index], note: 'Name is required.' };
-      render();
+    label.appendChild(input);
+    return label;
+  }
+
+  async function writeAttendance(person) {
+    const attendee = rosterAttendeeFromPerson(person, { completedOn: state.completedOn });
+    if (!attendee.personId || rosterIncludesPerson(state.roster, attendee.personId)) {
+      state.error = 'That person is already on the attendance roster.';
+      state.notice = '';
+      state.pending = null;
       return;
     }
-    state.busy = true;
-    state.error = '';
-    render();
-    try {
-      const created = await options.savePerson(payload);
-      if (!created?.id) {
-        state.reviews[index] = {
-          ...state.reviews[index],
-          note: 'The person could not be created.',
-        };
-        state.busy = false;
-        render();
-        return;
-      }
-      const directoryPerson = directoryPersonFromSave(created);
-      if (directoryPerson.id) state.people = [...state.people, directoryPerson];
-      state.reviews[index] = applyCreatedPerson(state.reviews[index], created);
-      state.creatingIndex = null;
-      state.draft = null;
-      refreshKnown();
-    } catch (error) {
-      if (isDuplicatePersonError(error)) {
-        try {
-          const fresh = await options.loadSources();
-          state.people = fresh.people || [];
-          state.aliases = fresh.aliases || [];
-          state.completions = fresh.completions || [];
-          state.products = fresh.products || state.products;
-          state.target = t4tCompletionTarget(event, state.products);
-        } catch (reloadError) {
-          state.reviews[index] = {
-            ...state.reviews[index],
-            note: reloadError?.message || 'The directory could not be refreshed.',
-          };
-          state.busy = false;
-          render();
-          return;
-        }
-        const [rematch] = buildParticipantReviews(state.reviews[index].input, state.people, state.aliases);
-        state.reviews[index] = rematch || state.reviews[index];
-        state.reviews[index] = {
-          ...state.reviews[index],
-          note: state.reviews[index].status === 'new'
-            ? 'A personnel record with that name already exists. The name was not changed.'
-            : 'That name is already in the directory.',
-        };
-        state.creatingIndex = state.reviews[index].status === 'new' ? index : null;
-        refreshKnown();
-      } else {
-        state.reviews[index] = {
-          ...state.reviews[index],
-          note: error?.message || 'The person could not be created.',
-        };
-      }
-    } finally {
-      state.busy = false;
-      render();
+    const dateError = completionDateError();
+    if (dateError) {
+      state.error = dateError;
+      state.notice = '';
+      return;
     }
-  }
-
-  async function recordRows() {
-    if (state.busy || !canRecordT4tCompletions({
-      completedOn: state.completedOn,
-      target: state.target,
-      rows: state.reviews,
-    })) return;
-    state.busy = true;
-    state.error = '';
-    state.creatingIndex = null;
-    render();
-    const seen = new Set(
-      state.reviews
-        .filter((row) => row.outcome === 'already-recorded')
-        .map((row) => row.selectedPersonId),
-    );
-    for (let index = 0; index < state.reviews.length; index += 1) {
-      const row = state.reviews[index];
-      if (row.outcome === 'already-recorded') continue;
-      if (
-        seen.has(row.selectedPersonId)
-        || completionAlreadyRecorded(state.completions, {
-          personId: row.selectedPersonId,
-          productId: state.target.productId,
-          completedOn: state.completedOn,
-          sourceEventId: event.id,
-        })
-      ) {
-        state.reviews[index] = { ...row, outcome: 'already-recorded', outcomeMessage: 'Already Recorded' };
-        seen.add(row.selectedPersonId);
-        continue;
-      }
+    const recordedHere = eventAttendanceRecorded(state.completions, {
+      personId: attendee.personId,
+      productId: state.target.productId,
+      sourceEventId: event.id,
+    });
+    if (!recordedHere) {
       try {
         await options.recordCompletion({
-          personId: row.selectedPersonId,
+          personId: attendee.personId,
           productId: state.target.productId,
           completedOn: state.completedOn,
           sourceEventId: event.id,
           governingSource: null,
           notes: null,
         });
-        state.completions = [...state.completions, {
-          person_id: row.selectedPersonId,
-          product_id: state.target.productId,
-          completed_on: state.completedOn,
-          source_event_id: event.id,
-        }];
-        seen.add(row.selectedPersonId);
-        state.reviews[index] = { ...row, outcome: 'recorded', outcomeMessage: '' };
       } catch (error) {
-        if (isDuplicateCompletionError(error)) {
-          seen.add(row.selectedPersonId);
-          state.reviews[index] = { ...row, outcome: 'already-recorded', outcomeMessage: 'Already Recorded' };
-        } else {
-          state.reviews[index] = {
-            ...row,
-            outcome: 'failed',
-            outcomeMessage: error?.message || 'The completion could not be recorded.',
-          };
-        }
+        if (completionErrorCode(error) !== 'T4T_COMPLETION_EVENT_DUPLICATE') throw error;
       }
+      rememberCompletion(attendee.personId);
     }
-    state.step = 'results';
-    state.busy = false;
+    showSavedRoster();
+    state.pending = null;
+    state.error = '';
+    state.notice = 'Attendee added.';
+    clearForm();
+    state.focusFirst = true;
+  }
+
+  async function addExistingPerson(person) {
+    if (state.busy || !state.target.eligible) return;
+    captureFields();
+    state.busy = true;
+    state.error = '';
+    state.notice = '';
+    state.pending = null;
     render();
     try {
-      await options.onRecorded?.();
+      await writeAttendance(person);
     } catch (error) {
-      state.error = error?.message || 'Completions were recorded, and Facilitator Management could not be refreshed.';
-      render();
+      state.error = error?.message || 'The attendee could not be added.';
+      state.notice = '';
     }
+    const added = !state.error;
+    state.busy = false;
+    render();
+    if (added) await refreshFacilitatorManagement();
+  }
+
+  async function createAndRecordPerson(form) {
+    if (state.busy || !state.target.eligible) return;
+    captureFields();
+    const payload = newDirectoryPersonInput({
+      name: `${form.firstName} ${form.lastName}`,
+      rankTitle: form.rank,
+      commandOrganization: form.command,
+      installation: form.installation,
+    });
+    if (!payload) {
+      state.error = 'First name and last name are required.';
+      state.notice = '';
+      render();
+      return;
+    }
+    const dateError = completionDateError();
+    if (dateError) {
+      state.error = dateError;
+      state.notice = '';
+      render();
+      return;
+    }
+    state.busy = true;
+    state.error = '';
+    state.notice = '';
+    state.pending = null;
+    render();
+    try {
+      const created = await options.savePerson(payload);
+      if (!created?.id) throw new Error('The person could not be created.');
+      const directoryPerson = directoryPersonFromSave(created);
+      const person = directoryPerson.id ? directoryPerson : created;
+      if (person.id && !personById(person.id)) state.people = [...state.people, person];
+      await writeAttendance(person);
+    } catch (error) {
+      state.error = isDuplicatePersonError(error)
+        ? 'A personnel record with that name already exists. The name was not changed.'
+        : (error?.message || 'The attendee could not be added.');
+      state.notice = '';
+    }
+    const added = !state.error;
+    state.busy = false;
+    render();
+    if (added) await refreshFacilitatorManagement();
+  }
+
+  async function removeAttendee(attendee) {
+    if (state.busy || !attendee?.personId) return;
+    captureFields();
+    state.busy = true;
+    state.error = '';
+    state.notice = '';
+    render();
+    try {
+      await options.removeCompletion({
+        personId: attendee.personId,
+        productId: state.target.productId,
+        sourceEventId: event.id,
+      });
+      state.completions = state.completions.filter((row) => !(
+        completionPersonId(row) === attendee.personId
+        && completionProductId(row) === state.target.productId
+        && completionEventId(row) === event.id
+      ));
+      showSavedRoster();
+      state.notice = 'Attendee removed.';
+    } catch (error) {
+      state.error = error?.message || 'The attendee could not be removed.';
+      state.notice = '';
+    }
+    const removed = !state.error;
+    state.busy = false;
+    render();
+    if (removed) await refreshFacilitatorManagement();
+  }
+
+  function addAttendee() {
+    if (state.busy) return;
+    captureFields();
+    const form = state.form;
+    if (!form.firstName || !form.lastName) {
+      state.error = 'First name and last name are required.';
+      state.notice = '';
+      render();
+      return;
+    }
+    const match = matchDirectoryPerson(attendeeMatchText(form), state.people, state.aliases);
+    state.error = '';
+    state.notice = '';
+    if (match.status === 'exact' && match.selectedPersonId) {
+      addExistingPerson(personById(match.selectedPersonId) || { id: match.selectedPersonId, name: form.firstName });
+      return;
+    }
+    state.pending = { status: match.status, match, form };
+    render();
+  }
+
+  function renderPending() {
+    const pending = state.pending;
+    if (!pending) return null;
+    const card = doc.createElement('article');
+    card.className = 't4t-completion-card';
+    const title = doc.createElement('p');
+    title.className = 't4t-completion-person';
+    title.textContent = pending.status === 'new' ? 'New Person' : 'Confirm person';
+    card.appendChild(title);
+
+    if (pending.status === 'probable' || pending.status === 'ambiguous') {
+      const candidates = pending.match.candidates || [];
+      for (const candidate of candidates) {
+        const directoryPerson = personById(candidate.personId);
+        const block = appendCandidate(card, {
+          ...candidate,
+          installation: directoryPerson?.installation || '',
+        });
+        if (directoryPerson?.installation) appendDetail(block, 'Installation: ', directoryPerson.installation);
+        block.appendChild(button(doc, 'btn btn-secondary', 'Use this person', () => {
+          addExistingPerson(directoryPerson || { id: candidate.personId, name: candidate.personalName, rank_title: candidate.rankTitle, command_organization: candidate.commandOrganization, active: candidate.active });
+        }, state.busy));
+      }
+      if (pending.status === 'probable') {
+        card.appendChild(button(doc, 'btn btn-secondary', 'Create New Person', () => {
+          createAndRecordPerson(pending.form);
+        }, state.busy));
+      }
+      return card;
+    }
+
+    const note = doc.createElement('p');
+    note.className = 't4t-completion-note';
+    note.textContent = 'No matching person was found. This person is created, and their attendance is recorded, when you continue.';
+    card.appendChild(note);
+    card.appendChild(button(doc, 'btn btn-primary', 'Create New Person', () => {
+      createAndRecordPerson(pending.form);
+    }, state.busy));
+    return card;
+  }
+
+  function renderRoster() {
+    const section = doc.createElement('section');
+    section.className = 't4t-attendance-roster';
+    const headingRow = doc.createElement('div');
+    headingRow.className = 't4t-roster-heading';
+    const heading = doc.createElement('h4');
+    heading.textContent = 'Attendance Roster';
+    const count = doc.createElement('p');
+    count.className = 't4t-roster-count';
+    count.textContent = attendanceCountLabel(state.roster.length);
+    headingRow.append(heading, count);
+    section.appendChild(headingRow);
+    if (!state.roster.length) {
+      const empty = doc.createElement('p');
+      empty.className = 't4t-completion-note';
+      empty.textContent = 'No attendees yet.';
+      section.appendChild(empty);
+      return section;
+    }
+    const columns = doc.createElement('div');
+    columns.className = 't4t-roster-columns';
+    for (const label of ['Name', 'Command', 'Installation', 'Action']) {
+      const cell = doc.createElement('span');
+      cell.textContent = label;
+      columns.appendChild(cell);
+    }
+    section.appendChild(columns);
+    for (const attendee of state.roster) {
+      const row = doc.createElement('article');
+      row.className = 't4t-roster-row';
+      const name = doc.createElement('p');
+      name.className = 't4t-roster-name';
+      name.textContent = attendee.displayName || attendee.personalName || 'Person';
+      if (attendee.active === false) {
+        const inactive = doc.createElement('span');
+        inactive.className = 't4t-completion-inactive';
+        inactive.textContent = 'Inactive';
+        name.appendChild(inactive);
+      }
+      const command = doc.createElement('p');
+      command.className = 't4t-roster-meta t4t-roster-command';
+      command.textContent = clean(attendee.commandOrganization) || '—';
+      const installation = doc.createElement('p');
+      installation.className = 't4t-roster-meta t4t-roster-installation';
+      installation.textContent = clean(attendee.installation) || '—';
+      row.append(
+        name,
+        command,
+        installation,
+        button(doc, 'btn btn-secondary', 'Remove', () => {
+          removeAttendee(attendee);
+        }, state.busy),
+      );
+      section.appendChild(row);
+    }
+    return section;
   }
 
   function render() {
@@ -733,104 +876,70 @@ export function mountT4tCompletionWorkflow(dialog, options) {
       error.textContent = state.error;
       body.appendChild(error);
     }
+    if (state.notice) {
+      const notice = doc.createElement('p');
+      notice.className = 't4t-completion-note';
+      notice.textContent = state.notice;
+      body.appendChild(notice);
+    }
 
     if (state.step === 'loading') {
       const loading = doc.createElement('p');
       loading.className = 't4t-completion-note';
       loading.textContent = 'Loading personnel and qualification products…';
       body.appendChild(loading);
-      footer.appendChild(button(doc, 'btn btn-secondary', 'Cancel', requestClose, state.busy));
+      footer.appendChild(button(doc, 'btn btn-secondary', 'Close', requestClose, state.busy));
       return;
     }
 
-    body.appendChild(renderFacts());
+    const summary = doc.createElement('div');
+    summary.className = 't4t-event-summary';
+    summary.appendChild(renderFacts());
+    body.appendChild(summary);
 
     if (state.step === 'unavailable' || !state.target.eligible) {
       const reason = doc.createElement('p');
       reason.className = 't4t-completion-note';
       reason.textContent = state.target.reason || 'This event is not a T4T completion source.';
       body.appendChild(reason);
-      footer.appendChild(button(doc, 'btn btn-secondary', 'Cancel', requestClose, state.busy));
+      footer.appendChild(button(doc, 'btn btn-secondary', 'Close', requestClose, state.busy));
       return;
     }
 
-    if (state.step === 'results') {
-      const summary = summarizeT4tCompletionResults(state.reviews);
-      const totals = doc.createElement('div');
-      totals.className = 't4t-completion-summary';
-      totals.append(
-        summaryLine(doc, `Recorded: ${summary.recorded}`),
-        summaryLine(doc, `Already Recorded: ${summary.alreadyRecorded}`),
-        summaryLine(doc, `Failed: ${summary.failed}`),
-      );
-      body.appendChild(totals);
-      state.reviews.forEach((row, index) => body.appendChild(renderReviewCard(row, index)));
-      footer.appendChild(button(doc, 'btn btn-primary', 'Done', requestClose, false));
-      return;
-    }
+    summary.appendChild(renderDateField());
+    body.appendChild(renderDateNote());
 
-    body.appendChild(renderDateField());
-
-    if (state.step === 'entry') {
-      const names = doc.createElement('label');
-      names.className = 't4t-completion-field';
-      names.append(doc.createTextNode('Participant Names'));
-      const area = doc.createElement('textarea');
-      area.id = 't4t-completion-names';
-      area.rows = 8;
-      area.value = state.rosterText;
-      names.appendChild(area);
-      const help = doc.createElement('p');
-      help.className = 't4t-completion-help';
-      help.textContent = 'Paste or enter one participant per line.';
-      names.appendChild(help);
-      body.appendChild(names);
-      footer.append(
-        button(doc, 'btn btn-secondary', 'Cancel', requestClose, state.busy),
-        button(doc, 'btn btn-primary', 'Review Participants', () => {
-          captureFields();
-          state.reviews = buildParticipantReviews(state.rosterText, state.people, state.aliases);
-          if (!state.reviews.length) {
-            state.error = 'Enter at least one participant name.';
-            render();
-            return;
-          }
-          state.error = '';
-          state.creatingIndex = null;
-          state.step = 'review';
-          refreshKnown();
-          render();
-        }, state.busy),
-      );
-      return;
-    }
-
-    state.reviews.forEach((row, index) => body.appendChild(renderReviewCard(row, index)));
-    const record = button(doc, 'btn btn-primary', 'Record Completions', () => {
-      captureFields();
-      refreshKnown();
-      recordRows();
-    }, state.busy || !canRecordT4tCompletions({
-      completedOn: state.completedOn,
-      target: state.target,
-      rows: state.reviews,
-    }));
-    footer.append(
-      button(doc, 'btn btn-secondary', 'Edit Names', () => {
-        captureFields();
-        state.step = 'entry';
-        state.creatingIndex = null;
-        render();
-      }, state.busy),
-      button(doc, 'btn btn-secondary', 'Cancel', requestClose, state.busy),
-      record,
+    const entry = doc.createElement('section');
+    entry.className = 't4t-attendee-entry';
+    const entryHeading = doc.createElement('h4');
+    entryHeading.textContent = 'Add Attendee';
+    entry.appendChild(entryHeading);
+    const entryGrid = doc.createElement('div');
+    entryGrid.className = 't4t-attendee-grid';
+    entryGrid.append(
+      textField('Rank', 't4t-attendee-rank', state.form.rank, false),
+      textField('First Name', 't4t-attendee-first', state.form.firstName, true),
+      textField('Last Name', 't4t-attendee-last', state.form.lastName, true),
+      textField('Command', 't4t-attendee-command', state.form.command, false),
+      textField('Installation', 't4t-attendee-installation', state.form.installation, false),
     );
-  }
+    const entryActions = doc.createElement('div');
+    entryActions.className = 't4t-attendee-actions';
+    entryActions.appendChild(button(doc, 'btn btn-secondary', 'Add Attendee', addAttendee, state.busy));
+    entryGrid.appendChild(entryActions);
+    entry.appendChild(entryGrid);
+    body.appendChild(entry);
+    const pending = renderPending();
+    if (pending) body.appendChild(pending);
+    body.appendChild(renderRoster());
 
-  function summaryLine(ownerDocument, text) {
-    const line = ownerDocument.createElement('p');
-    line.textContent = text;
-    return line;
+    const close = button(doc, 'btn btn-secondary', 'Close', requestClose, state.busy);
+    close.classList.add('t4t-attendance-close');
+    footer.appendChild(close);
+    if (state.focusFirst) {
+      state.focusFirst = false;
+      body.querySelector('#t4t-attendee-first')?.focus();
+    }
   }
 
   function requestClose() {
@@ -852,6 +961,7 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     state.completions = sources?.completions || [];
     state.products = sources?.products || [];
     state.target = t4tCompletionTarget(event, state.products);
+    if (state.target.eligible) showSavedRoster();
     state.step = state.target.eligible ? 'entry' : 'unavailable';
     render();
   }).catch((error) => {

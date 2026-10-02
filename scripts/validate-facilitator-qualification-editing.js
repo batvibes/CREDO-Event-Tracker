@@ -110,7 +110,7 @@ const created = qualificationT4tHistoryRecord(jane, []);
 assert(created?.completedOn === '2024-04-10' && created.sourceEventId === null && created.governingSource === 'LivingWorks' && created.notes === null, 'a new T4T Completed date plans one manual history row');
 assert(!Object.prototype.hasOwnProperty.call(created, 'standing') && !Object.prototype.hasOwnProperty.call(created, 'active'), 'the history plan does not change standing or reactivate a person');
 assert(qualificationT4tHistoryRecord(jane, [{ personId: 'jane', productId: 'asist', completedOn: '2024-04-10' }]) === null, 'saving the same date again does not plan another row');
-assert(qualificationT4tHistoryRecord(jane, [{ person_id: 'jane', product_id: 'asist', completed_on: '2024-04-10', source_event_id: 'event-1', governing_source: 'LivingWorks' }]) === null, 'an event-driven row for the same date blocks a second row');
+assert(qualificationT4tHistoryRecord(jane, [{ person_id: 'jane', product_id: 'asist', completed_on: '2024-04-10', source_event_id: 'event-1', governing_source: 'LivingWorks' }]) === null, 'Step 3 still treats any same person, product, and date as equivalent, so an event row does not cause another manual row');
 const changed = qualificationT4tHistoryRecord({ ...jane, t4tCompletedOn: '2026-05-12' }, [{ personId: 'jane', productId: 'asist', completedOn: '2024-04-10' }]);
 assert(changed?.completedOn === '2026-05-12' && changed.sourceEventId === null, 'a changed qualification date appends a new history row');
 assert(qualificationT4tHistoryRecord({ ...jane, t4tCompletedOn: '' }, [{ personId: 'jane', productId: 'asist', completedOn: '2024-04-10' }]) === null, 'clearing the qualification date plans no history change');
@@ -179,7 +179,7 @@ assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T
 assert(migrationNames.includes('026_facilitator_product_authority_defaults.sql'), 'verified product authority defaults use migration 026');
 assert(migrationNames.includes('027_facilitator_qualification_delete.sql'), 'qualification removal uses migration 027');
 assert(migrationNames.includes('028_facilitator_t4t_completion_history.sql'), 'T4T completion history uses migration 028');
-assert(!migrationNames.some((name) => /^0(29|[3-9]\d)_/.test(name)), 'no migration after 028 was added');
+assert(migrationNames.filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql', 'migrations after 028 are attendance removal and completion provenance uniqueness');
 
 if (errors.length) {
   console.error('validate-facilitator-qualification-editing failed:');

@@ -357,7 +357,7 @@ assert(!activitySource.includes('facilitator_t4t_completions'), 'activity window
 assert(!activitySource.includes('facilitator_t4t_product_experience'), 'activity windows do not read the T4T delivery aggregate');
 assert(!activitySource.includes('expiration_on') && !activitySource.includes('expirationOn'), 'activity evaluation does not read expiration');
 assert(!/\.(insert|update|delete|upsert|rpc)\(/.test(activitySource), 'activity evaluation does not write');
-assert(!migrations.some((name) => /^0(29|[3-9]\d)_/.test(name)), 'no migration after 028 was added');
+assert(migrations.filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql', 'migrations after 028 are attendance removal and completion provenance uniqueness');
 
 if (errors.length) {
   console.error('validate-livingworks-activity-overlay failed:');

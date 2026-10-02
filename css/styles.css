@@ -3896,7 +3896,7 @@ body:has(#new-event-modal[open]) {
 }
 
 #t4t-completion-modal {
-  width: min(880px, calc(100vw - 32px));
+  width: min(1080px, calc(100vw - 40px));
   margin: auto;
   max-height: calc(100dvh - 32px);
   max-height: calc(100vh - 32px);
@@ -3915,41 +3915,191 @@ body:has(#new-event-modal[open]) {
   flex-shrink: 0;
 }
 
+#t4t-completion-modal .modal-header {
+  padding: 12px 20px;
+}
+
+#t4t-completion-modal .modal-footer {
+  justify-content: space-between;
+  padding: 10px 20px;
+}
+
 #t4t-completion-modal .modal-body {
+  gap: 8px;
+  padding: 12px 20px 14px;
   overflow-y: auto;
 }
 
-#t4t-completion-modal .t4t-completion-facts {
+#t4t-completion-modal .modal-body input {
+  padding: 7px 10px;
+}
+
+#t4t-completion-modal .t4t-event-summary {
   display: grid;
-  gap: 6px;
-  margin: 0 0 16px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.9fr) minmax(0, 1.15fr) auto;
+  gap: 8px 18px;
+  align-items: end;
+}
+
+#t4t-completion-modal .t4t-completion-facts {
+  display: contents;
 }
 
 #t4t-completion-modal .t4t-completion-facts div {
-  display: grid;
-  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
-  gap: 4px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 #t4t-completion-modal .t4t-completion-facts dt {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 #t4t-completion-modal .t4t-completion-facts dd {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.2;
 }
 
 #t4t-completion-modal .t4t-completion-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
-  font-size: 0.875rem;
+  gap: 2px;
+  margin-bottom: 0;
+  font-size: 0.75rem;
   font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-attendee-entry,
+#t4t-completion-modal .t4t-attendance-roster {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+#t4t-completion-modal .t4t-attendee-entry h4,
+#t4t-completion-modal .t4t-attendance-roster h4 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-attendee-grid {
+  display: grid;
+  grid-template-columns: 90px minmax(140px, 1fr) minmax(140px, 1fr) minmax(180px, 1.3fr) minmax(180px, 1.3fr) auto;
+  gap: 8px 10px;
+  align-items: end;
+  margin-top: 8px;
+}
+
+#t4t-completion-modal .t4t-attendee-actions {
+  display: flex;
+}
+
+#t4t-completion-modal .t4t-attendee-actions .btn {
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+#t4t-completion-modal .t4t-roster-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+#t4t-completion-modal .t4t-roster-columns,
+#t4t-completion-modal .t4t-roster-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(0, 1.2fr) minmax(0, 1.2fr) auto;
+  gap: 4px 16px;
+  align-items: center;
+}
+
+#t4t-completion-modal .t4t-roster-columns {
+  padding: 2px 0 4px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-roster-columns span:last-child {
+  justify-self: end;
+}
+
+#t4t-completion-modal .t4t-roster-row {
+  min-height: 36px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+#t4t-completion-modal .t4t-roster-name,
+#t4t-completion-modal .t4t-roster-meta,
+#t4t-completion-modal .t4t-roster-count {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#t4t-completion-modal .t4t-roster-name {
+  font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-roster-meta,
+#t4t-completion-modal .t4t-roster-count {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+#t4t-completion-modal .t4t-roster-row .btn {
+  justify-self: end;
+  padding: 4px 10px;
+}
+
+@media (max-width: 1100px) {
+  #t4t-completion-modal .t4t-attendee-grid {
+    grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  #t4t-completion-modal .t4t-event-summary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  #t4t-completion-modal .t4t-attendee-grid,
+  #t4t-completion-modal .t4t-event-summary {
+    grid-template-columns: 1fr;
+  }
+
+  #t4t-completion-modal .t4t-roster-columns {
+    display: none;
+  }
+
+  #t4t-completion-modal .t4t-roster-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  #t4t-completion-modal .t4t-roster-command,
+  #t4t-completion-modal .t4t-roster-installation {
+    grid-column: 1 / -1;
+  }
+
+  #t4t-completion-modal .t4t-roster-row .btn {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
 
 #t4t-completion-modal .t4t-completion-help,
@@ -3985,6 +4135,12 @@ body:has(#new-event-modal[open]) {
   color: #8a5a00;
   font-size: 0.8125rem;
   font-weight: 700;
+}
+
+#t4t-completion-modal .t4t-roster-name .t4t-completion-inactive {
+  display: inline;
+  margin: 0 0 0 8px;
+  font-size: 0.75rem;
 }
 
 #t4t-completion-modal .t4t-completion-error {
