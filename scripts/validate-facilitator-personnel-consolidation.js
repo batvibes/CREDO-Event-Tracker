@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { activeFacilitatorRoster, filterFacilitatorPersonnel, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
+import { filterFacilitatorPersonnel, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
 import {
   facilitatorReusePlan,
   facilitatorReuseValues,
@@ -212,8 +212,7 @@ const historical = summarizeFacilitatorPersonnel(
   [],
   products,
 );
-assert(historical.length === 1 && historical[0].isFacilitator === false, 'historical facilitation stays attached without an explicit facilitator flag');
-assert(activeFacilitatorRoster(historical).length === 0, 'historical facilitation does not keep them on the active roster');
+assert(historical.length === 1 && historical[0].isFacilitator === false, 'historical facilitators remain without an explicit facilitator flag');
 assert(historical[0].isCredoStaff === true && historical[0].isPoc === true, 'historical facilitator records keep their other roles');
 assert(historical[0].productCount === 1 && historical[0].eventsConducted === 2 && historical[0].mostRecentOn === '2024-06-01', 'an ordinary-only facilitator still counts only that experience');
 assert(historical[0].experience.length === 1 && historical[0].t4tExperience.length === 0, 'an ordinary-only profile keeps T4T facilitation empty');

@@ -16,7 +16,7 @@ import {
   serializeFacilitators,
   serializePoc,
 } from '../js/event-reference-fields.js';
-import { activeFacilitatorRoster, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
+import { summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
 import {
   TEAM_DIRECTORY_TABS,
   directoryPersonnelNeedsReview,
@@ -218,8 +218,7 @@ const facilitated = summarizeFacilitatorPersonnel(
   [],
   [],
 );
-assert(facilitated.length === 1 && facilitated[0].isFacilitator === false, 'recorded facilitation stays attached without setting the flag');
-assert(activeFacilitatorRoster(facilitated).length === 0, 'recorded facilitation does not keep them on the active roster');
+assert(facilitated.length === 1 && facilitated[0].isFacilitator === false, 'recorded facilitation includes the person without setting the flag');
 assert(facilitated[0].experience.length === 1 && facilitated[0].t4tExperience.length === 0, 'ordinary history stays out of T4T history');
 assert(facilitated[0].experience[0].eventsConducted === 1, 'one eligible facilitator event counts once');
 assert(
@@ -242,7 +241,6 @@ const t4tFacilitated = summarizeFacilitatorPersonnel(
   [],
 );
 assert(t4tFacilitated[0].experience.length === 0 && t4tFacilitated[0].t4tExperience.length === 1, 'T4T facilitation stays on its own history');
-assert(activeFacilitatorRoster(t4tFacilitated).length === 0, 'T4T facilitation history does not keep them on the active roster');
 const attended = summarizeFacilitatorPersonnel(
   [neutral],
   [],
@@ -252,7 +250,6 @@ const attended = summarizeFacilitatorPersonnel(
   [{ person_id: 'person-a', product_id: 'product-1', completed_on: '2026-03-01', source_event_id: null }],
 );
 assert(attended.length === 1 && attended[0].experience.length === 0 && attended[0].t4tExperience.length === 0, 'a T4T completion does not create a facilitation count');
-assert(activeFacilitatorRoster(attended).length === 0, 'a T4T completion does not keep them on the active roster');
 
 const staffMount = sliceBetween(fields, 'function mountStaffMulti', 'function renderAddOtherPanel');
 const otherStaff = sliceBetween(fields, 'function addOtherStaffName', 'function renderAddOtherPanel');
@@ -270,7 +267,7 @@ assert(pocParsed.tokens[0].id === 'person-a' && pocParsed.tokens[0].orphan === f
 assert(!JSON.stringify(pocParsed).includes('"isPoc":true') && !JSON.stringify(pocParsed).includes('"isFacilitator":true'), 'POC reuse does not set role flags');
 assert(fields.includes("name: 'poc'") && fields.includes('getPeople,'), 'the POC selector uses the active people directory');
 assert(fields.includes("serialize: serializePoc"), 'POC saves through its own serializer');
-assert(directory.includes('person.isPoc === true'), 'Team Points of Contact membership is the POC role');
+assert(!directory.includes('person.isPoc === true'), 'Team Points of Contact does not depend on is_poc');
 
 assert(reuseFn.includes('public.normalize_reference_name(person.name) = v_norm'), 'an exact personal name reuses the person');
 assert(reuseFn.includes('public.personnel_display_name(person.rank_title, person.name)'), 'a display name, including a separate rank, reuses the person');
@@ -359,13 +356,11 @@ assert(reconcile.includes('perform public.remember_personnel_display_alias(v_sur
 
 assert(TEAM_DIRECTORY_TABS.map((tab) => tab.id).join(',') === 'staff,poc', 'Team shows CREDO Staff and Points of Contact');
 const activeNeutral = mapTeamDirectoryPerson({ id: 'n', name: 'Neutral Person', active: true });
-const activeStaff = mapTeamDirectoryPerson({ id: 's', name: 'Staff Person', active: true, is_credo_staff: true, is_poc: true });
+const activeStaff = mapTeamDirectoryPerson({ id: 's', name: 'Staff Person', active: true, is_credo_staff: true });
 const activeFacilitator = mapTeamDirectoryPerson({ id: 'f', name: 'Facilitator Person', active: true, is_facilitator: true });
-const designated = mapTeamDirectoryPerson({ id: 'p', name: 'Poc Person', active: true, is_poc: true, is_facilitator: true });
 const inactive = mapTeamDirectoryPerson({ id: 'i', name: 'Inactive Person', active: false, is_poc: true, is_credo_staff: true });
-const roster = [activeNeutral, activeStaff, activeFacilitator, designated, inactive];
-assert(filterTeamDirectory(roster, 'poc').map((person) => person.id).join(',') === 'p,s', 'Points of Contact lists active people with the POC role');
-assert(!filterTeamDirectory(roster, 'poc').some((person) => person.id === 'f' || person.id === 'n'), 'facilitator and staff status alone do not enter Points of Contact');
+const roster = [activeNeutral, activeStaff, activeFacilitator, inactive];
+assert(filterTeamDirectory(roster, 'poc').map((person) => person.id).join(',') === 'f,n,s', 'Points of Contact lists every active person');
 assert(!filterTeamDirectory(roster, 'poc').some((person) => person.id === 'i'), 'inactive people stay out of Points of Contact');
 assert(filterTeamDirectory(roster, 'staff').map((person) => person.id).join(',') === 's', 'CREDO Staff lists current staff only');
 assert(teamDirectoryRoleBadges(activeStaff).map((badge) => badge.label).join(',') === 'Staff', 'staff badges remain informational');
@@ -379,16 +374,8 @@ assert(
     [],
     [],
   ).length === 1,
-  'a qualification stays attached without facilitator status',
+  'a qualification makes a person facilitator-relevant',
 );
-assert(activeFacilitatorRoster(summarizeFacilitatorPersonnel(
-  [mapTeamDirectoryPerson({ id: 'n', name: 'Neutral Person', active: true, is_facilitator: false })],
-  [],
-  [{ id: 'q', person_id: 'n', product_id: 'product-1', standing: 'current', trainer_authority: false }],
-  products,
-  [],
-  [],
-)).length === 0, 'a qualification does not keep them on the active roster');
 assert(facilitator.includes('person.isFacilitator !== true') && facilitator.includes('t4tCompletions.length === 0'), 'Facilitator Management requires facilitator relevance');
 assert(!facilitator.includes('events.poc') && !facilitator.includes('events.credo_staff') && !facilitator.includes('credoStaff'), 'Facilitator Management does not read staff or POC event text');
 

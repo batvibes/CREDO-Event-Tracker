@@ -1,7 +1,7 @@
 /**
  * Team directory rules for the Unified Personnel view.
  * CREDO Staff is the active people assigned to CREDO.
- * Points of Contact is the active people with the Point of Contact role.
+ * Points of Contact is every active canonical person.
  * Role badges still come only from explicit public.people flags.
  * This module does not read events or team_members.
  */
@@ -25,7 +25,7 @@ export const TEAM_STAFF_COLUMNS = [
 
 export const TEAM_DIRECTORY_EMPTY_MESSAGES = {
   staff: 'No active CREDO Staff have been designated yet.',
-  poc: 'No Points of Contact have been designated yet.',
+  poc: 'No active people are in the directory.',
 };
 
 const ROLE_BADGES = [
@@ -116,7 +116,7 @@ export function filterTeamDirectory(personnel, tab) {
   const active = uniquePeople(personnel).filter((person) => person.active === true);
   if (tab === 'staff') return sortStaff(active.filter((person) => person.isCredoStaff === true));
   if (tab === 'facilitators') return sortByName(active.filter((person) => person.isFacilitator === true));
-  if (tab === 'poc') return sortByDisplayName(active.filter((person) => person.isPoc === true));
+  if (tab === 'poc') return sortByDisplayName(active);
   if (tab === 'all') return sortByName(active);
   return sortStaff(active.filter((person) => person.isCredoStaff === true));
 }

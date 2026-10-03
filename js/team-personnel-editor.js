@@ -209,8 +209,7 @@ export function personnelRoleRemovalValues(person, role) {
 export function personnelLifecycleActions(person, surface) {
   if (!person?.id) return [];
   const actions = [];
-  if (surface !== 'facilitator' && person.isPoc === true) actions.push('remove-poc');
-  if (surface === 'facilitator' && person.isFacilitator === true) actions.push('remove-facilitator');
+  if (surface === 'facilitator' && person.isFacilitator === true) actions.push('clear-facilitator');
   actions.push('delete');
   return actions;
 }
@@ -224,26 +223,18 @@ export function personnelLifecycleCopy(person, action) {
       confirm: 'Delete Person',
     };
   }
-  if (action === 'remove-facilitator') {
+  if (action === 'clear-facilitator') {
     return {
-      title: `Remove facilitator status from ${identity}?`,
-      body: 'This removes only facilitator status. Points of Contact status, CREDO Staff status, qualifications, and facilitation history stay with this person. They leave the Facilitator Management roster. The personnel record is kept.',
-      confirm: 'Remove Facilitator',
-    };
-  }
-  if (action === 'remove-poc') {
-    return {
-      title: `Remove ${identity} from Points of Contact?`,
-      body: 'This removes only the Points of Contact role. Facilitator status, CREDO Staff status, qualifications, and history stay with this person. They leave the Points of Contact roster. The personnel record is kept.',
-      confirm: 'Remove from Points of Contact',
+      title: `Clear facilitator role for ${identity}?`,
+      body: 'This clears only the facilitator role. Points of Contact status, CREDO Staff status, qualifications, and facilitation history stay with this person. They remain in Facilitator Management when that history exists. The personnel record is kept.',
+      confirm: 'Clear Facilitator Role',
     };
   }
   return null;
 }
 
 const PERSONNEL_LIFECYCLE_LABELS = {
-  'remove-poc': 'Remove from Points of Contact',
-  'remove-facilitator': 'Remove Facilitator',
+  'clear-facilitator': 'Clear Facilitator Role',
   delete: 'Delete Person',
 };
 
@@ -527,7 +518,7 @@ export function mountPersonnelEditor({
             render();
             try {
               if (action === 'delete') await onDelete(person.id);
-              else await onRemoveRole(action === 'remove-facilitator' ? 'facilitator' : 'poc');
+              else if (action === 'clear-facilitator') await onRemoveRole('facilitator');
               document.getElementById('personnel-editor-modal')?.close();
             } catch (error) {
               console.error(error);

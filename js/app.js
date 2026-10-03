@@ -122,7 +122,6 @@ import {
   formatRecordedFacilitationDate,
   sortFacilitatorPersonnel,
   sortFacilitatorProgramCapabilities,
-  activeFacilitatorRoster,
   summarizeFacilitatorPersonnel,
 } from './facilitator-management.js';
 import {
@@ -11369,7 +11368,7 @@ function facilitatorFilterState() {
 
 function visibleFacilitatorPersonnel() {
   return sortFacilitatorPersonnel(
-    filterFacilitatorPersonnel(activeFacilitatorRoster(facilitatorPersonnel), facilitatorFilterState()),
+    filterFacilitatorPersonnel(facilitatorPersonnel, facilitatorFilterState()),
     facilitatorSort.column,
     facilitatorSort.direction,
   );
@@ -11583,7 +11582,7 @@ function resetFacilitatorLifecycle(personId = '') {
 async function refreshPersonnelSurfaces(personId) {
   const detailOpen = document.getElementById('facilitator-detail-modal')?.open === true;
   await renderFacilitatorManagement();
-  if (detailOpen && personId && activeFacilitatorRoster(facilitatorPersonnel).some((record) => record.id === personId)) {
+  if (detailOpen && personId && facilitatorPersonnel.some((record) => record.id === personId)) {
     openFacilitatorDetail(personId);
   } else if (detailOpen) {
     closeFacilitatorDetail();
@@ -11825,7 +11824,7 @@ function openFacilitatorDetail(personId) {
         openFacilitatorDetail(personId);
         try {
           if (action === 'delete') await applyPersonnelDeletion(person.id);
-          else await applyPersonnelRoleRemoval(person, action === 'remove-facilitator' ? 'facilitator' : 'poc');
+          else if (action === 'clear-facilitator') await applyPersonnelRoleRemoval(person, 'facilitator');
         } catch (error) {
           console.error(error);
           facilitatorLifecycleBusy = false;

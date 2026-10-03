@@ -58,11 +58,10 @@ const roster = [ordinary, staff, facilitator, inactive, designated, staffPoc];
 const pocIds = filterTeamDirectory(roster, 'poc').map((entry) => entry.id);
 const staffIds = filterTeamDirectory(roster, 'staff').map((entry) => entry.id);
 
-assert(pocIds.includes('designated'), 'A: an active person with the POC role is in Points of Contact');
-assert(pocIds.includes('staff-poc'), 'B: active CREDO Staff with the POC role are in Points of Contact');
-assert(!pocIds.includes('ordinary'), 'an active person with every role flag false is absent from Points of Contact');
-assert(!pocIds.includes('staff'), 'active CREDO Staff without the POC role are absent from Points of Contact');
-assert(!pocIds.includes('facilitator'), 'an active facilitator without the POC role is absent from Points of Contact');
+assert(pocIds.includes('ordinary'), 'A: an active person with every role flag false is in Points of Contact');
+assert(pocIds.includes('staff'), 'B: active CREDO Staff are in Points of Contact');
+assert(pocIds.includes('facilitator'), 'C: active facilitators are in Points of Contact');
+assert(pocIds.includes('designated'), 'an active person with the POC role is in Points of Contact');
 assert(!pocIds.includes('inactive'), 'D: inactive people stay out of Points of Contact');
 assert(staffIds.join(',') === 'staff,staff-poc', 'J: CREDO Staff still uses the staff flag');
 assert(!staffIds.includes('ordinary') && !staffIds.includes('facilitator') && !staffIds.includes('designated'), 'J: the staff tab does not gain ordinary or facilitator-only people');
@@ -70,7 +69,7 @@ assert(filterTeamDirectory(roster, 'poc').every((entry) => entry.active === true
 assert(new Set(pocIds).size === pocIds.length, 'Points of Contact does not duplicate a person');
 assert(
   filterTeamDirectory(roster, 'poc').map((entry) => entry.id).join(',')
-    === [...roster.filter((entry) => entry.active && entry.isPoc === true)].sort(comparePersonnelDisplayNames).map((entry) => entry.id).join(','),
+    === [...roster.filter((entry) => entry.active)].sort(comparePersonnelDisplayNames).map((entry) => entry.id).join(','),
   'F: Points of Contact order follows the shared display-name comparator',
 );
 
@@ -183,9 +182,9 @@ const db = read('js/db.js');
 const createStart = db.indexOf('export async function createPerson');
 const createBody = db.slice(createStart, db.indexOf('function referenceNameConflictError'));
 assert(directory.includes('return [...personnel].sort(comparePersonnelDisplayNames)'), 'Points of Contact sorts with the shared personnel comparator');
-assert(directory.includes("if (tab === 'poc') return sortByDisplayName(active.filter((person) => person.isPoc === true))"), 'Points of Contact uses the POC role and that shared sort');
+assert(directory.includes("if (tab === 'poc') return sortByDisplayName(active)"), 'Points of Contact uses that shared sort');
 assert(picker.includes('.sort(comparePersonnelDisplayNames)'), 'the person menu sorts with the shared personnel comparator');
-assert(directory.includes("person.isPoc === true"), 'Points of Contact membership is the POC role');
+assert(!directory.includes("person.isPoc === true"), 'Points of Contact does not filter on the POC flag');
 assert(!directory.includes("label: 'POC'"), 'the directory does not render a POC role badge');
 const editor = read('js/team-personnel-editor.js');
 assert(!editor.includes("checkbox(pocInput, 'Point of Contact')") && !editor.includes('Point of Contact'), 'the personnel editor has no Point of Contact role control');
@@ -234,7 +233,7 @@ const rankRule = directoryCss.slice(
 );
 assert(rankRule.includes('font-weight: 400') && rankRule.includes('color: #4b5563') && !rankRule.includes('font-weight: 700'), 'Rank / Title stays subdued');
 assert(!directoryLayout.includes('auto 56px'), 'Roles is no longer an independent auto column');
-assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No Points of Contact have been designated yet.', 'the empty directory copy matches the POC roster');
+assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'the empty directory copy matches the active-person view');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'the CREDO Staff empty copy is unchanged');
 
 if (errors.length) {

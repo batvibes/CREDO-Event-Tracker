@@ -201,8 +201,8 @@ assert(ids(filterTeamDirectory(roster, 'all')).join(',') === '1,3,5,6,2,7,8', 'A
 assert(!ids(filterTeamDirectory(roster, 'all')).includes('4'), 'inactive personnel are excluded from All Personnel');
 assert(ids(filterTeamDirectory(roster, 'staff')).join(',') === '3,1,8', 'CREDO Staff uses is_credo_staff and display order');
 assert(ids(filterTeamDirectory(roster, 'facilitators')).join(',') === '3,5', 'Facilitators uses is_facilitator only');
-assert(ids(filterTeamDirectory(roster, 'poc')).join(',') === '3,6', 'Points of Contact lists active people with the POC role in display order');
-assert(!filterTeamDirectory(roster, 'poc').some((person) => person.isPoc !== true), 'an active person without the POC role is absent');
+assert(ids(filterTeamDirectory(roster, 'poc')).join(',') === '3,5,6,2,1,7,8', 'Points of Contact lists every active person in display order');
+assert(filterTeamDirectory(roster, 'poc').some((person) => person.id === '2' && person.isPoc === false), 'an active person is listed without the POC flag');
 assert(!ids(filterTeamDirectory(roster, 'poc')).includes('4'), 'inactive people stay out of Points of Contact');
 assert(!ids(filterTeamDirectory(roster, 'staff')).includes('2'), 'a facilitator-like name is not CREDO Staff');
 assert(!ids(filterTeamDirectory(roster, 'facilitators')).includes('2'), 'command text does not confer Facilitator');
@@ -221,7 +221,7 @@ assert(directorySource.includes('staffStatusNextAction: cleanText(row?.staff_sta
 assert(dbSource.includes('staff_status_next_action'), 'directory fetch still reads staff_status_next_action');
 assert(/status_next_action/.test(dbSource), 'legacy team_members status field remains in the data layer');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'CREDO Staff empty state copy');
-assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No Points of Contact have been designated yet.', 'POC empty state copy');
+assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'POC empty state copy');
 assert(!Object.values(TEAM_DIRECTORY_EMPTY_MESSAGES).some((message) => /facilitator/i.test(message)), 'Team empty states do not mention facilitators');
 
 let diffNames = '';

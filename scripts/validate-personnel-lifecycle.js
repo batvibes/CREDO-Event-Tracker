@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { activeFacilitatorRoster, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
+import { summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
 import { filterTeamDirectory, mapTeamDirectoryPerson } from '../js/team-personnel-directory.js';
 import {
   personnelLifecycleActions,
@@ -118,32 +118,13 @@ const inactivePoc = mapTeamDirectoryPerson({
   is_poc: true,
 });
 const contacts = filterTeamDirectory([facilitatorActive, staffActive, pocActive, roleless, inactivePoc], 'poc').map((person) => person.id);
-assert(contacts.join(',') === 'poc', 'Points of Contact lists only an active person with the POC role');
-assert(!contacts.includes('facilitator'), 'an active facilitator without the POC role is absent from Points of Contact');
-assert(!contacts.includes('staff'), 'an active staff member without the POC role is absent from Points of Contact');
-assert(!contacts.includes('roleless'), 'a roleless active person is absent from Points of Contact');
-
-const afterPocRemoval = mapTeamDirectoryPerson({
-  id: 'both',
-  name: 'Test McTesterton',
-  rank_title: 'LT',
-  active: removedPoc.active,
-  is_poc: removedPoc.isPoc,
-  is_facilitator: removedPoc.isFacilitator,
-  is_credo_staff: removedPoc.isCredoStaff,
-});
-assert(afterPocRemoval.active === true && afterPocRemoval.isFacilitator === true, 'POC removal leaves a facilitator active');
-assert(filterTeamDirectory([afterPocRemoval], 'poc').length === 0, 'POC removal takes a remaining facilitator off the Points of Contact roster');
-const staffAfterPocRemoval = mapTeamDirectoryPerson({
-  id: 'staff-kept',
-  name: 'Staff Kept',
-  active: true,
-  is_poc: false,
-  is_facilitator: false,
-  is_credo_staff: true,
-});
-assert(filterTeamDirectory([staffAfterPocRemoval], 'poc').length === 0, 'a remaining staff member without the POC role is absent from Points of Contact');
-assert(filterTeamDirectory([staffAfterPocRemoval], 'staff').map((person) => person.id).join(',') === 'staff-kept', 'that staff member stays on CREDO Staff');
+assert(contacts.includes('facilitator'), 'an active facilitator appears in Points of Contact');
+assert(contacts.includes('staff'), 'an active staff member appears in Points of Contact');
+assert(contacts.includes('poc'), 'an active person with the POC role appears in Points of Contact');
+assert(contacts.includes('roleless'), 'an active roleless person appears in Points of Contact');
+assert(!contacts.includes('inactive'), 'an inactive person stays out of Points of Contact');
+const archived = mapTeamDirectoryPerson({ ...roleless, active: false });
+assert(filterTeamDirectory([archived], 'poc').length === 0, 'archiving a person removes them from the active personnel directory');
 
 const products = [{ id: 'safetalk', name: 'safeTALK', code: 'safetalk', active: true, sort_order: 1 }];
 const currentFacilitator = summarizeFacilitatorPersonnel(
@@ -154,7 +135,7 @@ const currentFacilitator = summarizeFacilitatorPersonnel(
   [],
   [{ person_id: 'flag', product_id: 'safetalk', completed_on: '2024-01-01' }],
 );
-assert(activeFacilitatorRoster(currentFacilitator).map((person) => person.id).join(',') === 'flag', 'the active roster is the people with facilitator status');
+assert(currentFacilitator.map((person) => person.id).join(',') === 'flag', 'an explicit facilitator appears in Facilitator Management');
 assert(currentFacilitator[0].eventsConducted === 1 && currentFacilitator[0].qualificationProducts.length === 1 && currentFacilitator[0].t4tCompletions.length === 1, 'history calculations remain for a current facilitator');
 
 const qualified = summarizeFacilitatorPersonnel(
@@ -163,17 +144,15 @@ const qualified = summarizeFacilitatorPersonnel(
   [{ id: 'q1', person_id: 'qual', product_id: 'safetalk', standing: 'current' }],
   products,
 );
-assert(qualified.length === 1 && qualified[0].qualificationProducts.length === 1, 'qualification rows stay attached to the same person');
+assert(qualified.length === 1 && qualified[0].qualificationProducts.length === 1, 'a qualification alone includes the person');
 assert(qualified[0].isFacilitator === false && qualified[0].isPoc === true, 'a retained qualification keeps the other roles');
-assert(activeFacilitatorRoster(qualified).length === 0, 'qualifications do not keep a non-facilitator on the active roster');
 const experienced = summarizeFacilitatorPersonnel(
   [{ id: 'exp', name: 'Experienced Person', active: true, is_facilitator: false, is_poc: false, is_credo_staff: true }],
   [{ person_id: 'exp', product_id: 'safetalk', events_conducted: 2, first_recorded_facilitation_on: '2024-01-01', most_recent_facilitation_on: '2024-06-01' }],
   [],
   products,
 );
-assert(experienced.length === 1 && experienced[0].eventsConducted === 2 && experienced[0].isCredoStaff === true, 'recorded facilitation history and CREDO Staff status stay');
-assert(activeFacilitatorRoster(experienced).length === 0, 'historical facilitation does not keep them on the active roster');
+assert(experienced.length === 1 && experienced[0].eventsConducted === 2 && experienced[0].isCredoStaff === true, 'ordinary facilitation history alone includes the person and keeps CREDO Staff status');
 const attended = summarizeFacilitatorPersonnel(
   [{ id: 'attended', name: 'T4T Person', active: true, is_facilitator: false, is_poc: true, is_credo_staff: true }],
   [],
@@ -182,8 +161,7 @@ const attended = summarizeFacilitatorPersonnel(
   [],
   [{ person_id: 'attended', product_id: 'safetalk', completed_on: '2024-03-01' }],
 );
-assert(attended.length === 1 && attended[0].t4tCompletions.length === 1 && attended[0].isPoc === true && attended[0].isCredoStaff === true, 'T4T history stays and the other roles stay');
-assert(activeFacilitatorRoster(attended).length === 0, 'T4T history does not keep them on the active roster');
+assert(attended.length === 1 && attended[0].t4tCompletions.length === 1 && attended[0].isPoc === true && attended[0].isCredoStaff === true, 'T4T completion history alone includes the person and keeps the other roles');
 const removedFromRoster = summarizeFacilitatorPersonnel(
   [{
     id: 'both',
@@ -197,46 +175,53 @@ const removedFromRoster = summarizeFacilitatorPersonnel(
   [{ id: 'q2', person_id: 'both', product_id: 'safetalk', standing: 'current' }],
   products,
 );
-assert(activeFacilitatorRoster(removedFromRoster).length === 0, 'removing facilitator status takes them off the active roster');
-assert(removedFromRoster[0].isPoc === true && removedFromRoster[0].isCredoStaff === true, 'POC and CREDO Staff stay after facilitator removal');
-assert(removedFromRoster[0].eventsConducted === 3 && removedFromRoster[0].qualificationProducts.length === 1, 'history remains available after facilitator removal');
+assert(removedFromRoster.length === 1 && removedFromRoster[0].isFacilitator === false, 'clearing the facilitator role leaves a historically evidenced person visible');
+assert(removedFromRoster[0].isPoc === true && removedFromRoster[0].isCredoStaff === true, 'POC and CREDO Staff stay after the facilitator role is cleared');
+assert(removedFromRoster[0].eventsConducted === 3 && removedFromRoster[0].qualificationProducts.length === 1, 'clearing the facilitator role does not delete history');
+const t4tOnly = summarizeFacilitatorPersonnel(
+  [{ id: 't4t-only', name: 'T4T Instructor', active: true, is_facilitator: false }],
+  [],
+  [],
+  products,
+  [{ person_id: 't4t-only', product_id: 'safetalk', events_conducted: 1, most_recent_facilitation_on: '2024-06-01' }],
+);
+assert(t4tOnly.length === 1 && t4tOnly[0].t4tExperience.length === 1, 'T4T facilitation evidence alone includes the person');
+const deletedId = 'both';
+const afterDelete = removedFromRoster.filter((person) => person.id !== deletedId);
+assert(afterDelete.length === 0, 'deleting the person removes them from Facilitator Management');
 assert(filterTeamDirectory([mapTeamDirectoryPerson({
-  id: 'both',
-  name: 'Test McTesterton',
+  id: 'kept',
+  name: 'Kept Person',
   active: true,
-  is_poc: true,
-  is_facilitator: false,
-})], 'poc').length === 1, 'a remaining POC stays on the Points of Contact roster');
+})], 'poc').every((person) => person.id !== deletedId), 'deleting the person removes them from Points of Contact');
 
-assert(personnelLifecycleActions(pocOnly, 'team').join(',') === 'remove-poc,delete', 'the Team editor offers POC removal and deletion for a POC');
-assert(personnelLifecycleActions({ ...pocOnly, isPoc: false }, 'team').join(',') === 'delete', 'POC removal is hidden when the person is not a POC');
-assert(personnelLifecycleActions(both, 'facilitator').join(',') === 'remove-facilitator,delete', 'Facilitator Management offers facilitator removal and deletion');
-assert(personnelLifecycleActions({ ...facilitatorOnly, isFacilitator: false }, 'facilitator').join(',') === 'delete', 'facilitator removal is hidden when facilitator status is already off');
-assert(!personnelLifecycleActions(both, 'team').includes('remove-facilitator'), 'the Team editor does not take facilitator status off');
-assert(!personnelLifecycleActions(both, 'facilitator').includes('remove-poc'), 'Facilitator Management does not take the POC role off');
+assert(personnelLifecycleActions(pocOnly, 'team').join(',') === 'delete', 'the Team editor offers deletion and does not offer a Points of Contact removal');
+assert(personnelLifecycleActions(both, 'team').join(',') === 'delete', 'the Team editor does not clear the facilitator role');
+assert(personnelLifecycleActions(both, 'facilitator').join(',') === 'clear-facilitator,delete', 'Facilitator Management offers clearing the facilitator role and deletion');
+assert(personnelLifecycleActions({ ...facilitatorOnly, isFacilitator: false }, 'facilitator').join(',') === 'delete', 'the facilitator role action is hidden when that role is already off');
+assert(!personnelLifecycleActions(both, 'facilitator').includes('remove-poc'), 'Facilitator Management does not offer a Points of Contact removal');
 
 const deleteCopy = personnelLifecycleCopy({ rankTitle: 'LT', name: 'Test McTesterton' }, 'delete');
 assert(deleteCopy.title === 'Delete LT Test McTesterton?', 'deletion names the person');
 assert(deleteCopy.body === 'This permanently removes this personnel record. Any roles, qualifications, aliases, and linked personnel data may also be removed. Historical event information may be affected.', 'deletion explains the impact');
 assert(deleteCopy.confirm === 'Delete Person', 'deletion is labeled Delete Person');
-const pocCopy = personnelLifecycleCopy(pocOnly, 'remove-poc');
-assert(pocCopy.confirm === 'Remove from Points of Contact', 'POC removal uses the directory label');
-assert(pocCopy.body.includes('leave the Points of Contact roster') && pocCopy.body.includes('personnel record is kept'), 'POC removal leaves the roster and keeps the record');
-assert(!pocCopy.body.includes('leave the active directory'), 'POC removal does not describe archival');
-const multiCopy = personnelLifecycleCopy(both, 'remove-poc');
-assert(multiCopy.body.includes('Facilitator status, CREDO Staff status'), 'POC removal tells a multi-role person the other roles stay');
-assert(multiCopy.body.includes('leave the Points of Contact roster'), 'a remaining facilitator still leaves the Points of Contact roster');
-const facilitatorCopy = personnelLifecycleCopy(both, 'remove-facilitator');
-assert(facilitatorCopy.body.includes('qualifications, and facilitation history stay'), 'facilitator removal keeps qualifications and history');
-assert(facilitatorCopy.body.includes('leave the Facilitator Management roster'), 'facilitator removal leaves the active roster');
-assert(!facilitatorCopy.body.includes('when no facilitation'), 'history does not decide active roster membership');
+assert(personnelLifecycleCopy(pocOnly, 'remove-poc') === null, 'there is no Points of Contact removal confirmation');
+const facilitatorCopy = personnelLifecycleCopy(both, 'clear-facilitator');
+assert(facilitatorCopy.confirm === 'Clear Facilitator Role', 'the facilitator action clears the role');
+assert(facilitatorCopy.body.includes('qualifications, and facilitation history stay'), 'clearing the facilitator role keeps qualifications and history');
+assert(facilitatorCopy.body.includes('remain in Facilitator Management when that history exists'), 'clearing the role does not promise removal from Facilitator Management');
+assert(!facilitatorCopy.body.includes('leave the Facilitator Management'), 'the confirmation does not claim the person leaves Facilitator Management');
 
 const editor = read('js/team-personnel-editor.js');
 const app = read('js/app.js');
 const db = read('js/db.js');
 const fields = read('js/event-reference-fields.js');
 const migration = read('supabase/migrations/037_delete_directory_person.sql');
-assert(!editor.includes('Point of Contact'), 'role removal does not restore a Point of Contact checkbox');
+assert(!editor.includes('Point of Contact'), 'the personnel editor has no Point of Contact role control');
+assert(!editor.includes('Remove from Points of Contact') && !editor.includes('remove-poc'), 'the editor does not offer removal from Points of Contact');
+assert(!editor.includes('Remove Facilitator'), 'the editor does not offer a misleading Remove Facilitator action');
+assert(editor.includes('Clear Facilitator Role'), 'Facilitator Management can clear the facilitator role');
+assert(editor.includes('Archive this person? They leave the active directory'), 'archive still removes the person from the active directory');
 assert(editor.includes('onArm?.(action)'), 'the first lifecycle click only asks for confirmation');
 assert(editor.includes("confirm.className = pendingAction === 'delete' ? 'btn btn-danger' : 'btn btn-primary'"), 'Delete Person is confirmed with a separate destructive button');
 assert(editor.includes("if (action === 'delete') await onDelete(person.id)"), 'the editor deletes only after confirmation');
@@ -245,11 +230,13 @@ assert(!/update public\.events|events\.facilitators|events\.poc|events\.credo_st
 
 const removal = app.slice(app.indexOf('async function applyPersonnelRoleRemoval'), app.indexOf('async function applyPersonnelDeletion'));
 assert(removal.includes('saveDirectoryPerson(values)') && removal.includes('personnelRoleRemovalValues(person, role)'), 'role removal saves the full stored identity with one flag cleared');
-assert(!removal.includes('archiveDirectoryPerson'), 'role removal does not archive the person');
-assert(app.includes('activeFacilitatorRoster(facilitatorPersonnel)'), 'the Facilitator Management list uses facilitator status');
+assert(!removal.includes('archiveDirectoryPerson'), 'clearing the facilitator role does not archive the person');
+assert(!app.includes('activeFacilitatorRoster'), 'the Facilitators list is not restricted to the facilitator flag');
+assert(app.includes('filterFacilitatorPersonnel(facilitatorPersonnel, facilitatorFilterState())'), 'the Facilitators list uses the summarized facilitator population');
 assert(!removal.includes('deleteDirectoryPerson') && !removal.includes('facilitator_qualifications'), 'role removal does not delete the person or qualification rows');
 const deletion = app.slice(app.indexOf('async function applyPersonnelDeletion'), app.indexOf('function openFacilitatorDetail'));
 assert(deletion.includes('deleteDirectoryPerson(id)'), 'Delete Person uses the deletion function');
+assert(deletion.includes('renderFacilitatorManagement()') && deletion.includes('renderTeam()'), 'deleting a person refreshes Facilitator Management and the personnel directory');
 assert(!deletion.includes('saveDirectoryPerson'), 'deletion is not a role update');
 assert(app.includes("surface: 'facilitator'") && app.includes('createPersonnelLifecycleControls'), 'Facilitator Management puts lifecycle actions on the detail');
 assert(db.includes("rpc('delete_directory_person'"), 'the client deletes through the database function');
