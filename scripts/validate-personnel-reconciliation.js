@@ -8,6 +8,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { personnelDisplayName } from '../js/personnel-identity.js';
+import {
+  reconciliationPersonalName,
+  reconciliationStructuredNames,
+  validateReconciliationIdentity,
+} from '../js/team-personnel-editor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -200,6 +205,34 @@ assert(reconcileStart > 0 && reconcileCall > reconcileStart, 'reconciliation use
 assert(reconcileBody.includes('PERSONNEL_ALIAS_CONFLICT'), 'alias conflicts keep the database message');
 assert(reconcileBody.includes('PERSONNEL_RECONCILE_DUPLICATE'), 'unexpected duplicates keep the database message');
 assert(!reconcileBody.includes('referenceNameConflictError'), 'reconciliation does not replace the database message with the form name');
+assert(reconcileBody.includes("rpc('reconcile_directory_people_structured'"), 'the client calls reconcile_directory_people_structured');
+assert(!reconcileBody.includes("rpc('reconcile_directory_people',"), 'the client does not call the legacy reconciliation RPC directly');
+assert(migration.includes('create or replace function public.reconcile_directory_people('), 'the legacy reconciliation function remains');
+assert(!/update public\.events|events\.facilitators|events\.poc|events\.credo_staff/.test(read('supabase/migrations/035_structured_personnel_name_writes.sql')), 'the structured wrapper does not rewrite event text');
+assert(read('supabase/migrations/035_structured_personnel_name_writes.sql').includes('public.reconcile_directory_people('), 'the structured wrapper still calls the legacy reconciliation function');
+assert(!read('supabase/migrations/035_structured_personnel_name_writes.sql').includes('drop function public.reconcile_directory_people'), 'migration 035 does not remove the legacy reconciliation function');
+
+const structuredSurvivor = reconciliationStructuredNames({
+  name: 'Ada Civilian',
+  rankTitle: 'LCDR',
+  firstName: 'Ada',
+  lastName: 'Civilian',
+});
+assert(structuredSurvivor.firstName === 'Ada' && structuredSurvivor.lastName === 'Civilian', 'a structured survivor prepopulates First Name and Last Name');
+const legacySurvivor = reconciliationStructuredNames({ name: 'Chaplain Rudd', rankTitle: 'Chaplain' });
+assert(legacySurvivor.firstName === '' && legacySurvivor.lastName === '', 'a legacy survivor is not split into First Name and Last Name');
+const editor = read('js/team-personnel-editor.js');
+assert(editor.includes('is shown for reference. A combined legacy name is not split automatically.'), 'a legacy combined name is reference text, not an editable full name');
+assert(!editor.includes("field('Full Name'"), 'reconciliation no longer edits a combined Full Name');
+assert(validateReconciliationIdentity({ firstName: '', lastName: 'Rudd', rankTitle: '' }) === 'First Name is required.', 'reconciliation requires First Name');
+assert(validateReconciliationIdentity({ firstName: 'John', lastName: '', rankTitle: '' }) === 'Last Name is required.', 'reconciliation requires Last Name');
+assert(
+  validateReconciliationIdentity({ firstName: 'CDR', lastName: 'Scanlon', rankTitle: 'CDR' })
+    === 'Rank / Title should not be entered in First Name or Last Name.',
+  'reconciliation rejects a rank copied into the personal name',
+);
+assert(reconciliationPersonalName(' John ', ' Scanlon ') === 'John Scanlon', 'the compatibility personal name is First Name plus Last Name');
+assert(editor.includes('Historical Event text will not be rewritten.'), 'reconciliation still tells the user that event text is preserved');
 
 const maforahSurvivor = person('3cad35a4-1dc9-43cc-9087-2cfa7c70b163', 'LCDR Maforah');
 const maforahRetired = person('4b65f1a7-3f5f-412f-b533-41c57905d451', 'Maforah', 'Chaplain');

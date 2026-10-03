@@ -339,11 +339,11 @@ const ambiguous = facilitatorReusePlan({ name: 'John Adams' }, [
 assert(ambiguous.status === 'choose' && ambiguous.candidates.length === 2 && ambiguous.selectedPersonId == null, 'more than one exact match requires an explicit choice');
 
 const reconcileSource = editor.slice(editor.indexOf('function renderReconcile'), editor.indexOf('staffInput.addEventListener'));
-assert(reconcileSource.includes("message = 'Full Name is required.'"), 'reconciliation still validates the legacy full name');
-assert(reconcileSource.includes("field('Rank / Title', rank), field('Full Name', fullName)"), 'reconciliation still edits Rank / Title and Full Name');
-assert(!reconcileSource.includes('validatePersonnelEditor'), 'reconciliation does not use structured-name validation');
-assert(read('js/db.js').includes("rpc('reconcile_directory_people',"), 'reconciliation still calls the legacy reconciliation RPC');
-assert(!read('js/db.js').includes('reconcile_directory_people_structured'), 'this stage does not send reconciliation through the structured wrapper');
+assert(reconcileSource.includes("field('Rank / Title', rank), field('First Name', firstName), field('Last Name', lastName)"), 'reconciliation edits Rank / Title, First Name, and Last Name');
+assert(reconcileSource.includes('validateReconciliationIdentity'), 'reconciliation validates the structured final identity');
+assert(!reconcileSource.includes('validatePersonnelEditor'), 'reconciliation does not use the ordinary personnel validation path');
+assert(read('js/db.js').includes("rpc('reconcile_directory_people_structured'"), 'reconciliation saves through the structured wrapper');
+assert(!read('js/db.js').includes("rpc('reconcile_directory_people',"), 'the client does not call the legacy reconciliation RPC directly');
 const structuredSave = read('supabase/migrations/035_structured_personnel_name_writes.sql');
 assert(structuredSave.includes('public.save_directory_person('), 'structured saves still go through the proven personnel save');
 assert(structuredSave.includes("hint = 'STRUCTURED_NAME_INCOMPLETE'"), 'one structured name without the other is rejected');

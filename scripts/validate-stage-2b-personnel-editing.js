@@ -143,7 +143,8 @@ assert(dbSource.includes("error.code = 'PERSONNEL_USE_TEAM'"), 'client name edit
 assert(dbSource.includes("rpc('save_directory_person_structured'"), 'Team saves use the structured-name wrapper');
 assert(read('supabase/migrations/035_structured_personnel_name_writes.sql').includes('public.save_directory_person('), 'the wrapper still calls the proven personnel save');
 assert(dbSource.includes("rpc('archive_directory_person'"), 'archive uses the transactional function');
-assert(dbSource.includes("rpc('reconcile_directory_people'"), 'reconciliation uses an explicit function');
+assert(dbSource.includes("rpc('reconcile_directory_people_structured'"), 'reconciliation uses the structured reconciliation function');
+assert(read('supabase/migrations/032_repair_personnel_reconciliation.sql').includes('create or replace function public.reconcile_directory_people('), 'the legacy reconciliation function remains');
 
 const prepareMir = appSource.match(/async function prepareMirReportGenerationInput\(report\) \{[\s\S]*?\n\}/);
 assert(prepareMir?.[0].includes('fetchTeamMembers()'), 'MIR generation still reads team members');
@@ -157,7 +158,8 @@ assert(!editorSource.includes('saveDirectoryPerson'), 'the editor does not save 
 assert(editorSource.includes('Final Identity'), 'reconciliation shows a final identity section');
 assert(editorSource.includes('A combined legacy name is not split automatically.'), 'reconciliation does not claim to parse a legacy name');
 assert(editorSource.includes("reconcileRank = source.rankTitle || ''"), 'final rank starts from the stored survivor rank');
-assert(editorSource.includes("reconcileName = source.name || ''"), 'final name starts from the stored survivor name');
+assert(editorSource.includes('reconciliationStructuredNames(source)'), 'structured survivor names prepopulate reconciliation');
+assert(!editorSource.includes('reconcileName = source.name'), 'reconciliation does not copy a legacy combined name into the name fields');
 assert(editorSource.includes('Reconcile Records'), 'the reconcile action is labeled Reconcile Records');
 assert(editorSource.includes('await onReconcile(survivorId, retiredId, finalIdentity)'), 'reconciliation passes the final rank and name');
 assert(editorSource.includes("survivorChoice === 'this' ? person.id : selected.id"), 'the survivor id follows the radio selection');

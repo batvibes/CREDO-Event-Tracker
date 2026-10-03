@@ -127,6 +127,32 @@ export function validatePersonnelEditor(values) {
   return '';
 }
 
+export function reconciliationStructuredNames(person) {
+  const firstName = clean(person?.firstName ?? person?.first_name);
+  const lastName = clean(person?.lastName ?? person?.last_name);
+  if (!firstName || !lastName) return { firstName: '', lastName: '' };
+  return { firstName, lastName };
+}
+
+export function reconciliationPersonalName(firstName, lastName) {
+  const first = clean(firstName);
+  const last = clean(lastName);
+  if (!first || !last) return '';
+  return clean(`${first} ${last}`);
+}
+
+export function validateReconciliationIdentity(values) {
+  const firstName = clean(values?.firstName);
+  const lastName = clean(values?.lastName);
+  const rankTitle = clean(values?.rankTitle);
+  if (!firstName) return 'First Name is required.';
+  if (!lastName) return 'Last Name is required.';
+  if (fullNameIncludesRank(rankTitle, reconciliationPersonalName(firstName, lastName))) {
+    return 'Rank / Title should not be entered in First Name or Last Name.';
+  }
+  return '';
+}
+
 export function mountPersonnelEditor({
   body,
   footer,
@@ -144,7 +170,8 @@ export function mountPersonnelEditor({
   let reconcileSelectedId = '';
   let survivorChoice = '';
   let reconcileRank = '';
-  let reconcileName = '';
+  let reconcileFirstName = '';
+  let reconcileLastName = '';
   let reconcileConfirm = false;
   let message = '';
   let busy = false;
@@ -515,7 +542,8 @@ export function mountPersonnelEditor({
         reconcileSelectedId = entry.id;
         survivorChoice = '';
         reconcileRank = '';
-        reconcileName = '';
+        reconcileFirstName = '';
+        reconcileLastName = '';
         reconcileConfirm = false;
         render();
       });
@@ -539,8 +567,10 @@ export function mountPersonnelEditor({
         input.addEventListener('change', () => {
           survivorChoice = value;
           const source = value === 'this' ? person : selected;
+          const names = reconciliationStructuredNames(source);
           reconcileRank = source.rankTitle || '';
-          reconcileName = source.name || '';
+          reconcileFirstName = names.firstName;
+          reconcileLastName = names.lastName;
           reconcileConfirm = false;
           render();
         });
@@ -554,8 +584,11 @@ export function mountPersonnelEditor({
 
     if (survivorChoice && selected) {
       const retiring = retiredRecord(selected);
+      const survivor = survivorChoice === 'this' ? person : selected;
+      const survivorStructured = hasStructuredName(survivor?.firstName, survivor?.lastName);
       const rank = textInput(reconcileRank, { maxLength: 40 });
-      const fullName = textInput(reconcileName, { maxLength: 200 });
+      const firstName = textInput(reconcileFirstName, { required: true, maxLength: 100 });
+      const lastName = textInput(reconcileLastName, { required: true, maxLength: 100 });
       const summary = document.createElement('div');
       summary.className = 'personnel-editor-reconcile-summary';
 
@@ -563,7 +596,7 @@ export function mountPersonnelEditor({
         summary.replaceChildren();
         const kept = document.createElement('div');
         const retiredLine = document.createElement('div');
-        kept.append(labelText('Survivor: '), document.createTextNode(personnelDisplayName(reconcileRank, reconcileName) || '—'));
+        kept.append(labelText('Survivor: '), document.createTextNode(personnelDisplayName(reconcileRank, reconciliationPersonalName(reconcileFirstName, reconcileLastName)) || '—'));
         retiredLine.append(
           labelText('Retiring: '),
           document.createTextNode(personnelDisplayName(retiring?.rankTitle, retiring?.name) || '—'),
@@ -581,8 +614,12 @@ export function mountPersonnelEditor({
         reconcileRank = rank.value;
         clearPendingConfirmation();
       });
-      fullName.addEventListener('input', () => {
-        reconcileName = fullName.value;
+      firstName.addEventListener('input', () => {
+        reconcileFirstName = firstName.value;
+        clearPendingConfirmation();
+      });
+      lastName.addEventListener('input', () => {
+        reconcileLastName = lastName.value;
         clearPendingConfirmation();
       });
       paintSummary();
@@ -593,10 +630,12 @@ export function mountPersonnelEditor({
       identityTitle.textContent = 'Final Identity';
       const identityNote = document.createElement('p');
       identityNote.className = 'personnel-editor-help';
-      identityNote.textContent = 'These values are kept as entered. A combined legacy name is not split automatically.';
+      identityNote.textContent = survivorStructured || !clean(survivor?.name)
+        ? 'These values are kept as entered.'
+        : `Existing name “${clean(survivor.name)}” is shown for reference. A combined legacy name is not split automatically.`;
       const identityRow = document.createElement('div');
       identityRow.className = 'personnel-editor-row personnel-editor-row-name';
-      identityRow.append(field('Rank / Title', rank), field('Full Name', fullName));
+      identityRow.append(field('Rank / Title', rank), field('First Name', firstName), field('Last Name', lastName));
       identity.append(identityTitle, identityNote, identityRow);
 
       const reconcileButton = document.createElement('button');
@@ -605,15 +644,14 @@ export function mountPersonnelEditor({
       reconcileButton.textContent = 'Reconcile Records';
       reconcileButton.disabled = busy || reconcileConfirm;
       reconcileButton.addEventListener('click', () => {
-        const nextIdentity = { rankTitle: clean(reconcileRank), name: clean(reconcileName) };
-        if (!nextIdentity.name) {
-          message = 'Full Name is required.';
-          reconcileConfirm = false;
-          render();
-          return;
-        }
-        if (fullNameIncludesRank(nextIdentity.rankTitle, nextIdentity.name)) {
-          message = 'Full Name should be the personal name. Put the rank in Rank / Title.';
+        const nextIdentity = {
+          rankTitle: clean(reconcileRank),
+          firstName: clean(reconcileFirstName),
+          lastName: clean(reconcileLastName),
+        };
+        const problem = validateReconciliationIdentity(nextIdentity);
+        if (problem) {
+          message = problem;
           reconcileConfirm = false;
           render();
           return;
@@ -628,7 +666,7 @@ export function mountPersonnelEditor({
       if (reconcileConfirm) {
         const survivorId = survivorChoice === 'this' ? person.id : selected.id;
         const retiredId = survivorChoice === 'this' ? selected.id : person.id;
-        const keptName = personnelDisplayName(reconcileRank, reconcileName);
+        const keptName = personnelDisplayName(reconcileRank, reconciliationPersonalName(reconcileFirstName, reconcileLastName));
         const retiredName = personnelDisplayName(retiring?.rankTitle, retiring?.name);
         const confirmPanel = document.createElement('div');
         confirmPanel.className = 'personnel-editor-reconcile-confirm';
@@ -661,7 +699,12 @@ export function mountPersonnelEditor({
         commit.textContent = 'Reconcile';
         commit.disabled = busy;
         commit.addEventListener('click', async () => {
-          const finalIdentity = { rankTitle: clean(reconcileRank), name: clean(reconcileName) };
+          const finalIdentity = {
+            rankTitle: clean(reconcileRank),
+            firstName: clean(reconcileFirstName),
+            lastName: clean(reconcileLastName),
+            name: reconciliationPersonalName(reconcileFirstName, reconcileLastName),
+          };
           busy = true;
           message = '';
           render();

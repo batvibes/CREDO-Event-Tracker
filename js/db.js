@@ -1918,6 +1918,7 @@ function reconciliationRpcError(error) {
     'PERSONNEL_RECONCILE_PAIR',
     'NAME_REQUIRED',
     'BILLET_REQUIRED',
+    'STRUCTURED_NAME_REQUIRED',
     'PERSONNEL_NOT_FOUND',
   ]);
   if (specific.has(hint) && message) {
@@ -1929,11 +1930,12 @@ function reconciliationRpcError(error) {
 }
 
 export async function reconcileDirectoryPeople(survivorId, retiredId, identity) {
-  const { data, error } = await supabase.rpc('reconcile_directory_people', {
+  const { data, error } = await supabase.rpc('reconcile_directory_people_structured', {
     p_survivor_id: survivorId,
     p_retired_id: retiredId,
     p_rank_title: identity?.rankTitle ?? null,
-    p_name: identity?.name ?? '',
+    p_first_name: identity?.firstName ?? null,
+    p_last_name: identity?.lastName ?? null,
   });
 
   if (error) throw reconciliationRpcError(error);
