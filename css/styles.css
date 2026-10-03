@@ -4790,11 +4790,46 @@ body:has(#new-event-modal[open]) {
   accent-color: var(--accent);
 }
 
+#new-event-modal .ref-menu:has(.ref-inline-add) {
+  max-height: 320px;
+}
+
 #new-event-modal .ref-inline-add {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 6px;
+}
+
+#new-event-modal .ref-inline-add-title {
+  color: #00205b;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+#new-event-modal .ref-inline-add-names {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.7fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+#new-event-modal .ref-inline-add-names input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+#new-event-modal .ref-inline-add-message {
+  margin: 0;
+  color: #9f1239;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 #new-event-modal .ref-inline-add-label {

@@ -185,11 +185,14 @@ assert(editor.includes('isPoc: person?.isPoc === true'), 'an ordinary personnel 
 assert(directory.includes("if (tab === 'staff') return sortStaff(active.filter((person) => person.isCredoStaff === true))"), 'J: CREDO Staff filtering is unchanged');
 assert(!/events\.facilitators|facilitator_event_tokens|facilitator_product_experience|facilitator_qualifications/.test(directory), 'I: the Team directory does not read facilitator history');
 assert(!/facilitator_event_tokens|facilitator_product_experience|facilitator_t4t_product_experience/.test(picker), 'I: the person picker does not write facilitator history');
-assert(picker.includes('onCreatePerson({ name: personName })'), 'a genuinely new contact is still created from the typed name');
+assert(picker.includes('Add New Person') && picker.includes('structuredPersonalName(firstName, lastName)'), 'a new contact is created from the structured identity editor');
+assert(picker.includes("identityRole: 'poc'"), 'event point-of-contact creation keeps the POC role');
 assert(picker.includes('reuse_or_create_event_person') === false, 'the picker calls the database through its adapter');
 assert(db.includes("rpc('reuse_or_create_event_person'"), 'event person creation uses the neutral reuse function');
 assert(!createBody.includes('.insert('), 'H: event person creation no longer inserts from the browser');
-assert(!createBody.includes('is_facilitator') && !createBody.includes('is_credo_staff') && !createBody.includes('is_poc'), 'H: the browser create wrapper does not set facilitator, staff, or POC flags');
+const legacyCreate = db.slice(createStart, db.indexOf('function structuredEventPersonResult'));
+assert(!legacyCreate.includes('is_facilitator') && !legacyCreate.includes('is_credo_staff') && !legacyCreate.includes('is_poc'), 'the legacy name helper stays role-neutral');
+assert(createBody.includes('eventPersonCreateValues(identity, role)') && createBody.includes('eventPersonRoleUpdate(existing, role)'), 'a structured event person receives the requested role and keeps the others');
 assert(directory.includes("'Rank / Title', 'Name', 'Command / Organization', 'Roles'"), 'directory headers are Rank / Title, Name, Command / Organization, and Roles');
 assert(directory.includes('row.append(rankCell, personCell, commandCell, roleCell)'), 'Rank / Title is the column immediately before Name');
 assert(directory.includes("actionHead.textContent = 'Action'"), 'the edit column has an Action header');

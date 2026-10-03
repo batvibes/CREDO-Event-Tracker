@@ -2,6 +2,7 @@ import { findAttendancePersonByName } from './t4t-attendance-suggestions.js';
 import { ordinaryLivingWorksWorkshops } from './livingworks-workshops.js';
 import { supabase } from './supabase.js';
 import { mapTeamDirectoryPerson } from './team-personnel-directory.js';
+import { eventPersonCreateValues, eventPersonRoleUpdate } from './team-personnel-editor.js';
 import {
   buildEventCurriculumChoices,
   isMissingEventCurriculumSchemaError,
@@ -1445,6 +1446,60 @@ export async function reuseOrCreateEventPerson(name) {
 export async function createPerson(person) {
   const name = typeof person === 'string' ? person : person?.name;
   return reuseOrCreateEventPerson(name);
+}
+
+function structuredEventPersonResult(data, created, fallback = {}) {
+  return {
+    id: data?.id ?? fallback.id ?? null,
+    name: data?.name ?? fallback.name ?? '',
+    rankTitle: data?.rank_title ?? data?.rankTitle ?? fallback.rankTitle ?? null,
+    firstName: data?.first_name ?? data?.firstName ?? fallback.firstName ?? null,
+    lastName: data?.last_name ?? data?.lastName ?? fallback.lastName ?? null,
+    email: data?.email ?? fallback.email ?? null,
+    phone: data?.phone ?? fallback.phone ?? null,
+    active: (data?.active ?? fallback.active) !== false,
+    isCredoStaff: (data?.is_credo_staff ?? data?.isCredoStaff ?? fallback.isCredoStaff) === true,
+    isFacilitator: (data?.is_facilitator ?? data?.isFacilitator ?? fallback.isFacilitator) === true,
+    isPoc: (data?.is_poc ?? data?.isPoc ?? fallback.isPoc) === true,
+    created,
+  };
+}
+
+export async function fetchDirectoryPerson(id) {
+  const { data, error } = await supabase
+    .from('people')
+    .select(`${TEAM_DIRECTORY_PERSON_COLUMNS}, email, phone`)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    ...mapTeamDirectoryPerson(data),
+    email: data.email ?? null,
+    phone: data.phone ?? null,
+  };
+}
+
+export async function createStructuredEventPerson(identity) {
+  const role = identity?.role === 'facilitator' ? 'facilitator' : 'poc';
+  if (identity?.reuseId) {
+    const existing = await fetchDirectoryPerson(identity.reuseId);
+    if (!existing) {
+      const missing = new Error('That personnel record was not found.');
+      missing.code = 'PERSONNEL_NOT_FOUND';
+      throw missing;
+    }
+    const needsRole = (role === 'facilitator' && existing.isFacilitator !== true)
+      || (role === 'poc' && existing.isPoc !== true);
+    if (!needsRole || existing.active === false) {
+      return structuredEventPersonResult(existing, false, existing);
+    }
+    const data = await saveDirectoryPerson(eventPersonRoleUpdate(existing, role));
+    return structuredEventPersonResult(data, false, existing);
+  }
+
+  const data = await saveDirectoryPerson(eventPersonCreateValues(identity, role));
+  return structuredEventPersonResult(data, true);
 }
 
 function referenceNameConflictError(name) {

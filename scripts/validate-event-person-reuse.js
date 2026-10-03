@@ -134,7 +134,9 @@ assert(!/levenshtein|similarity\s*\(|pg_trgm|soundex/i.test(fn), 'event person c
 const picker = read('js/event-reference-fields.js');
 const saveStart = picker.indexOf("menu.querySelector('.ref-inline-save')");
 const saveBody = picker.slice(saveStart, picker.indexOf('function personSecondaryText'));
-assert(saveBody.includes('onCreatePerson({ name: personName })'), 'Add Person asks the server to reuse or create');
+assert(saveBody.includes('facilitatorReusePlan({ name, rankTitle }, directory)'), 'Add Person still checks for an exact person before creating one');
+assert(saveBody.includes('reuseId: reuse.candidates[0].personId'), 'an exact match reuses that person');
+assert(!saveBody.includes('onCreatePerson({ name: personName })'), 'Add Person does not save the typed text as a combined name');
 assert(!saveBody.includes('findPersonnelByHistoricalName'), 'Add Person does not keep the first browser match');
 assert(saveBody.includes('personnelDisplayName(created.rankTitle, created.name)'), 'a reused person is shown by the canonical display name');
 assert(saveBody.includes('Using the existing person'), 'reuse is distinguished from a new person');
@@ -148,7 +150,7 @@ assert(!staffBody.includes('onCreatePerson') && !staffBody.includes('createPerso
 const db = read('js/db.js');
 assert(db.includes("rpc('reuse_or_create_event_person'"), 'the client calls the neutral database function');
 assert(db.includes('PERSONNEL_IDENTITY_AMBIGUOUS'), 'an ambiguous result stays a specific error');
-assert(!db.slice(db.indexOf('export async function createPerson'), db.indexOf('function referenceNameConflictError')).includes('.from(\'people\')'), 'the browser no longer inserts people directly');
+assert(!db.slice(db.indexOf('export async function createPerson'), db.indexOf('function referenceNameConflictError')).includes('.insert('), 'the browser no longer inserts people directly');
 
 const tokens = read('supabase/migrations/024_event_workshop_t4t.sql');
 const experience = read('supabase/migrations/025_facilitator_t4t_product_experience.sql');

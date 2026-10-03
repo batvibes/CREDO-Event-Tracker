@@ -39,18 +39,22 @@ const tokens = read('supabase/migrations/021_facilitator_experience_foundation.s
 const facilitatorMount = sliceBetween(fields, "name: 'facilitators'", "name: 'poc'");
 const pocMount = sliceBetween(fields, "name: 'poc'", "name: 'credoStaff'");
 const staffMount = sliceBetween(fields, "name: 'credoStaff'", 'return {');
-const selection = sliceBetween(fields, 'addToken({', '});');
+const selection = sliceBetween(fields, 'const person = [...directory, ...menuSource].find((entry) => entry.id === button.dataset.id);', 'data-action="add-person"');
 const reusePerson = sliceBetween(db, 'export async function reuseOrCreateEventPerson', 'export async function createPerson');
-const createPerson = sliceBetween(db, 'export async function createPerson', 'function referenceNameConflictError');
+const createPerson = sliceBetween(db, 'export async function createPerson', 'function structuredEventPersonResult');
+const structuredCreate = sliceBetween(db, 'export async function createStructuredEventPerson', 'function referenceNameConflictError');
 
 assert(facilitatorMount.includes('getMenuPeople: getFacilitatorPeople'), 'Facilitator picker uses the facilitator population');
 assert(!facilitatorMount.includes('getPeople: () => referencePeople'), 'Facilitator picker does not inline the broad directory');
+assert(facilitatorMount.includes("identityRole: 'facilitator'"), 'a new facilitator is created with facilitator status');
 assert(pocMount.includes('getPeople,') && !pocMount.includes('getMenuPeople'), 'POC picker stays on the broad active directory');
+assert(pocMount.includes("identityRole: 'poc'"), 'a new point of contact is created with POC status');
 assert(staffMount.includes('getTeamMembers') && !staffMount.includes('getMenuPeople'), 'CREDO Staff picker stays on Manning');
-assert(!selection.includes('isFacilitator') && !selection.includes('is_facilitator'), 'selecting a facilitator does not set the facilitator flag');
-assert(createPerson.includes('reuseOrCreateEventPerson(name)'), 'Add Person delegates to canonical reuse');
-assert(reusePerson.includes("rpc('reuse_or_create_event_person'"), 'a new facilitator identity uses Migration 033');
-assert(!createPerson.includes('is_facilitator:') && !createPerson.includes('isFacilitator'), 'event person creation does not set the facilitator flag');
+assert(!selection.includes('isFacilitator') && !selection.includes('is_facilitator') && !selection.includes('onCreatePerson'), 'selecting an existing facilitator reuses that person');
+assert(createPerson.includes('reuseOrCreateEventPerson(name)'), 'the legacy name helper still delegates to canonical reuse');
+assert(reusePerson.includes("rpc('reuse_or_create_event_person'"), 'exact identity reuse remains available');
+assert(structuredCreate.includes('saveDirectoryPerson(eventPersonCreateValues(identity, role))'), 'a new event facilitator is stored through the structured personnel save');
+assert(!structuredCreate.includes('facilitator_qualifications') && !structuredCreate.includes('saveFacilitatorQualification'), 'creating an event facilitator does not fabricate a qualification');
 assert(app.includes('getFacilitatorPeople: () => facilitatorPickerPeople'), 'the event form receives the facilitator population');
 assert(app.includes('getPeople: () => referencePeople'), 'POC still receives every active person');
 assert(app.includes('summarizeFacilitatorPersonnel('), 'the picker population comes from Facilitator Management inclusion');

@@ -4,6 +4,12 @@ import {
   personnelDisplayName,
   personnelMatchesHistoricalName,
 } from './personnel-identity.js';
+import {
+  draftEventPersonIdentity,
+  facilitatorReusePlan,
+  structuredPersonalName,
+  validatePersonnelEditor,
+} from './team-personnel-editor.js';
 
 export const PERSONNEL_MENU_RESULT_LIMIT = 50;
 
@@ -775,6 +781,7 @@ function mountPeopleMulti(root, options) {
     onCreatePerson,
     onUpdatePerson,
     onRemovePerson,
+    identityRole,
     serialize,
     parse,
   } = options;
@@ -882,38 +889,95 @@ function mountPeopleMulti(root, options) {
     input.focus();
   }
 
+  function knownPersonnelRanks() {
+    const ranks = [];
+    for (const person of [...(getPeople() || []), ...(typeof getMenuPeople === 'function' ? (getMenuPeople() || []) : [])]) {
+      const rank = cleanReferenceDisplayName(person?.rankTitle ?? person?.rank_title);
+      if (rank) ranks.push(rank);
+    }
+    return ranks;
+  }
+
   function openPersonAdd(prefillName = '') {
     menuMode = 'add';
     menu.hidden = false;
+    const draft = draftEventPersonIdentity(prefillName, knownPersonnelRanks());
+    const role = identityRole === 'facilitator' ? 'facilitator' : 'poc';
     menu.innerHTML = `
       <div class="ref-inline-add">
-        <label class="ref-inline-add-label">
-          Name
-          <input type="text" class="ref-person-name" value="${escapeHtml(prefillName)}" maxlength="200">
-        </label>
+        <div class="ref-inline-add-title">Add New Person</div>
+        <div class="ref-inline-add-names">
+          <label class="ref-inline-add-label">
+            Rank / Title
+            <input type="text" class="ref-person-rank" value="${escapeHtml(draft.rankTitle)}" maxlength="100" autocomplete="off">
+          </label>
+          <label class="ref-inline-add-label">
+            First Name
+            <input type="text" class="ref-person-first" value="${escapeHtml(draft.firstName)}" maxlength="100" autocomplete="off">
+          </label>
+          <label class="ref-inline-add-label">
+            Last Name
+            <input type="text" class="ref-person-last" value="${escapeHtml(draft.lastName)}" maxlength="100" autocomplete="off">
+          </label>
+        </div>
+        <p class="ref-inline-add-message" hidden></p>
         <div class="ref-inline-add-actions">
           <button type="button" class="btn btn-secondary ref-inline-cancel">Cancel</button>
           <button type="button" class="btn btn-primary ref-inline-save">Save</button>
         </div>
       </div>`;
 
-    const nameInput = menu.querySelector('.ref-person-name');
-    nameInput?.focus();
-    nameInput?.select();
+    const panel = menu.querySelector('.ref-inline-add');
+    const rankInput = menu.querySelector('.ref-person-rank');
+    const firstInput = menu.querySelector('.ref-person-first');
+    const lastInput = menu.querySelector('.ref-person-last');
+    const message = menu.querySelector('.ref-inline-add-message');
+    const saveButton = menu.querySelector('.ref-inline-save');
+    let saving = false;
+
+    function showAddMessage(text) {
+      message.textContent = text || '';
+      message.hidden = !text;
+    }
+
+    (draft.firstName || draft.lastName ? lastInput : rankInput)?.focus();
+    if (!draft.rankTitle && !draft.firstName && draft.lastName) lastInput?.select();
 
     menu.querySelector('.ref-inline-cancel')?.addEventListener('click', () => {
       menuMode = 'search';
       renderMenu();
     });
 
-    menu.querySelector('.ref-inline-save')?.addEventListener('click', async () => {
-      const personName = cleanReferenceDisplayName(nameInput?.value);
-      if (!personName) {
-        alert('Name is required.');
+    async function saveNewPerson(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (saving) return;
+      const rankTitle = cleanReferenceDisplayName(rankInput?.value);
+      const firstName = cleanReferenceDisplayName(firstInput?.value);
+      const lastName = cleanReferenceDisplayName(lastInput?.value);
+      const validationMessage = validatePersonnelEditor({
+        rankTitle,
+        firstName,
+        lastName,
+        isCredoStaff: false,
+      });
+      if (validationMessage) {
+        showAddMessage(validationMessage);
         return;
       }
+      const name = structuredPersonalName(firstName, lastName);
+      const directory = getPeople() || [];
+      const reuse = facilitatorReusePlan({ name, rankTitle }, directory);
+      if (reuse.status === 'choose') {
+        showAddMessage(`More than one person matches “${name}”. Choose the existing person instead of adding a new one.`);
+        return;
+      }
+      saving = true;
+      saveButton.disabled = true;
       try {
-        const created = await onCreatePerson({ name: personName });
+        const created = await onCreatePerson(reuse.status === 'reuse'
+          ? { reuseId: reuse.candidates[0].personId, role }
+          : { rankTitle, firstName, lastName, name, role });
         const displayName = personnelDisplayName(created.rankTitle, created.name);
         addToken({
           id: created.id,
@@ -926,8 +990,16 @@ function mountPeopleMulti(root, options) {
         }
       } catch (error) {
         console.error(error);
-        alert(error?.message || 'Failed to add person.');
+        saving = false;
+        saveButton.disabled = false;
+        showAddMessage(error?.message || 'Failed to add person.');
       }
+    }
+
+    saveButton?.addEventListener('click', saveNewPerson);
+    panel?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      saveNewPerson(event);
     });
   }
 
@@ -1674,6 +1746,7 @@ export function initEventReferenceFields(form, adapters) {
     getMenuPeople: getFacilitatorPeople,
     canCreate: canCreateReferences,
     canManage: () => false,
+    identityRole: 'facilitator',
     onCreatePerson: async (person) => {
       const created = await createPerson(person);
       onPeopleChanged?.(created);
@@ -1697,6 +1770,7 @@ export function initEventReferenceFields(form, adapters) {
     getPeople,
     canCreate: canCreateReferences,
     canManage: () => false,
+    identityRole: 'poc',
     onCreatePerson: async (person) => {
       const created = await createPerson(person);
       onPeopleChanged?.(created);

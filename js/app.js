@@ -2,7 +2,7 @@ import {
   createCaterer,
   createCommand,
   createLocation,
-  createPerson,
+  createStructuredEventPerson,
   createVenue,
   deleteEventById,
   deleteEventType,
@@ -13012,8 +13012,20 @@ function setupModal() {
       return created;
     },
     createPerson: async (person) => {
-      const created = await createPerson(person);
-      referencePeople = upsertReferenceItem(referencePeople, created);
+      const created = await createStructuredEventPerson(person);
+      const previous = referencePeople.find((entry) => entry.id === created.id);
+      referencePeople = upsertReferenceItem(referencePeople, {
+        id: created.id,
+        name: created.name,
+        normalizedName: previous?.normalizedName,
+        rankTitle: created.rankTitle,
+        firstName: created.firstName,
+        lastName: created.lastName,
+        email: created.email ?? previous?.email ?? null,
+        phone: created.phone ?? previous?.phone ?? null,
+        active: created.active !== false,
+        aliases: previous?.aliases || [],
+      });
       return created;
     },
     updateCommand: async (id, updates) => {
@@ -13073,6 +13085,9 @@ function setupModal() {
     },
     onPeopleChanged: () => {
       eventReferenceFields?.refreshPeople();
+      void loadFacilitatorPickerPeople();
+      void renderFacilitatorManagement();
+      void renderTeam();
     },
     onNamedListsChanged: () => {
       eventReferenceFields?.refreshNamed();

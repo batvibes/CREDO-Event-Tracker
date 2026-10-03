@@ -123,6 +123,71 @@ export function structuredPersonalName(firstName, lastName) {
   return first || last;
 }
 
+export function draftEventPersonIdentity(query, knownRanks = []) {
+  const tokens = clean(query).split(' ').filter(Boolean);
+  const ranks = [...new Set((knownRanks || []).map((rank) => clean(rank)).filter(Boolean))]
+    .sort((left, right) => right.split(' ').length - left.split(' ').length || right.length - left.length);
+  const exactRank = ranks.find((rank) => rank.toLowerCase() === tokens.join(' ').toLowerCase());
+  if (exactRank) return { rankTitle: exactRank, firstName: '', lastName: '' };
+
+  let rankTitle = '';
+  let rest = tokens;
+  for (const rank of ranks) {
+    const rankTokens = rank.split(' ');
+    if (tokens.length <= rankTokens.length) continue;
+    const matches = rankTokens.every((part, index) => part.toLowerCase() === tokens[index].toLowerCase());
+    if (!matches) continue;
+    rankTitle = rank;
+    rest = tokens.slice(rankTokens.length);
+    break;
+  }
+  if (rest.length >= 2) {
+    return {
+      rankTitle,
+      firstName: rest.slice(0, -1).join(' '),
+      lastName: rest[rest.length - 1],
+    };
+  }
+  if (rest.length === 1) return { rankTitle, firstName: '', lastName: rest[0] };
+  return { rankTitle, firstName: '', lastName: '' };
+}
+
+export function eventPersonCreateValues(identity, role) {
+  const firstName = clean(identity?.firstName);
+  const lastName = clean(identity?.lastName);
+  return {
+    id: null,
+    rankTitle: clean(identity?.rankTitle),
+    firstName,
+    lastName,
+    name: structuredPersonalName(firstName, lastName),
+    commandOrganization: '',
+    installation: '',
+    isCredoStaff: false,
+    isFacilitator: role === 'facilitator',
+    isPoc: role === 'poc',
+    staffBilletOrRole: '',
+    staffPrdEaos: '',
+  };
+}
+
+export function eventPersonRoleUpdate(person, role) {
+  return {
+    id: person?.id ?? null,
+    rankTitle: clean(person?.rankTitle),
+    firstName: clean(person?.firstName),
+    lastName: clean(person?.lastName),
+    name: clean(person?.name),
+    commandOrganization: clean(person?.commandOrganization),
+    installation: clean(person?.installation),
+    isCredoStaff: person?.isCredoStaff === true,
+    isFacilitator: role === 'facilitator' ? true : person?.isFacilitator === true,
+    isPoc: role === 'poc' ? true : person?.isPoc === true,
+    staffBilletOrRole: clean(person?.staffBilletOrRole),
+    staffPrdEaos: clean(person?.staffPrdEaos),
+  };
+}
+
 export function validatePersonnelEditor(values) {
   const firstName = clean(values.firstName);
   const lastName = clean(values.lastName);

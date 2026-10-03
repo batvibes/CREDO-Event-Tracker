@@ -19,10 +19,18 @@ import {
 import { summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
 import {
   TEAM_DIRECTORY_TABS,
+  directoryPersonnelNeedsReview,
   filterTeamDirectory,
   mapTeamDirectoryPerson,
   teamDirectoryRoleBadges,
 } from '../js/team-personnel-directory.js';
+import {
+  draftEventPersonIdentity,
+  eventPersonCreateValues,
+  eventPersonRoleUpdate,
+  facilitatorReusePlan,
+  validatePersonnelEditor,
+} from '../js/team-personnel-editor.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -270,9 +278,73 @@ assert(reuseFn.includes('values (v_name, true, false, false, false)'), 'a new pe
 assert(!/\bupdate\s+public\.people\b/i.test(reuseFn), 'reuse does not change the existing person');
 assert(!/insert\s+into\s+public\.team_members/i.test(reuseFn), 'event person creation does not create Manning');
 assert(!/facilitator_qualifications|facilitator_t4t_completions/i.test(reuseFn), 'event person creation does not create qualification or T4T completion');
-assert(db.includes("rpc('reuse_or_create_event_person'"), 'Add Person uses the neutral reuse function');
-assert(fields.includes('onCreatePerson({ name: personName })'), 'Add Person sends the typed name to that function');
-assert(!sliceBetween(fields, "menu.querySelector('.ref-inline-save')", 'function personSecondaryText').includes('findPersonnelByHistoricalName'), 'Add Person does not keep the first browser match');
+assert(db.includes("rpc('reuse_or_create_event_person'"), 'exact event-person reuse remains available');
+assert(db.includes('export async function createStructuredEventPerson'), 'a new event person uses the structured personnel save');
+assert(db.includes("rpc('save_directory_person_structured'"), 'structured event people use the shared personnel RPC');
+const structuredCreate = sliceBetween(db, 'export async function createStructuredEventPerson', 'function referenceNameConflictError');
+assert(structuredCreate.includes('eventPersonCreateValues(identity, role)'), 'a new event person is saved from Rank, First Name, and Last Name');
+assert(structuredCreate.includes('eventPersonRoleUpdate(existing, role)'), 'a reused event person keeps the stored identity and gains only the missing role');
+assert(!fields.includes('onCreatePerson({ name: personName })'), 'Add Person does not save the typed text as a combined name');
+assert(fields.includes('Add New Person'), 'Add Person opens the structured identity editor');
+assert(fields.includes('draftEventPersonIdentity(prefillName, knownPersonnelRanks())'), 'the typed search is only a draft');
+assert(fields.includes("identityRole: 'facilitator'") && fields.includes("identityRole: 'poc'"), 'facilitator and POC creation keep their own role');
+assert(fields.includes('event.preventDefault()') && fields.includes('event.stopPropagation()'), 'saving the new person does not submit the event');
+assert(fields.includes('type="button" class="btn btn-primary ref-inline-save"'), 'the person save button is not an event submit button');
+assert(!sliceBetween(fields, 'async function saveNewPerson', 'function personSecondaryText').includes('form.reset'), 'the nested person save leaves the rest of the event form in place');
+assert(!sliceBetween(fields, 'const person = [...directory, ...menuSource].find((entry) => entry.id === button.dataset.id);', 'data-action="add-person"').includes('onCreatePerson'), 'selecting an existing person does not open creation');
+assert(!sliceBetween(fields, 'async function saveNewPerson', 'function personSecondaryText').includes('findPersonnelByHistoricalName'), 'Add Person does not keep the first browser match');
+
+const ranks = ['CDR', 'LT', 'Chaplain'];
+const cdr = draftEventPersonIdentity('CDR John Smith', ranks);
+assert(cdr.rankTitle === 'CDR' && cdr.firstName === 'John' && cdr.lastName === 'Smith', 'CDR John Smith drafts rank, first, and last');
+const lt = draftEventPersonIdentity('LT Jane Doe', ranks);
+assert(lt.rankTitle === 'LT' && lt.firstName === 'Jane' && lt.lastName === 'Doe', 'LT Jane Doe drafts rank, first, and last');
+const chaplain = draftEventPersonIdentity('Chaplain Adams', ranks);
+assert(chaplain.rankTitle === 'Chaplain' && chaplain.firstName === '' && chaplain.lastName === 'Adams', 'Chaplain Adams drafts rank and last name');
+const plain = draftEventPersonIdentity('John Smith', ranks);
+assert(plain.rankTitle === '' && plain.firstName === 'John' && plain.lastName === 'Smith', 'John Smith drafts first and last without a rank');
+const surname = draftEventPersonIdentity('Smith', ranks);
+assert(surname.rankTitle === '' && surname.firstName === '' && surname.lastName === 'Smith', 'a single token drafts a last name');
+assert(validatePersonnelEditor({ firstName: '', lastName: 'Adams', rankTitle: 'Chaplain' }) === '', 'Chaplain plus a last name is valid');
+assert(validatePersonnelEditor({ firstName: 'James', lastName: '', rankTitle: '' }) === '', 'a first name alone is valid');
+assert(validatePersonnelEditor({ firstName: 'Test', lastName: 'McTesterton', rankTitle: 'LT' }) === '', 'a first and last name are valid');
+assert(validatePersonnelEditor({ firstName: '', lastName: '', rankTitle: 'LT' }) === 'First Name or Last Name is required.', 'rank alone is rejected');
+const createdFacilitator = eventPersonCreateValues({ rankTitle: 'LT', firstName: 'Test', lastName: 'McTesterton' }, 'facilitator');
+assert(createdFacilitator.name === 'Test McTesterton' && !createdFacilitator.name.includes('LT'), 'rank stays out of the compatibility name');
+assert(createdFacilitator.firstName === 'Test' && createdFacilitator.lastName === 'McTesterton', 'first and last stay structured');
+assert(createdFacilitator.isFacilitator === true && createdFacilitator.isPoc === false && createdFacilitator.isCredoStaff === false, 'a new facilitator receives facilitator status only');
+assert(directoryPersonnelNeedsReview(createdFacilitator) === false, 'a new structured event person does not need review');
+const createdPoc = eventPersonCreateValues({ rankTitle: '', firstName: 'Abril', lastName: 'Betancourt' }, 'poc');
+assert(createdPoc.isPoc === true && createdPoc.isFacilitator === false && createdPoc.isCredoStaff === false, 'a new point of contact receives POC status only');
+const promoted = eventPersonRoleUpdate({
+  id: 'person-1',
+  name: 'Ada Contact',
+  firstName: 'Ada',
+  lastName: 'Contact',
+  rankTitle: '',
+  isCredoStaff: true,
+  isFacilitator: false,
+  isPoc: true,
+  staffBilletOrRole: 'Director',
+}, 'facilitator');
+assert(promoted.isFacilitator === true && promoted.isPoc === true && promoted.isCredoStaff === true, 'adding facilitator status keeps staff and POC status');
+assert(promoted.name === 'Ada Contact' && promoted.staffBilletOrRole === 'Director', 'adding a role keeps the stored identity');
+const pocPromoted = eventPersonRoleUpdate({
+  id: 'person-2',
+  name: 'Brian Hamer',
+  firstName: 'Brian',
+  lastName: 'Hamer',
+  isCredoStaff: false,
+  isFacilitator: true,
+  isPoc: false,
+}, 'poc');
+assert(pocPromoted.isPoc === true && pocPromoted.isFacilitator === true && pocPromoted.isCredoStaff === false, 'adding POC status keeps facilitator status');
+const existing = { id: 'known', name: 'John Smith', rankTitle: 'CDR', firstName: 'John', lastName: 'Smith' };
+assert(facilitatorReusePlan({ name: 'John Smith', rankTitle: 'CDR' }, [existing]).status === 'reuse', 'an exact structured identity reuses the existing person');
+assert(facilitatorReusePlan({ name: 'John Smith', rankTitle: 'CDR' }, [
+  existing,
+  { id: 'other', name: 'John Smith', rankTitle: 'LCDR', firstName: 'John', lastName: 'Smith' },
+]).status === 'choose', 'an ambiguous identity is not inserted');
 
 assert(!reconcile.includes('update public.events'), 'reconciliation does not rewrite event text');
 assert(!reconcile.includes('event.facilitators') && !reconcile.includes('events.poc') && !reconcile.includes('events.credo_staff'), 'reconciliation does not assign historical personnel text');
