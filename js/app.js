@@ -4145,6 +4145,49 @@ function updateTeamDirectoryTabs() {
   });
 }
 
+function syncFacilitatorPickerPeople(sourceRows, relevantRecords, aliases) {
+  const relevantIds = new Set((relevantRecords || []).map((person) => person.id));
+  const directoryById = new Map((referencePeople || []).map((person) => [person.id, person]));
+  const records = (sourceRows || []).map((row) => {
+    const existing = directoryById.get(row?.id);
+    if (existing) return existing;
+    return {
+      id: row?.id ?? null,
+      name: row?.name ?? '',
+      rankTitle: row?.rank_title ?? row?.rankTitle ?? null,
+      email: row?.email ?? null,
+      phone: row?.phone ?? null,
+      active: row?.active !== false,
+    };
+  });
+  facilitatorPickerPeople = attachPersonnelAliases(records, aliases)
+    .filter((person) => relevantIds.has(person.id));
+  eventReferenceFields?.refreshPeople();
+}
+
+async function loadFacilitatorPickerPeople() {
+  try {
+    const [sources, aliases] = await Promise.all([
+      fetchFacilitatorManagementSources(),
+      fetchPersonnelAliases().catch((error) => {
+        console.error(error);
+        return [];
+      }),
+    ]);
+    const relevant = summarizeFacilitatorPersonnel(
+      sources.people,
+      sources.experience,
+      sources.qualifications,
+      sources.products,
+      sources.t4tExperience,
+      sources.t4tCompletions,
+    );
+    syncFacilitatorPickerPeople(sources.people, relevant, aliases);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 function attachPersonnelAliases(people, aliases) {
   const grouped = new Map();
   for (const alias of aliases || []) {
@@ -11288,6 +11331,7 @@ const FACILITATOR_VIEW_LABELS = {
 };
 
 let facilitatorPersonnel = [];
+let facilitatorPickerPeople = [];
 let facilitatorSourcePeople = [];
 let facilitatorLivingWorksWorkshops = null;
 let facilitatorProducts = [];
@@ -12165,6 +12209,7 @@ async function renderFacilitatorManagement() {
       sources.t4tExperience,
       sources.t4tCompletions,
     );
+    syncFacilitatorPickerPeople(sources.people, facilitatorPersonnel, aliases);
     syncFacilitatorProductFilter();
     paintFacilitatorAnniversaryAlerts();
     paintFacilitatorPersonnel();
@@ -12941,6 +12986,7 @@ function setupModal() {
     getVenues: () => referenceVenues,
     getCaterers: () => referenceCaterers,
     getPeople: () => referencePeople,
+    getFacilitatorPeople: () => facilitatorPickerPeople,
     getTeamMembers: () => teamMembers,
     canCreateReferences: () => canEditEvents(),
     createCommand: async (name) => {
@@ -13146,6 +13192,7 @@ async function loadReferenceLists() {
     aliasResult.status === 'fulfilled' ? aliasResult.value : [],
   );
   teamMembers = teamMembersResult.status === 'fulfilled' ? teamMembersResult.value : [];
+  await loadFacilitatorPickerPeople();
   eventReferenceFields?.refreshStaff();
   eventReferenceFields?.refreshPeople();
 }

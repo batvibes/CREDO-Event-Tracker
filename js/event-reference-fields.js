@@ -2,6 +2,7 @@ import {
   comparePersonnelDisplayNames,
   findPersonnelByHistoricalName,
   personnelDisplayName,
+  personnelMatchesHistoricalName,
 } from './personnel-identity.js';
 
 export const PERSONNEL_MENU_RESULT_LIMIT = 50;
@@ -24,6 +25,24 @@ export function visiblePersonnelMenuOptions(people, query, options = {}) {
     ? sorted.filter((person) => personnelMenuHaystack(person).includes(needle))
     : sorted;
   return matched.slice(0, Math.max(0, limit));
+}
+
+export function visibleFacilitatorMenuOptions(facilitatorPeople, directoryPeople, query, options = {}) {
+  const limit = Number.isInteger(options.limit) ? options.limit : PERSONNEL_MENU_RESULT_LIMIT;
+  const excluded = options.excludedIds instanceof Set ? options.excludedIds : new Set(options.excludedIds || []);
+  const normal = visiblePersonnelMenuOptions(facilitatorPeople, query, { ...options, excludedIds: excluded, limit });
+  const cleaned = cleanReferenceDisplayName(query);
+  if (!cleaned) return normal;
+  const seen = new Set(normal.map((person) => person.id));
+  const exact = [...(directoryPeople || [])]
+    .filter((person) => (
+      person
+      && !excluded.has(person.id)
+      && !seen.has(person.id)
+      && personnelMatchesHistoricalName(person, cleaned)
+    ))
+    .sort(comparePersonnelDisplayNames);
+  return [...exact, ...normal].slice(0, Math.max(0, limit));
 }
 
 function cleanReferenceDisplayName(value) {
@@ -750,6 +769,7 @@ function mountPeopleMulti(root, options) {
     name,
     placeholder,
     getPeople,
+    getMenuPeople,
     canCreate,
     canManage,
     onCreatePerson,
@@ -1126,12 +1146,15 @@ function mountPeopleMulti(root, options) {
     }
 
     const cleanedQuery = cleanReferenceDisplayName(input.value);
-    const people = visiblePersonnelMenuOptions(getPeople(), cleanedQuery, {
-      excludedIds: tokens.filter((token) => token.id).map((token) => token.id),
-    });
+    const directory = getPeople() || [];
+    const menuSource = typeof getMenuPeople === 'function' ? (getMenuPeople() || []) : directory;
+    const excludedIds = tokens.filter((token) => token.id).map((token) => token.id);
+    const people = typeof getMenuPeople === 'function'
+      ? visibleFacilitatorMenuOptions(menuSource, directory, cleanedQuery, { excludedIds })
+      : visiblePersonnelMenuOptions(directory, cleanedQuery, { excludedIds });
 
     const exactPerson = cleanedQuery
-      ? findPersonnelByHistoricalName(getPeople() || [], cleanedQuery)
+      ? findPersonnelByHistoricalName([...directory, ...menuSource], cleanedQuery)
       : null;
     const showTypedAdd = canCreate() && cleanedQuery && !exactPerson;
 
@@ -1166,7 +1189,7 @@ function mountPeopleMulti(root, options) {
 
     menu.querySelectorAll('.ref-menu-option[data-id]').forEach((button) => {
       button.addEventListener('click', () => {
-        const person = (getPeople() || []).find((entry) => entry.id === button.dataset.id);
+        const person = [...directory, ...menuSource].find((entry) => entry.id === button.dataset.id);
         if (!person) return;
         addToken({
           id: person.id,
@@ -1254,7 +1277,10 @@ function mountPeopleMulti(root, options) {
     refresh() {
       // Drop inactive people from selectable tokens only when they were roster-linked;
       // orphan/historical chips remain.
-      const people = getPeople() || [];
+      const people = [
+        ...(getPeople() || []),
+        ...(typeof getMenuPeople === 'function' ? getMenuPeople() || [] : []),
+      ];
       const activeIds = new Set(people.map((person) => person.id));
       tokens = tokens.map((token) => {
         if (!token.id) return token;
@@ -1533,6 +1559,7 @@ export function initEventReferenceFields(form, adapters) {
     getVenues,
     getCaterers,
     getPeople,
+    getFacilitatorPeople,
     getTeamMembers,
     canCreateReferences,
     createCommand,
@@ -1642,8 +1669,9 @@ export function initEventReferenceFields(form, adapters) {
 
   const facilitators = mountPeopleMulti(form.querySelector('[data-ref-field="facilitators"]'), {
     name: 'facilitators',
-    placeholder: 'Search people…',
+    placeholder: 'Search facilitators…',
     getPeople,
+    getMenuPeople: getFacilitatorPeople,
     canCreate: canCreateReferences,
     canManage: () => false,
     onCreatePerson: async (person) => {
