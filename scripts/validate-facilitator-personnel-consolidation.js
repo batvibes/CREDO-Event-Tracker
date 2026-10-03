@@ -84,7 +84,98 @@ assert(app.includes('openFacilitatorDetail('), 'the facilitator profile still op
 const created = personnelEditorRoleValues('facilitator', null, { isFacilitator: true });
 assert(created.isFacilitator === true, 'adding a facilitator sets the facilitator role');
 assert(created.isCredoStaff === false && created.isPoc === false, 'a new facilitator does not receive Team roles');
-assert(validatePersonnelEditor({ name: 'Ada Civilian', rankTitle: '', isCredoStaff: false }) === '', 'a facilitator name does not require rank, command, or installation');
+assert(
+  validatePersonnelEditor({
+    firstName: 'Ada',
+    lastName: 'Civilian',
+    name: 'Ada Civilian',
+    rankTitle: '',
+    isCredoStaff: false,
+  }) === '',
+  'a facilitator name requires structured first/last name but not rank, command, or installation',
+);
+assert(
+  validatePersonnelEditor({
+    firstName: '',
+    lastName: 'Civilian',
+    name: 'Civilian',
+    rankTitle: '',
+    isCredoStaff: false,
+  }) === 'First Name is required.',
+  'structured personnel validation requires First Name',
+);
+assert(
+  validatePersonnelEditor({
+    firstName: 'Ada',
+    lastName: '',
+    name: 'Ada',
+    rankTitle: '',
+    isCredoStaff: false,
+  }) === 'Last Name is required.',
+  'structured personnel validation requires Last Name',
+);
+assert(
+  validatePersonnelEditor({
+    id: 'ada',
+    storedFirstName: 'Ada',
+    storedLastName: 'Civilian',
+    firstName: '',
+    lastName: '',
+    name: 'Ada Civilian',
+    isCredoStaff: false,
+  }) === 'First Name is required.',
+  'an already structured person still requires both names',
+);
+assert(
+  validatePersonnelEditor({
+    id: 'legacy',
+    storedFirstName: '',
+    storedLastName: '',
+    firstName: '',
+    lastName: '',
+    name: 'Chaplain Rudd',
+    rankTitle: 'Chaplain',
+    isCredoStaff: true,
+    staffBilletOrRole: 'Chaplain',
+  }) === '',
+  'an untouched legacy person can save unrelated changes and keep the combined name',
+);
+assert(
+  validatePersonnelEditor({
+    id: 'legacy',
+    storedFirstName: '',
+    storedLastName: '',
+    firstName: 'Chaplain',
+    lastName: '',
+    name: 'Chaplain Rudd',
+    isCredoStaff: false,
+  }) === 'Last Name is required.',
+  'a legacy person cannot save only one structured name',
+);
+assert(
+  validatePersonnelEditor({
+    id: 'legacy',
+    storedFirstName: '',
+    storedLastName: '',
+    firstName: 'John',
+    lastName: 'Scanlon',
+    name: 'John Scanlon',
+    rankTitle: 'CDR',
+    isCredoStaff: true,
+    staffBilletOrRole: '',
+  }).includes('Billet'),
+  'supplying structured names does not skip CREDO Staff billet validation',
+);
+assert(
+  validatePersonnelEditor({
+    firstName: 'CDR',
+    lastName: 'Scanlon',
+    name: 'CDR Scanlon',
+    rankTitle: 'CDR',
+    isCredoStaff: false,
+  }) === 'Rank / Title should not be entered in First Name or Last Name.',
+  'rank is still kept out of a newly supplied personal name',
+);
 
 const edited = personnelEditorRoleValues('facilitator', {
   id: 'ada',
@@ -222,6 +313,8 @@ assert(staffPlan.status === 'reuse' && staffPlan.candidates.length === 1, 'an ex
 assert(staffReuse.id === 'staff' && staffReuse.isFacilitator === true, 'reuse keeps the existing person and sets the facilitator role');
 assert(staffReuse.isCredoStaff === true && staffReuse.staffBilletOrRole === 'Director' && staffReuse.staffPrdEaos === 'JUL 27', 'reuse preserves CREDO Staff billet and PRD/EAOS');
 assert(staffReuse.name === 'Ada Lane' && staffReuse.rankTitle === 'CDR', 'reuse does not replace the stored name or rank');
+assert(staffReuse.firstName === '' && staffReuse.lastName === '', 'reuse of a legacy person does not invent structured names');
+assert(validatePersonnelEditor(staffReuse) === '', 'reuse of a legacy person does not require a structured-name conversion');
 assert(staffReuse.commandOrganization === 'CREDO MCI WEST' && staffReuse.installation === 'Camp Pendleton', 'reuse preserves command and installation');
 
 const pocReuse = facilitatorReuseValues(poc);
@@ -245,6 +338,18 @@ const ambiguous = facilitatorReusePlan({ name: 'John Adams' }, [
 ]);
 assert(ambiguous.status === 'choose' && ambiguous.candidates.length === 2 && ambiguous.selectedPersonId == null, 'more than one exact match requires an explicit choice');
 
+const reconcileSource = editor.slice(editor.indexOf('function renderReconcile'), editor.indexOf('staffInput.addEventListener'));
+assert(reconcileSource.includes("message = 'Full Name is required.'"), 'reconciliation still validates the legacy full name');
+assert(reconcileSource.includes("field('Rank / Title', rank), field('Full Name', fullName)"), 'reconciliation still edits Rank / Title and Full Name');
+assert(!reconcileSource.includes('validatePersonnelEditor'), 'reconciliation does not use structured-name validation');
+assert(read('js/db.js').includes("rpc('reconcile_directory_people',"), 'reconciliation still calls the legacy reconciliation RPC');
+assert(!read('js/db.js').includes('reconcile_directory_people_structured'), 'this stage does not send reconciliation through the structured wrapper');
+const structuredSave = read('supabase/migrations/035_structured_personnel_name_writes.sql');
+assert(structuredSave.includes('public.save_directory_person('), 'structured saves still go through the proven personnel save');
+assert(structuredSave.includes("hint = 'STRUCTURED_NAME_INCOMPLETE'"), 'one structured name without the other is rejected');
+assert(structuredSave.includes('elsif p_id is null'), 'an existing legacy save can omit structured names');
+assert(structuredSave.includes('if v_first_name is not null then'), 'structured columns are written only when both names are supplied');
+
 assert(editor.includes('Existing Person Found') && editor.includes('Use Existing Person'), 'Add Facilitator asks before reusing an existing person');
 assert(editor.includes("inactive.textContent = 'Inactive'"), 'an inactive match is labeled Inactive');
 assert(editor.includes("roleSurface === 'facilitator' && !editing"), 'reuse is limited to Add Facilitator');
@@ -254,7 +359,14 @@ assert(!/levenshtein|similarity\s*\(|pg_trgm|soundex/i.test(editor), 'reuse does
 assert(editorOpen.includes("roleSurface === 'facilitator' ? 'facilitator' : 'team'"), 'Team editing stays on the Team role surface');
 assert(editorOpen.includes('p_is_facilitator') === false && editorOpen.includes('saveDirectoryPerson(values)'), 'both surfaces save the canonical person');
 assert(!/create table public\.people\b/i.test(`${app}\n${editor}`), 'no duplicate people table was introduced');
-assert(fs.readdirSync(path.join(ROOT, 'supabase/migrations')).filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql', 'migrations after 028 are attendance removal, completion provenance, attendance-created person cleanup, personnel reconciliation repair, and event person reuse');
+assert(
+  fs.readdirSync(path.join(ROOT, 'supabase/migrations'))
+    .filter((name) => /^0(29|[3-9]\d)_/.test(name))
+    .sort()
+    .join('|')
+    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql',
+  'migrations after 028 include the established personnel migrations plus structured personnel names',
+);
 
 if (errors.length) {
   console.error('validate-facilitator-personnel-consolidation failed:');

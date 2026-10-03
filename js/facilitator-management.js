@@ -251,6 +251,8 @@ function mapPerson(row) {
   return {
     id: row?.id ?? null,
     name: cleanText(row?.name),
+    firstName: cleanText(row?.first_name ?? row?.firstName),
+    lastName: cleanText(row?.last_name ?? row?.lastName),
     rankTitle: cleanText(row?.rank_title ?? row?.rankTitle),
     commandOrganization: cleanText(row?.command_organization ?? row?.commandOrganization),
     installation: cleanText(row?.installation),
@@ -421,6 +423,8 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
     personnel.push({
       id: person.id,
       name: person.name,
+      firstName: person.firstName,
+      lastName: person.lastName,
       rankTitle: person.rankTitle,
       displayName: personnelDisplayName(person.rankTitle, person.name),
       commandOrganization: person.commandOrganization,

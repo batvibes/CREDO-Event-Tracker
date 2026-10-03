@@ -57,6 +57,8 @@ export function mapTeamDirectoryPerson(row) {
   return {
     id: row?.id ?? null,
     name: cleanText(row?.name) ?? '',
+    firstName: cleanText(row?.first_name),
+    lastName: cleanText(row?.last_name),
     rankTitle: cleanText(row?.rank_title),
     commandOrganization: cleanText(row?.command_organization),
     installation: cleanText(row?.installation),

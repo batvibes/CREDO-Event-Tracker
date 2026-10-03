@@ -77,6 +77,8 @@ export function facilitatorReuseValues(person) {
   return {
     id: person?.id ?? null,
     rankTitle: clean(person?.rankTitle),
+    firstName: clean(person?.firstName),
+    lastName: clean(person?.lastName),
     name: clean(person?.name),
     commandOrganization: clean(person?.commandOrganization),
     installation: clean(person?.installation),
@@ -93,12 +95,31 @@ function isExistingPersonNameError(error) {
   return error?.code === 'REFERENCE_NAME_EXISTS' || /already exists/i.test(String(error?.message || ''));
 }
 
+function hasStructuredName(firstName, lastName) {
+  return Boolean(clean(firstName) && clean(lastName));
+}
+
 export function validatePersonnelEditor(values) {
-  const name = clean(values.name);
+  const firstName = clean(values.firstName);
+  const lastName = clean(values.lastName);
   const rankTitle = clean(values.rankTitle);
-  if (!name) return 'Full Name is required.';
-  if (fullNameIncludesRank(rankTitle, name)) {
-    return 'Full Name should be the personal name. Put the rank in Rank / Title.';
+  const existingId = values?.id ?? null;
+  const storedStructured = hasStructuredName(values?.storedFirstName, values?.storedLastName);
+  const suppliedStructured = Boolean(firstName || lastName);
+  const completeStructured = Boolean(firstName && lastName);
+  const legacyUntouched = Boolean(existingId) && !storedStructured && !suppliedStructured;
+
+  if (suppliedStructured && !completeStructured) {
+    return firstName ? 'Last Name is required.' : 'First Name is required.';
+  }
+  if (!legacyUntouched && !completeStructured) {
+    return firstName ? 'Last Name is required.' : 'First Name is required.';
+  }
+
+  const name = completeStructured ? clean(`${firstName} ${lastName}`) : clean(values.name);
+  if (!name) return 'First Name is required.';
+  if (!legacyUntouched && fullNameIncludesRank(rankTitle, name)) {
+    return 'Rank / Title should not be entered in First Name or Last Name.';
   }
   if (values.isCredoStaff && !clean(values.staffBilletOrRole)) {
     return 'Billet / Role is required for CREDO Staff.';
@@ -130,8 +151,10 @@ export function mountPersonnelEditor({
   let reuseCandidates = null;
   let reuseSelectedId = '';
 
+  const legacyRecord = Boolean(person?.id) && !hasStructuredName(person?.firstName, person?.lastName);
   const rankInput = textInput(person?.rankTitle, { maxLength: 40 });
-  const nameInput = textInput(person?.name, { required: true, maxLength: 200 });
+  const firstNameInput = textInput(person?.firstName, { required: !legacyRecord, maxLength: 100 });
+  const lastNameInput = textInput(person?.lastName, { required: !legacyRecord, maxLength: 100 });
   const commandInput = textInput(person?.commandOrganization, { maxLength: 200 });
   const installationInput = textInput(person?.installation, { maxLength: 200 });
   const staffInput = document.createElement('input');
@@ -146,10 +169,17 @@ export function mountPersonnelEditor({
   const prdInput = textInput(person?.staffPrdEaos, { maxLength: 80 });
 
   function currentValues() {
+    const firstName = clean(firstNameInput.value);
+    const lastName = clean(lastNameInput.value);
+    const structuredName = firstName && lastName ? clean(`${firstName} ${lastName}`) : '';
     return {
       id: person?.id ?? null,
       rankTitle: clean(rankInput.value),
-      name: clean(nameInput.value),
+      firstName,
+      lastName,
+      storedFirstName: clean(person?.firstName),
+      storedLastName: clean(person?.lastName),
+      name: structuredName || clean(person?.name),
       commandOrganization: clean(commandInput.value),
       installation: clean(installationInput.value),
       ...personnelEditorRoleValues(roleSurface, person, {
@@ -186,11 +216,22 @@ export function mountPersonnelEditor({
     generalTitle.textContent = 'General';
     const nameRow = document.createElement('div');
     nameRow.className = 'personnel-editor-row personnel-editor-row-name';
-    nameRow.append(field('Rank / Title', rankInput), field('Full Name', nameInput));
+    nameRow.append(
+      field('Rank / Title', rankInput),
+      field('First Name', firstNameInput),
+      field('Last Name', lastNameInput),
+    );
     const placeRow = document.createElement('div');
     placeRow.className = 'personnel-editor-row personnel-editor-row-place';
     placeRow.append(field('Command / Organization', commandInput), field('Installation', installationInput));
-    general.append(generalTitle, nameRow, placeRow);
+    if (legacyRecord && clean(person?.name)) {
+      const legacyNote = document.createElement('p');
+      legacyNote.className = 'personnel-editor-help';
+      legacyNote.textContent = `Existing name “${clean(person.name)}” stays until both First Name and Last Name are entered.`;
+      general.append(generalTitle, nameRow, legacyNote, placeRow);
+    } else {
+      general.append(generalTitle, nameRow, placeRow);
+    }
 
     const roles = document.createElement('div');
     roles.className = 'personnel-editor-section';
@@ -565,13 +606,14 @@ export function mountPersonnelEditor({
       reconcileButton.disabled = busy || reconcileConfirm;
       reconcileButton.addEventListener('click', () => {
         const nextIdentity = { rankTitle: clean(reconcileRank), name: clean(reconcileName) };
-        const problem = validatePersonnelEditor({
-          ...nextIdentity,
-          isCredoStaff: false,
-          staffBilletOrRole: 'unused',
-        });
-        if (!nextIdentity.name || fullNameIncludesRank(nextIdentity.rankTitle, nextIdentity.name)) {
-          message = problem || 'Full Name is required.';
+        if (!nextIdentity.name) {
+          message = 'Full Name is required.';
+          reconcileConfirm = false;
+          render();
+          return;
+        }
+        if (fullNameIncludesRank(nextIdentity.rankTitle, nextIdentity.name)) {
+          message = 'Full Name should be the personal name. Put the rank in Rank / Title.';
           reconcileConfirm = false;
           render();
           return;
@@ -647,7 +689,8 @@ export function mountPersonnelEditor({
     message = '';
     render();
   });
-  nameInput.addEventListener('input', () => clearReusePrompt(nameInput));
+  firstNameInput.addEventListener('input', () => clearReusePrompt(firstNameInput));
+  lastNameInput.addEventListener('input', () => clearReusePrompt(lastNameInput));
   rankInput.addEventListener('input', () => clearReusePrompt(rankInput));
 
   const form = body.closest('form');

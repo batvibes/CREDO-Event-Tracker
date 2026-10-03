@@ -1165,6 +1165,8 @@ export async function deleteTeamMember(id) {
 const TEAM_DIRECTORY_PERSON_COLUMNS = [
   'id',
   'name',
+  'first_name',
+  'last_name',
   'rank_title',
   'command_organization',
   'installation',
@@ -1182,6 +1184,8 @@ const TEAM_DIRECTORY_PERSON_COLUMNS = [
 const FACILITATOR_MANAGEMENT_PERSON_COLUMNS = [
   'id',
   'name',
+  'first_name',
+  'last_name',
   'rank_title',
   'command_organization',
   'installation',
@@ -1831,6 +1835,11 @@ export async function deleteFacilitatorQualification(qualificationId) {
 function personnelRpcError(error, fallbackName = 'that name') {
   const hint = error?.hint || '';
   const message = String(error?.message || '');
+  if (hint === 'STRUCTURED_NAME_REQUIRED' || hint === 'STRUCTURED_NAME_INCOMPLETE') {
+    const structuredError = new Error(message || 'First Name and Last Name are required.');
+    structuredError.code = hint;
+    return structuredError;
+  }
   if (hint === 'NAME_REQUIRED' || /full name is required/i.test(message)) {
     const nameError = new Error('Full name is required.');
     nameError.code = 'NAME_REQUIRED';
@@ -1866,9 +1875,11 @@ function personnelRpcError(error, fallbackName = 'that name') {
 }
 
 export async function saveDirectoryPerson(person) {
-  const { data, error } = await supabase.rpc('save_directory_person', {
+  const { data, error } = await supabase.rpc('save_directory_person_structured', {
     p_id: person?.id ?? null,
     p_rank_title: person?.rankTitle ?? null,
+    p_first_name: person?.firstName ?? null,
+    p_last_name: person?.lastName ?? null,
     p_name: person?.name ?? '',
     p_command_organization: person?.commandOrganization ?? null,
     p_installation: person?.installation ?? null,

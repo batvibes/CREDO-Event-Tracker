@@ -3453,7 +3453,7 @@ body:has(#new-event-modal[open]) {
 }
 
 #personnel-editor-modal .personnel-editor-row-name {
-  grid-template-columns: minmax(0, 0.3fr) minmax(0, 0.7fr);
+  grid-template-columns: minmax(0, 0.22fr) minmax(0, 0.35fr) minmax(0, 0.43fr);
 }
 
 #personnel-editor-modal .personnel-editor-row-place {

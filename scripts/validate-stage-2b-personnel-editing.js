@@ -140,7 +140,8 @@ assert(renameFn.includes("kind = 'command'"), 'command rename behavior remains')
 assert(/export async function fetchTeamMembers\(\) \{\s*const \{ data, error \} = await supabase\s*\.from\('team_members'\)\s*\.select\('\*'\)\s*\.order\('display_order', \{ ascending: true \}\);/.test(dbSource), 'fetchTeamMembers() is unchanged');
 assert(!dbSource.includes("renameReferenceEntry('person'"), 'client personnel rename does not call migration 016');
 assert(dbSource.includes("error.code = 'PERSONNEL_USE_TEAM'"), 'client name edits are rejected away from the old rename');
-assert(dbSource.includes("rpc('save_directory_person'"), 'Team saves use the transactional function');
+assert(dbSource.includes("rpc('save_directory_person_structured'"), 'Team saves use the structured-name wrapper');
+assert(read('supabase/migrations/035_structured_personnel_name_writes.sql').includes('public.save_directory_person('), 'the wrapper still calls the proven personnel save');
 assert(dbSource.includes("rpc('archive_directory_person'"), 'archive uses the transactional function');
 assert(dbSource.includes("rpc('reconcile_directory_people'"), 'reconciliation uses an explicit function');
 
@@ -187,9 +188,16 @@ assert(personnelDisplayName('LCDR', 'Shane Freiberg') === 'LCDR Shane Freiberg',
 assert(personnelDisplayName('RP1', 'James Brantley') === 'RP1 James Brantley', 'RP1 display identity');
 assert(fullNameIncludesRank('CDR', 'CDR John Scanlon'), 'editor blocks storing the rank twice');
 assert(!fullNameIncludesRank('CDR', 'John Scanlon'), 'personal name with a separate rank is accepted');
-assert(validatePersonnelEditor({ name: '', isCredoStaff: false }) === 'Full Name is required.', 'full name is required');
+assert(validatePersonnelEditor({ name: '', isCredoStaff: false }) === 'First Name is required.', 'a new person requires a first name');
 assert(
-  validatePersonnelEditor({ name: 'John Scanlon', rankTitle: 'CDR', isCredoStaff: true, staffBilletOrRole: '' }).includes('Billet'),
+  validatePersonnelEditor({
+    firstName: 'John',
+    lastName: 'Scanlon',
+    name: 'John Scanlon',
+    rankTitle: 'CDR',
+    isCredoStaff: true,
+    staffBilletOrRole: '',
+  }).includes('Billet'),
   'staff billet is required'
 );
 
