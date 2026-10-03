@@ -4010,6 +4010,54 @@ body:has(#new-event-modal[open]) {
   white-space: nowrap;
 }
 
+#t4t-completion-modal .t4t-attendee-suggestion,
+#t4t-completion-modal .t4t-attendee-suggestion-note {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+#t4t-completion-modal .t4t-attendee-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#t4t-completion-modal .t4t-attendee-suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+#t4t-completion-modal .t4t-attendee-suggestion-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+#t4t-completion-modal .t4t-attendee-suggestion-meta {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+#t4t-completion-modal .t4t-attendee-suggestion-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+#t4t-completion-modal .t4t-attendee-suggestion-actions .btn {
+  min-height: 0;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  box-shadow: none;
+}
+
 #t4t-completion-modal .t4t-roster-heading {
   display: flex;
   align-items: baseline;

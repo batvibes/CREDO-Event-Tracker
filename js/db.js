@@ -1757,6 +1757,30 @@ export async function removeFacilitatorT4tCompletionFromEvent(completion) {
   return data;
 }
 
+export async function createT4tAttendancePerson(person) {
+  const { data, error } = await supabase.rpc('create_t4t_attendance_person', {
+    p_rank_title: person?.rankTitle ?? null,
+    p_name: person?.name ?? '',
+    p_command_organization: person?.commandOrganization ?? null,
+    p_installation: person?.installation ?? null,
+  });
+  if (error) throw personnelRpcError(error, person?.name);
+  return data;
+}
+
+export async function removeT4tAttendanceAttendee(completion) {
+  const { data, error } = await supabase.rpc('remove_facilitator_t4t_attendance', {
+    p_person_id: completion?.personId ?? null,
+    p_product_id: completion?.productId ?? null,
+    p_source_event_id: completion?.sourceEventId ?? null,
+  });
+  if (error) throw t4tCompletionRpcError(error);
+  return {
+    completionId: data?.completion_id ?? null,
+    personRemoved: data?.person_removed === true,
+  };
+}
+
 export async function deleteFacilitatorQualification(qualificationId) {
   const id = typeof qualificationId === 'string' ? qualificationId.trim() : '';
   if (!id) throw new Error('That qualification record could not be found.');

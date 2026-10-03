@@ -277,11 +277,12 @@ const entrySources = db.slice(db.indexOf('export async function fetchT4tCompleti
 const facilitatorPeople = db.slice(db.indexOf('export async function fetchFacilitatorManagementSources'), db.indexOf(".from('facilitator_product_experience')"));
 const writeAttendance = moduleSource.slice(moduleSource.indexOf('async function writeAttendance'), moduleSource.indexOf('async function addExistingPerson'));
 const createPerson = moduleSource.slice(moduleSource.indexOf('async function createAndRecordPerson'), moduleSource.indexOf('async function removeAttendee'));
-const removeAttendee = moduleSource.slice(moduleSource.indexOf('async function removeAttendee'), moduleSource.indexOf('function renderPending'));
+const removeAttendee = moduleSource.slice(moduleSource.indexOf('async function removeAttendee'), moduleSource.indexOf('function refreshSuggestion'));
 const requestClose = moduleSource.slice(moduleSource.indexOf('function requestClose'), moduleSource.indexOf('const closeBtn'));
 
 assert(moduleSource.includes('matchDirectoryPerson'), 'adding an attendee uses the identity matcher');
-assert(moduleSource.includes('Use this person') && moduleSource.includes('Create New Person') && moduleSource.includes('New Person'), 'probable, ambiguous, and new people require an explicit choice');
+assert(moduleSource.includes('Use Existing') && moduleSource.includes('This Is A Different Person') && moduleSource.includes('Add As New') && moduleSource.includes('No existing person found. Adding this attendee will create a new person.'), 'name suggestions appear before attendance is recorded');
+assert(!moduleSource.includes('Create New Person'), 'adding a new person does not ask for a second confirmation');
 assert(moduleSource.includes('Inactive'), 'inactive people stay labeled inactive');
 assert(!moduleSource.includes('Participant Names') && !moduleSource.includes('textarea') && !moduleSource.includes('Review Participants'), 'the participant textarea and bulk review are gone');
 assert(moduleSource.includes('>Rank<') === false && moduleSource.includes("'Rank'") && moduleSource.includes("'First Name'") && moduleSource.includes("'Last Name'") && moduleSource.includes("'Command'") && moduleSource.includes("'Installation'"), 'attendance entry uses rank, first name, last name, command, and installation');
@@ -289,13 +290,14 @@ assert(moduleSource.includes("textField('First Name', 't4t-attendee-first', stat
 assert(moduleSource.includes("textField('Rank', 't4t-attendee-rank', state.form.rank, false)") && moduleSource.includes("textField('Command', 't4t-attendee-command', state.form.command, false)") && moduleSource.includes("textField('Installation', 't4t-attendee-installation', state.form.installation, false)"), 'rank, command, and installation are optional');
 assert(moduleSource.includes('Add Attendee') && moduleSource.includes('Attendance Roster') && moduleSource.includes('>Remove<') === false && moduleSource.includes("'Remove'") && moduleSource.includes("'Close'"), 'the roster can add and remove attendees, and the footer can close');
 assert(!moduleSource.includes('Save Attendance'), 'there is no separate Save Attendance step');
-assert(moduleSource.includes('That person is already on the attendance roster.'), 'the same canonical person cannot be added twice');
+assert(moduleSource.includes('Already on this attendance roster.'), 'a person already attending is not added again');
 assert(moduleSource.includes('eventSourcedAttendance'), 'existing event attendance loads into the roster');
 assert(moduleSource.includes('Completion Date') && moduleSource.includes('Qualification Product'), 'the dialog shows the completion date and qualification product');
 assert(moduleSource.includes('People already saved keep their recorded date.'), 'a changed completion date does not silently rewrite saved attendees');
 assert(writeAttendance.includes('await options.recordCompletion') && writeAttendance.indexOf('await options.recordCompletion') < writeAttendance.indexOf('showSavedRoster()'), 'Add Attendee records attendance before the person appears on the roster');
 assert(writeAttendance.includes("if (completionErrorCode(error) !== 'T4T_COMPLETION_EVENT_DUPLICATE') throw error;"), 'a failed attendance record is not treated as a saved attendee');
-assert(createPerson.indexOf('await options.savePerson') >= 0 && createPerson.indexOf('await options.savePerson') < createPerson.indexOf('await writeAttendance'), 'a new person is created, then their attendance is recorded');
+assert(createPerson.indexOf('await options.createAttendancePerson') >= 0 && createPerson.indexOf('await options.createAttendancePerson') < createPerson.indexOf('await writeAttendance'), 'a new person is created, then their attendance is recorded');
+assert(moduleSource.includes('suggestAttendancePeople') && moduleSource.includes('scheduleSuggestion') && moduleSource.includes(', 300)'), 'name suggestions are checked while typing, after a short pause');
 assert(!createPerson.slice(createPerson.indexOf('} catch (error)')).includes('showSavedRoster'), 'a failed new-person attendance save does not show that person as an attendee');
 assert(removeAttendee.indexOf('await options.removeCompletion') >= 0 && removeAttendee.indexOf('await options.removeCompletion') < removeAttendee.indexOf('showSavedRoster()'), 'Remove deletes the saved attendance before the row disappears');
 assert(!removeAttendee.slice(removeAttendee.indexOf('} catch (error)')).includes('showSavedRoster'), 'a failed removal leaves the attendee visible');
@@ -312,7 +314,7 @@ assert(!writeAttendance.includes('dialog.close') && !removeAttendee.includes('di
 assert(!/\.(insert|update|delete|upsert)\(/.test(moduleSource), 'the workflow does not write tables directly');
 
 assert(opener.includes('if (!canEditEvents()) return'), 'opening the workflow requires an editor or admin');
-assert(opener.includes('saveDirectoryPerson') && opener.includes('recordFacilitatorT4tCompletion') && opener.includes('removeFacilitatorT4tCompletionFromEvent'), 'new people, additions, and removals use the attendance RPCs');
+assert(opener.includes('createT4tAttendancePerson') && opener.includes('recordFacilitatorT4tCompletion') && opener.includes('removeT4tAttendanceAttendee'), 'new people, additions, and removals use the attendance RPCs');
 assert(opener.includes('fetchT4tCompletionEntrySources') && opener.includes('renderFacilitatorManagement'), 'the workflow loads the directory and refreshes Facilitator Management');
 assert(opener.includes('startDate: event.startDate') && opener.includes('date: event.date'), 'the workflow receives the start date and legacy date');
 assert(!opener.includes('endDate') && !opener.includes('facilitators') && !opener.includes('participants') && !opener.includes('roster'), 'the event handoff omits end date, facilitators, participant count, and roster status');
@@ -363,6 +365,14 @@ assert(!/grant\s+/i.test(provenanceMigration) && !/revoke\s+/i.test(provenanceMi
 const removalWrapper = db.slice(db.indexOf('export async function removeFacilitatorT4tCompletionFromEvent'), db.indexOf('export async function deleteFacilitatorQualification'));
 assert(removalWrapper.includes(".rpc('remove_facilitator_t4t_completion_from_event'"), 'the browser removes attendance through the RPC');
 assert(!removalWrapper.includes(".from('facilitator_t4t_completions')"), 'the browser does not delete completion rows directly');
+const attendanceCleanup = read('supabase/migrations/031_t4t_attendance_person_cleanup.sql');
+assert(attendanceCleanup.includes('create table public.t4t_attendance_created_people'), 'attendance-created people have their own provenance table');
+assert(attendanceCleanup.includes('insert into public.t4t_attendance_created_people'), 'creating an attendance person records that provenance');
+assert(attendanceCleanup.includes('false,\n    false,\n    false,'), 'attendance-created people are not staff, facilitators, or points of contact');
+assert(attendanceCleanup.includes('from public.t4t_attendance_created_people created') && attendanceCleanup.includes('delete from public.people person'), 'cleanup deletes a person only after proving attendance entry created them');
+assert(attendanceCleanup.includes('facilitator_t4t_completions') && attendanceCleanup.includes('facilitator_qualifications') && attendanceCleanup.includes('people_name_aliases') && attendanceCleanup.includes('team_members') && attendanceCleanup.includes('facilitator_event_tokens') && attendanceCleanup.includes('is_credo_staff') && attendanceCleanup.includes('is_poc') && attendanceCleanup.includes('is_facilitator'), 'cleanup keeps a person who is still used elsewhere');
+assert(attendanceCleanup.includes('when foreign_key_violation then'), 'an unknown reference keeps the person');
+assert(!/grant\s+(insert|update|delete|all)\s+on\s+table\s+public\.people/i.test(attendanceCleanup), 'cleanup does not grant direct person deletion');
 
 if (errors.length) {
   console.error(`validate-t4t-bulk-completion-entry failed:\n- ${errors.join('\n- ')}`);

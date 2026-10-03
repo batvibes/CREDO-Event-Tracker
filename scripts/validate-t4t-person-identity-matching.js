@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matchDirectoryPerson, personnelDisplayName } from '../js/personnel-identity.js';
+import { suggestAttendancePeople } from '../js/t4t-attendance-suggestions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -125,6 +126,16 @@ const unmatched = matchDirectoryPerson('Pat Noone', people, aliases);
 assert(unmatched.status === 'new' && unmatched.candidates.length === 0 && unmatched.selectedPersonId == null, 'no plausible candidate is a new-person result');
 assert(unmatched.canCreateNew === true, 'only a new result can create a person');
 assert(matchDirectoryPerson('   ', people, aliases).canCreateNew === false, 'a blank name cannot create a person');
+
+const kermit = [{ id: 'kermit', name: 'Kermit Jones', rank_title: 'HM2', command_organization: 'CREDO', installation: 'Camp Pendleton', active: true }];
+assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: 'Jones' }, kermit).status === 'exact', 'an exact first and last name is an existing person');
+assert(suggestAttendancePeople({ firstName: 'kermit', lastName: 'jones' }, kermit).people[0].displayName === 'HM2 Kermit Jones', 'rank does not block an exact name suggestion');
+assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: 'Joness' }, kermit).status === 'possible', 'one extra letter suggests the existing person');
+assert(suggestAttendancePeople({ firstName: 'Cermit', lastName: 'Jones' }, kermit).people[0].personId === 'kermit', 'a different first letter can suggest the existing person');
+assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: 'Jone' }, kermit).status === 'possible', 'a missing last letter suggests the existing person');
+assert(suggestAttendancePeople({ firstName: 'Pat', lastName: 'Noone' }, kermit).status === 'none', 'an unrelated name is not suggested');
+assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: '' }, kermit).status === 'empty', 'suggestions wait until both names are entered');
+assert(matchDirectoryPerson('Kermit Joness', kermit, []).status === 'new', 'a typo stays a new result in the exact matcher');
 
 assert(JSON.stringify(people) === peopleSnapshot && JSON.stringify(aliases) === aliasSnapshot, 'matching does not change people or aliases');
 

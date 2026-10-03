@@ -20,7 +20,8 @@ import {
   deleteFacilitatorQualification,
   fetchT4tCompletionEntrySources,
   recordFacilitatorT4tCompletion,
-  removeFacilitatorT4tCompletionFromEvent,
+  createT4tAttendancePerson,
+  removeT4tAttendanceAttendee,
   saveFacilitatorQualification,
   fetchLocations,
   loadEventCurriculumSupport,
@@ -12452,9 +12453,9 @@ async function openT4tCompletionDialog(eventId) {
     eventDateLabel: formatEventDateDisplay(event),
     initialProducts: t4tCompletionProducts,
     loadSources: fetchT4tCompletionEntrySources,
-    savePerson: (payload) => saveDirectoryPerson(payload),
+    createAttendancePerson: (payload) => createT4tAttendancePerson(payload),
     recordCompletion: recordFacilitatorT4tCompletion,
-    removeCompletion: removeFacilitatorT4tCompletionFromEvent,
+    removeCompletion: removeT4tAttendanceAttendee,
     onRecorded: () => renderFacilitatorManagement(),
   });
   if (!dialog.open) dialog.showModal();

@@ -230,7 +230,7 @@ assert(!/levenshtein|similarity\s*\(|pg_trgm|soundex/i.test(editor), 'reuse does
 assert(editorOpen.includes("roleSurface === 'facilitator' ? 'facilitator' : 'team'"), 'Team editing stays on the Team role surface');
 assert(editorOpen.includes('p_is_facilitator') === false && editorOpen.includes('saveDirectoryPerson(values)'), 'both surfaces save the canonical person');
 assert(!/create table public\.people\b/i.test(`${app}\n${editor}`), 'no duplicate people table was introduced');
-assert(fs.readdirSync(path.join(ROOT, 'supabase/migrations')).filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql', 'migrations after 028 are attendance removal and completion provenance uniqueness');
+assert(fs.readdirSync(path.join(ROOT, 'supabase/migrations')).filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql', 'migrations after 028 are attendance removal, completion provenance, and attendance-created person cleanup');
 
 if (errors.length) {
   console.error('validate-facilitator-personnel-consolidation failed:');

@@ -6,6 +6,7 @@
  * Qualifications, facilitator text, and participant counts are not used.
  */
 import { matchDirectoryPerson, personnelDisplayName } from './personnel-identity.js';
+import { attendanceNameParts, suggestAttendancePeople } from './t4t-attendance-suggestions.js';
 
 export const T4T_COMPLETION_ACTION_LABEL = 'Manage T4T Attendance';
 
@@ -488,7 +489,13 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     target: t4tCompletionTarget(event, options.initialProducts || []),
     pending: null,
     focusFirst: false,
+    boundPersonId: null,
+    confirmedDifferent: false,
+    suggestion: { status: 'empty', people: [] },
+    restoreFocusId: '',
+    restoreCaret: null,
   };
+  let suggestTimer = 0;
 
   function captureFields() {
     const date = body.querySelector('#t4t-completion-date');
@@ -604,6 +611,13 @@ export function mountT4tCompletionWorkflow(dialog, options) {
       keyEvent.preventDefault();
       addAttendee();
     });
+    if (id === 't4t-attendee-first' || id === 't4t-attendee-last') {
+      input.addEventListener('input', () => {
+        state.boundPersonId = null;
+        state.confirmedDifferent = false;
+        scheduleSuggestion();
+      });
+    }
     label.appendChild(input);
     return label;
   }
@@ -611,7 +625,7 @@ export function mountT4tCompletionWorkflow(dialog, options) {
   async function writeAttendance(person) {
     const attendee = rosterAttendeeFromPerson(person, { completedOn: state.completedOn });
     if (!attendee.personId || rosterIncludesPerson(state.roster, attendee.personId)) {
-      state.error = 'That person is already on the attendance roster.';
+      state.error = 'Already on this attendance roster.';
       state.notice = '';
       state.pending = null;
       return;
@@ -698,7 +712,7 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     state.pending = null;
     render();
     try {
-      const created = await options.savePerson(payload);
+      const created = await options.createAttendancePerson(payload);
       if (!created?.id) throw new Error('The person could not be created.');
       const directoryPerson = directoryPersonFromSave(created);
       const person = directoryPerson.id ? directoryPerson : created;
@@ -724,11 +738,14 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     state.notice = '';
     render();
     try {
-      await options.removeCompletion({
+      const removedAttendance = await options.removeCompletion({
         personId: attendee.personId,
         productId: state.target.productId,
         sourceEventId: event.id,
       });
+      if (removedAttendance?.personRemoved) {
+        state.people = state.people.filter((person) => person.id !== attendee.personId);
+      }
       state.completions = state.completions.filter((row) => !(
         completionPersonId(row) === attendee.personId
         && completionProductId(row) === state.target.productId
@@ -746,6 +763,50 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     if (removed) await refreshFacilitatorManagement();
   }
 
+  function refreshSuggestion() {
+    state.suggestion = suggestAttendancePeople({
+      firstName: state.form.firstName,
+      lastName: state.form.lastName,
+    }, state.people, state.aliases);
+  }
+
+  function scheduleSuggestion() {
+    const activeId = doc.activeElement?.id || '';
+    const caret = doc.activeElement?.selectionStart;
+    clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(() => {
+      if (!active) return;
+      captureFields();
+      refreshSuggestion();
+      state.restoreFocusId = activeId;
+      state.restoreCaret = caret;
+      render();
+    }, 300);
+  }
+
+  function useSuggestedPerson(personId) {
+    const person = personById(personId);
+    if (!person) return;
+    const parts = attendanceNameParts(person.name);
+    captureFields();
+    state.form = {
+      ...state.form,
+      rank: clean(person.rank_title),
+      firstName: parts.first,
+      lastName: parts.last,
+      command: clean(person.command_organization),
+      installation: clean(person.installation),
+    };
+    state.boundPersonId = person.id;
+    state.confirmedDifferent = false;
+    state.pending = null;
+    refreshSuggestion();
+    state.notice = '';
+    state.error = rosterIncludesPerson(state.roster, person.id) ? 'Already on this attendance roster.' : '';
+    state.focusFirst = true;
+    render();
+  }
+
   function addAttendee() {
     if (state.busy) return;
     captureFields();
@@ -756,56 +817,126 @@ export function mountT4tCompletionWorkflow(dialog, options) {
       render();
       return;
     }
-    const match = matchDirectoryPerson(attendeeMatchText(form), state.people, state.aliases);
-    state.error = '';
+    refreshSuggestion();
+    const exact = matchDirectoryPerson(attendeeMatchText({ ...form, rank: '' }), state.people, state.aliases);
     state.notice = '';
-    if (match.status === 'exact' && match.selectedPersonId) {
-      addExistingPerson(personById(match.selectedPersonId) || { id: match.selectedPersonId, name: form.firstName });
+    if (state.boundPersonId) {
+      const bound = personById(state.boundPersonId);
+      if (!bound) {
+        state.boundPersonId = null;
+      } else if (rosterIncludesPerson(state.roster, bound.id)) {
+        state.error = 'Already on this attendance roster.';
+        render();
+        return;
+      } else {
+        state.error = '';
+        addExistingPerson(bound);
+        return;
+      }
+    }
+    if (!state.confirmedDifferent && state.suggestion.status === 'exact') {
+      if (state.suggestion.people.length === 1) {
+        const person = personById(state.suggestion.people[0].personId);
+        if (person && rosterIncludesPerson(state.roster, person.id)) {
+          state.error = 'Already on this attendance roster.';
+          render();
+          return;
+        }
+        state.error = '';
+        addExistingPerson(person || { id: state.suggestion.people[0].personId, name: state.suggestion.people[0].personalName });
+        return;
+      }
+      state.error = 'Choose the existing person.';
+      render();
       return;
     }
-    state.pending = { status: match.status, match, form };
+    if (state.suggestion.status === 'possible' && !state.confirmedDifferent) {
+      state.error = 'Choose an existing person, or confirm this is a different person.';
+      render();
+      return;
+    }
+    if (!state.confirmedDifferent && exact.status === 'exact' && exact.selectedPersonId) {
+      const person = personById(exact.selectedPersonId);
+      if (person && rosterIncludesPerson(state.roster, person.id)) {
+        state.error = 'Already on this attendance roster.';
+        render();
+        return;
+      }
+      state.error = '';
+      addExistingPerson(person || { id: exact.selectedPersonId, name: form.firstName });
+      return;
+    }
+    state.error = '';
+    createAndRecordPerson(form);
+  }
+
+  function confirmDifferentPerson() {
+    captureFields();
+    state.confirmedDifferent = true;
+    state.boundPersonId = null;
+    state.error = '';
     render();
   }
 
-  function renderPending() {
-    const pending = state.pending;
-    if (!pending) return null;
-    const card = doc.createElement('article');
-    card.className = 't4t-completion-card';
-    const title = doc.createElement('p');
-    title.className = 't4t-completion-person';
-    title.textContent = pending.status === 'new' ? 'New Person' : 'Confirm person';
-    card.appendChild(title);
+  function suggestionMeta(person, status) {
+    const details = [];
+    if (status !== 'exact' && person.rankTitle) details.push(person.rankTitle);
+    if (person.commandOrganization) details.push(person.commandOrganization);
+    if (person.installation) details.push(person.installation);
+    return details;
+  }
 
-    if (pending.status === 'probable' || pending.status === 'ambiguous') {
-      const candidates = pending.match.candidates || [];
-      for (const candidate of candidates) {
-        const directoryPerson = personById(candidate.personId);
-        const block = appendCandidate(card, {
-          ...candidate,
-          installation: directoryPerson?.installation || '',
-        });
-        if (directoryPerson?.installation) appendDetail(block, 'Installation: ', directoryPerson.installation);
-        block.appendChild(button(doc, 'btn btn-secondary', 'Use this person', () => {
-          addExistingPerson(directoryPerson || { id: candidate.personId, name: candidate.personalName, rank_title: candidate.rankTitle, command_organization: candidate.commandOrganization, active: candidate.active });
-        }, state.busy));
-      }
-      if (pending.status === 'probable') {
-        card.appendChild(button(doc, 'btn btn-secondary', 'Create New Person', () => {
-          createAndRecordPerson(pending.form);
-        }, state.busy));
-      }
-      return card;
+  function renderSuggestion() {
+    const suggestion = state.suggestion;
+    if (!suggestion || suggestion.status === 'empty') return null;
+    const showingMatches = (suggestion.status === 'exact' || suggestion.status === 'possible')
+      && !state.confirmedDifferent
+      && suggestion.people.length;
+    if (!showingMatches) {
+      const note = doc.createElement('p');
+      note.className = 't4t-attendee-suggestion-note';
+      note.textContent = 'No existing person found. Adding this attendee will create a new person.';
+      return note;
     }
-
-    const note = doc.createElement('p');
-    note.className = 't4t-completion-note';
-    note.textContent = 'No matching person was found. This person is created, and their attendance is recorded, when you continue.';
-    card.appendChild(note);
-    card.appendChild(button(doc, 'btn btn-primary', 'Create New Person', () => {
-      createAndRecordPerson(pending.form);
-    }, state.busy));
-    return card;
+    const box = doc.createElement('div');
+    box.className = 't4t-attendee-suggestion';
+    suggestion.people.forEach((person, index) => {
+      const row = doc.createElement('div');
+      row.className = 't4t-attendee-suggestion-row';
+      const label = doc.createElement('span');
+      label.className = 't4t-attendee-suggestion-label';
+      label.textContent = suggestion.status === 'exact' ? 'Existing person found:' : 'Possible match:';
+      const name = doc.createElement('span');
+      name.className = 't4t-attendee-suggestion-name';
+      name.textContent = suggestion.status === 'exact'
+        ? (person.displayName || person.personalName)
+        : (person.personalName || person.displayName);
+      row.append(label, name);
+      const details = suggestionMeta(person, suggestion.status);
+      if (details.length) {
+        const meta = doc.createElement('span');
+        meta.className = 't4t-attendee-suggestion-meta';
+        meta.textContent = `· ${details.join(' · ')}`;
+        row.appendChild(meta);
+      }
+      const actions = doc.createElement('span');
+      actions.className = 't4t-attendee-suggestion-actions';
+      actions.appendChild(button(doc, 'btn btn-secondary', 'Use Existing', () => {
+        useSuggestedPerson(person.personId);
+      }, state.busy));
+      if (index === 0) {
+        actions.appendChild(button(
+          doc,
+          'btn btn-secondary',
+          suggestion.status === 'exact' ? 'Add As New' : 'This Is A Different Person',
+          confirmDifferentPerson,
+          state.busy,
+        ));
+      }
+      row.appendChild(actions);
+      box.appendChild(row);
+    });
+    return box;
   }
 
   function renderRoster() {
@@ -928,9 +1059,9 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     entryActions.appendChild(button(doc, 'btn btn-secondary', 'Add Attendee', addAttendee, state.busy));
     entryGrid.appendChild(entryActions);
     entry.appendChild(entryGrid);
+    const suggestion = renderSuggestion();
+    if (suggestion) entry.appendChild(suggestion);
     body.appendChild(entry);
-    const pending = renderPending();
-    if (pending) body.appendChild(pending);
     body.appendChild(renderRoster());
 
     const close = button(doc, 'btn btn-secondary', 'Close', requestClose, state.busy);
@@ -938,7 +1069,17 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     footer.appendChild(close);
     if (state.focusFirst) {
       state.focusFirst = false;
+      state.restoreFocusId = '';
       body.querySelector('#t4t-attendee-first')?.focus();
+    } else if (state.restoreFocusId) {
+      const field = body.querySelector(`#${state.restoreFocusId}`);
+      const caret = state.restoreCaret;
+      state.restoreFocusId = '';
+      state.restoreCaret = null;
+      if (field) {
+        field.focus();
+        if (typeof caret === 'number') field.setSelectionRange(caret, caret);
+      }
     }
   }
 
@@ -975,6 +1116,7 @@ export function mountT4tCompletionWorkflow(dialog, options) {
   return {
     destroy() {
       active = false;
+      clearTimeout(suggestTimer);
       closeBtn.onclick = null;
       dialog.oncancel = null;
     },
