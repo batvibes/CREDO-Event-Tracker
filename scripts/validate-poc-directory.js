@@ -95,9 +95,11 @@ assert(!directory.includes("person.isPoc === true"), 'Points of Contact no longe
 assert(directory.includes("if (tab === 'staff') return sortStaff(active.filter((person) => person.isCredoStaff === true))"), 'J: CREDO Staff filtering is unchanged');
 assert(!/events\.facilitators|facilitator_event_tokens|facilitator_product_experience|facilitator_qualifications/.test(directory), 'I: the Team directory does not read facilitator history');
 assert(!/facilitator_event_tokens|facilitator_product_experience|facilitator_t4t_product_experience/.test(picker), 'I: the person picker does not write facilitator history');
-assert(picker.includes('findPersonnelByHistoricalName(getPeople() || [], personName)'), 'an exact existing name is reused before a new person is created');
 assert(picker.includes('onCreatePerson({ name: personName })'), 'a genuinely new contact is still created from the typed name');
-assert(!createBody.includes('is_facilitator') && !createBody.includes('is_credo_staff') && !createBody.includes('is_poc'), 'H: creating a person does not set facilitator, staff, or POC flags');
+assert(picker.includes('reuse_or_create_event_person') === false, 'the picker calls the database through its adapter');
+assert(db.includes("rpc('reuse_or_create_event_person'"), 'event person creation uses the neutral reuse function');
+assert(!createBody.includes('.insert('), 'H: event person creation no longer inserts from the browser');
+assert(!createBody.includes('is_facilitator') && !createBody.includes('is_credo_staff') && !createBody.includes('is_poc'), 'H: the browser create wrapper does not set facilitator, staff, or POC flags');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'the empty directory copy matches the active-person view');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'the CREDO Staff empty copy is unchanged');
 

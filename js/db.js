@@ -1386,47 +1386,59 @@ export async function fetchPeople() {
   return (data ?? []).map(personFromRow);
 }
 
-export async function createPerson(person) {
-  const cleaned = cleanReferenceDisplayName(person?.name ?? person);
-  if (!cleaned) {
-    throw new Error('REFERENCE_NAME_REQUIRED');
+function eventPersonRpcError(error) {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '').trim();
+  if (hint === 'NAME_REQUIRED' || /name is required/i.test(message)) {
+    const nameError = new Error('Name is required.');
+    nameError.code = 'NAME_REQUIRED';
+    return nameError;
   }
+  if (
+    hint === 'PERSONNEL_IDENTITY_AMBIGUOUS'
+    || hint === 'PERSONNEL_IDENTITY_CONFLICT'
+    || /more than one person matches|conflicts with an existing person/i.test(message)
+  ) {
+    const identityError = new Error(message || 'That name matches more than one person.');
+    identityError.code = hint;
+    return identityError;
+  }
+  if (error?.code === '42501') {
+    const denied = new Error('You are not allowed to add a person.');
+    denied.code = '42501';
+    return denied;
+  }
+  const unexpected = new Error('Failed to add person.');
+  unexpected.code = 'EVENT_PERSON_CREATE_FAILED';
+  return unexpected;
+}
 
-  const normalizedName = normalizeReferenceName(cleaned);
-  const existing = await findNamedReferenceByNormalizedName('people', normalizedName, personFromRow);
-  if (existing) return existing;
-
-  const payload = {
-    name: cleaned,
-    normalized_name: normalizedName,
+function eventPersonFromRpc(data) {
+  return {
+    id: data?.id ?? null,
+    name: data?.name ?? '',
+    rankTitle: data?.rank_title ?? null,
+    email: data?.email ?? null,
+    phone: data?.phone ?? null,
+    active: data?.active !== false,
+    isCredoStaff: data?.is_credo_staff === true,
+    isFacilitator: data?.is_facilitator === true,
+    isPoc: data?.is_poc === true,
+    created: data?.created === true,
   };
+}
 
-  if (person && typeof person === 'object' && !Array.isArray(person)) {
-    if (person.email !== undefined) {
-      const email = String(person.email ?? '').trim();
-      payload.email = email || null;
-    }
-    if (person.phone !== undefined) {
-      const phone = String(person.phone ?? '').trim();
-      payload.phone = phone || null;
-    }
-  }
+export async function reuseOrCreateEventPerson(name) {
+  const { data, error } = await supabase.rpc('reuse_or_create_event_person', {
+    p_name: typeof name === 'string' ? name : name?.name ?? '',
+  });
+  if (error) throw eventPersonRpcError(error);
+  return eventPersonFromRpc(data);
+}
 
-  const { data, error } = await supabase
-    .from('people')
-    .insert(payload)
-    .select('id, name, normalized_name, email, phone, active, created_at, updated_at')
-    .single();
-
-  if (error) {
-    if (isReferenceUniqueViolation(error)) {
-      const raced = await findNamedReferenceByNormalizedName('people', normalizedName, personFromRow);
-      if (raced) return raced;
-    }
-    throw error;
-  }
-
-  return personFromRow(data);
+export async function createPerson(person) {
+  const name = typeof person === 'string' ? person : person?.name;
+  return reuseOrCreateEventPerson(name);
 }
 
 function referenceNameConflictError(name) {

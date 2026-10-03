@@ -892,27 +892,21 @@ function mountPeopleMulti(root, options) {
         alert('Name is required.');
         return;
       }
-      const existing = findPersonnelByHistoricalName(getPeople() || [], personName);
-      if (existing) {
-        addToken({
-          id: existing.id,
-          name: personnelDisplayName(existing.rankTitle, existing.name),
-          email: existing.email || null,
-          orphan: false,
-        });
-        return;
-      }
       try {
         const created = await onCreatePerson({ name: personName });
+        const displayName = personnelDisplayName(created.rankTitle, created.name);
         addToken({
           id: created.id,
-          name: created.name,
+          name: displayName,
           email: created.email || null,
           orphan: false,
         });
+        if (created.created === false) {
+          alert(`Using the existing person “${displayName}”.`);
+        }
       } catch (error) {
         console.error(error);
-        alert('Failed to add person.');
+        alert(error?.message || 'Failed to add person.');
       }
     });
   }
