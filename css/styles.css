@@ -3274,17 +3274,24 @@ body:has(#new-event-modal[open]) {
   color: #4b5563;
 }
 
+#view-team .team-directory-list {
+  display: grid;
+  grid-template-columns: minmax(12.5rem, 1.15fr) minmax(13.5rem, 1.45fr) max-content;
+  column-gap: 24px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+#view-team .team-directory-list-editable {
+  grid-template-columns: minmax(12.5rem, 1.15fr) minmax(13.5rem, 1.45fr) max-content 4.5rem;
+}
+
 #view-team .team-directory-head,
 #view-team .team-directory-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.15fr) minmax(120px, 1.35fr) auto;
-  column-gap: 20px;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-}
-
-#view-team .team-directory-list-editable .team-directory-head,
-#view-team .team-directory-list-editable .team-directory-row {
-  grid-template-columns: minmax(140px, 1.15fr) minmax(120px, 1.35fr) auto 56px;
 }
 
 #view-team .team-directory-head {
@@ -3298,21 +3305,28 @@ body:has(#new-event-modal[open]) {
   text-transform: uppercase;
 }
 
-#view-team .team-directory-roles,
-#view-team .team-directory-action {
-  justify-self: end;
+#view-team .team-directory-person,
+#view-team .team-directory-command,
+#view-team .team-directory-roles {
+  min-width: 0;
+  justify-self: start;
 }
 
-#view-team .team-directory-command {
-  min-width: 0;
+#view-team .team-directory-action {
+  justify-self: end;
+  text-align: right;
+}
+
+#view-team .team-directory-row .team-directory-command {
   font-size: 0.8125rem;
   font-weight: 400;
   color: #4b5563;
+  overflow-wrap: anywhere;
 }
 
 #view-team .team-directory-roles .team-role-badges {
   margin-top: 0;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 #view-team .team-role-badges {
@@ -3747,19 +3761,28 @@ body:has(#new-event-modal[open]) {
     min-width: 620px;
   }
 
+  #view-team .team-directory-list,
+  #view-team .team-directory-list-editable {
+    display: block;
+    overflow-x: visible;
+  }
+
   #view-team .team-directory-head {
     display: none;
   }
 
   #view-team .team-directory-row,
   #view-team .team-directory-list-editable .team-directory-row {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    column-gap: 10px;
+    display: grid;
+    grid-column: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
     row-gap: 2px;
   }
 
   #view-team .team-directory-command {
     grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   #view-team .team-directory-command:empty {
@@ -3767,12 +3790,16 @@ body:has(#new-event-modal[open]) {
   }
 
   #view-team .team-directory-roles {
-    grid-column: 2;
-    grid-row: 1;
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  #view-team .team-directory-roles:empty {
+    display: none;
   }
 
   #view-team .team-directory-action {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
   }
 }

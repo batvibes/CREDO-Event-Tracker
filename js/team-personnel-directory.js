@@ -193,6 +193,7 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
   if (onEdit) {
     const actionHead = doc.createElement('span');
     actionHead.className = 'team-directory-action';
+    actionHead.textContent = 'Action';
     head.appendChild(actionHead);
   }
   list.appendChild(head);

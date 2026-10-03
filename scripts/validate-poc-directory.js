@@ -100,6 +100,16 @@ assert(picker.includes('reuse_or_create_event_person') === false, 'the picker ca
 assert(db.includes("rpc('reuse_or_create_event_person'"), 'event person creation uses the neutral reuse function');
 assert(!createBody.includes('.insert('), 'H: event person creation no longer inserts from the browser');
 assert(!createBody.includes('is_facilitator') && !createBody.includes('is_credo_staff') && !createBody.includes('is_poc'), 'H: the browser create wrapper does not set facilitator, staff, or POC flags');
+assert(directory.includes("'Person', 'Command / Organization', 'Roles'"), 'directory headers stay Person, Command / Organization, and Roles');
+assert(directory.includes("actionHead.textContent = 'Action'"), 'the edit column has an Action header');
+assert(directory.includes('commandCell.className = \'team-directory-command\''), 'every row keeps a Command / Organization cell');
+assert(directory.includes('roleCell.className = \'team-directory-roles\''), 'every row keeps a Roles cell');
+assert(/if \(person\.commandOrganization\) commandCell\.textContent/.test(directory), 'a blank command leaves the cell in place');
+const directoryCss = read('css/styles.css');
+const directoryLayout = directoryCss.slice(directoryCss.indexOf('#view-team .team-directory-list {'), directoryCss.indexOf('#view-team .team-directory-head {'));
+assert(directoryLayout.includes('grid-template-columns: subgrid'), 'directory rows share one set of column tracks');
+assert(directoryLayout.includes('minmax(12.5rem, 1.15fr) minmax(13.5rem, 1.45fr) max-content 4.5rem'), 'editable rows use fixed Person, Command, Roles, and Action tracks');
+assert(!directoryLayout.includes('auto 56px'), 'Roles is no longer an independent auto column');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'the empty directory copy matches the active-person view');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'the CREDO Staff empty copy is unchanged');
 
