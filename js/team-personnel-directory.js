@@ -31,7 +31,6 @@ export const TEAM_DIRECTORY_EMPTY_MESSAGES = {
 const ROLE_BADGES = [
   { flag: 'isCredoStaff', id: 'staff', label: 'Staff' },
   { flag: 'isFacilitator', id: 'facilitator', label: 'Facilitator' },
-  { flag: 'isPoc', id: 'poc', label: 'POC' },
 ];
 
 function cleanText(value) {

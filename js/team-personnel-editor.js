@@ -38,7 +38,7 @@ export function personnelEditorRoleValues(roleSurface, person, input = {}) {
   return {
     isCredoStaff: input.isCredoStaff === true,
     isFacilitator: person?.isFacilitator === true,
-    isPoc: input.isPoc === true,
+    isPoc: person?.isPoc === true,
     staffBilletOrRole: clean(input.staffBilletOrRole),
     staffPrdEaos: clean(input.staffPrdEaos),
   };
@@ -142,9 +142,6 @@ export function mountPersonnelEditor({
   facilitatorInput.checked = roleSurface === 'facilitator'
     ? (person?.id ? person.isFacilitator === true : true)
     : person?.isFacilitator === true;
-  const pocInput = document.createElement('input');
-  pocInput.type = 'checkbox';
-  pocInput.checked = person?.isPoc === true;
   const billetInput = textInput(person?.staffBilletOrRole, { maxLength: 200 });
   const prdInput = textInput(person?.staffPrdEaos, { maxLength: 80 });
 
@@ -158,7 +155,6 @@ export function mountPersonnelEditor({
       ...personnelEditorRoleValues(roleSurface, person, {
         isCredoStaff: staffInput.checked,
         isFacilitator: facilitatorInput.checked,
-        isPoc: pocInput.checked,
         staffBilletOrRole: clean(billetInput.value),
         staffPrdEaos: clean(prdInput.value),
       }),
@@ -205,10 +201,7 @@ export function mountPersonnelEditor({
     if (roleSurface === 'facilitator') {
       roleList.append(checkbox(facilitatorInput, 'Current Facilitator'));
     } else {
-      roleList.append(
-        checkbox(staffInput, 'CREDO Staff'),
-        checkbox(pocInput, 'Point of Contact'),
-      );
+      roleList.append(checkbox(staffInput, 'CREDO Staff'));
     }
     roles.append(rolesTitle, roleList);
 

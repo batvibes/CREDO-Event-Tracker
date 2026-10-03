@@ -207,7 +207,8 @@ assert(!ids(filterTeamDirectory(roster, 'poc')).includes('4'), 'inactive people 
 assert(!ids(filterTeamDirectory(roster, 'staff')).includes('2'), 'a facilitator-like name is not CREDO Staff');
 assert(!ids(filterTeamDirectory(roster, 'facilitators')).includes('2'), 'command text does not confer Facilitator');
 
-assert(teamDirectoryRoleBadges(blair).map((badge) => badge.label).join('|') === 'Staff|Facilitator|POC', 'overlapping explicit roles all receive badges');
+assert(teamDirectoryRoleBadges(blair).map((badge) => badge.label).join('|') === 'Staff|Facilitator', 'Staff and Facilitator badges still render');
+assert(!teamDirectoryRoleBadges(blair).some((badge) => badge.label === 'POC'), 'the legacy POC flag is not a directory badge');
 assert(teamDirectoryRoleBadges(ada).map((badge) => badge.label).join('|') === 'Staff', 'Staff badge is shown only for CREDO Staff');
 assert(teamDirectoryRoleBadges(nameOnly).length === 0, 'a person with no explicit role gets no badge');
 assert(teamDirectoryRoleBadges(stringFlags).length === 0, 'badges are not manufactured from loose flag values');

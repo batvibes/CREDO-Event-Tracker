@@ -49,23 +49,25 @@ assert(!isTeamDirectoryTab('all') && !isTeamDirectoryTab('facilitators'), 'remov
 assert(teamView.includes('id="team-tab-staff"') && teamView.includes('aria-selected="true"'), 'Team defaults to CREDO Staff');
 assert(app.includes("let teamDirectoryTab = 'staff'"), 'Team state defaults to CREDO Staff');
 assert(!editor.includes("checkbox(facilitatorInput, 'Facilitator')"), 'the Team editor does not expose a Facilitator role control');
-assert(editor.includes("checkbox(staffInput, 'CREDO Staff')") && editor.includes("checkbox(pocInput, 'Point of Contact')"), 'the Team editor keeps CREDO Staff and Point of Contact');
+assert(editor.includes("checkbox(staffInput, 'CREDO Staff')"), 'the Team editor keeps CREDO Staff');
+assert(!editor.includes("checkbox(pocInput, 'Point of Contact')") && !editor.includes('Point of Contact'), 'the Team editor does not ask for a Point of Contact role');
 assert(!Object.values(TEAM_DIRECTORY_EMPTY_MESSAGES).some((message) => /facilitator/i.test(message)), 'Team empty states do not mention facilitators');
 
 const preserved = personnelEditorRoleValues('team', {
   id: 'ada',
   isFacilitator: true,
   isCredoStaff: true,
-  isPoc: false,
+  isPoc: true,
   staffBilletOrRole: 'Director',
 }, {
   isCredoStaff: true,
   isFacilitator: false,
-  isPoc: true,
+  isPoc: false,
   staffBilletOrRole: 'Director',
 });
 assert(preserved.isFacilitator === true, 'a Team edit preserves the existing facilitator role');
-assert(preserved.isPoc === true && preserved.isCredoStaff === true, 'a Team edit still saves the Team roles that are shown');
+assert(preserved.isCredoStaff === true, 'a Team edit still saves CREDO Staff');
+assert(preserved.isPoc === true, 'a Team edit keeps a legacy POC flag that the form no longer shows');
 
 assert(!facilitatorView.includes('>Overview<') && !facilitatorView.includes('data-facilitator-view="overview"'), 'Facilitator Management no longer has an Overview tab');
 assert(facilitatorView.indexOf('data-facilitator-view="capabilities"') < facilitatorView.indexOf('data-facilitator-view="personnel"'), 'Program Capabilities is the first Facilitator Management tab');
