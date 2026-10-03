@@ -216,7 +216,7 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
 
   const head = doc.createElement('div');
   head.className = 'team-directory-head';
-  ['Name', 'Rank / Title', 'Command / Organization', 'Roles'].forEach((label) => {
+  ['Rank / Title', 'Name', 'Command / Organization', 'Roles'].forEach((label) => {
     const cell = doc.createElement('span');
     cell.textContent = label;
     head.appendChild(cell);
@@ -250,7 +250,7 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
     roleCell.className = 'team-directory-roles';
     appendRoleBadges(roleCell, person);
 
-    row.append(personCell, rankCell, commandCell, roleCell);
+    row.append(rankCell, personCell, commandCell, roleCell);
     appendActionCell(row, person, onEdit, 'div');
     list.appendChild(row);
   });

@@ -190,7 +190,8 @@ assert(picker.includes('reuse_or_create_event_person') === false, 'the picker ca
 assert(db.includes("rpc('reuse_or_create_event_person'"), 'event person creation uses the neutral reuse function');
 assert(!createBody.includes('.insert('), 'H: event person creation no longer inserts from the browser');
 assert(!createBody.includes('is_facilitator') && !createBody.includes('is_credo_staff') && !createBody.includes('is_poc'), 'H: the browser create wrapper does not set facilitator, staff, or POC flags');
-assert(directory.includes("'Name', 'Rank / Title', 'Command / Organization', 'Roles'"), 'directory headers are Name, Rank / Title, Command / Organization, and Roles');
+assert(directory.includes("'Rank / Title', 'Name', 'Command / Organization', 'Roles'"), 'directory headers are Rank / Title, Name, Command / Organization, and Roles');
+assert(directory.includes('row.append(rankCell, personCell, commandCell, roleCell)'), 'Rank / Title is the column immediately before Name');
 assert(directory.includes("actionHead.textContent = 'Action'"), 'the edit column has an Action header');
 assert(directory.includes('button.textContent = \'Edit\''), 'the edit action remains');
 assert(directory.includes('rankCell.className = \'team-directory-rank\''), 'every row keeps a Rank / Title cell');
@@ -215,7 +216,12 @@ assert(directory.includes("review.textContent = 'Needs Review'"), 'the directory
 const directoryCss = read('css/styles.css');
 const directoryLayout = directoryCss.slice(directoryCss.indexOf('#view-team .team-directory-list {'), directoryCss.indexOf('#view-team .team-directory-head {'));
 assert(directoryLayout.includes('grid-template-columns: subgrid'), 'directory rows share one set of column tracks');
-assert(directoryLayout.includes('minmax(11rem, 1.25fr) minmax(5.75rem, 0.42fr) minmax(11rem, 1.2fr) max-content 4.5rem'), 'editable rows use Name, Rank / Title, Command, Roles, and Action tracks');
+assert(directoryLayout.includes('7.5rem minmax(10rem, 1.05fr) minmax(12rem, 1.5fr) max-content 4.5rem'), 'editable rows use a narrow Rank / Title track immediately before Name');
+const rankRule = directoryCss.slice(
+  directoryCss.indexOf('#view-team .team-directory-row .team-directory-rank {'),
+  directoryCss.indexOf('#view-team .team-directory-action {'),
+);
+assert(rankRule.includes('font-weight: 400') && rankRule.includes('color: #4b5563') && !rankRule.includes('font-weight: 700'), 'Rank / Title stays subdued');
 assert(!directoryLayout.includes('auto 56px'), 'Roles is no longer an independent auto column');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'the empty directory copy matches the active-person view');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'the CREDO Staff empty copy is unchanged');
