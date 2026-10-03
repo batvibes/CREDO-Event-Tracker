@@ -9,6 +9,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { personnelDisplayName } from '../js/personnel-identity.js';
 import {
+  legacyPersonnelNameDraft,
+  personnelEditorNameDraft,
   reconciliationPersonalName,
   reconciliationStructuredNames,
   validateReconciliationIdentity,
@@ -213,16 +215,30 @@ assert(read('supabase/migrations/035_structured_personnel_name_writes.sql').incl
 assert(!read('supabase/migrations/035_structured_personnel_name_writes.sql').includes('drop function public.reconcile_directory_people'), 'migration 035 does not remove the legacy reconciliation function');
 
 const structuredSurvivor = reconciliationStructuredNames({
-  name: 'Ada Civilian',
+  name: 'Something Else',
   rankTitle: 'LCDR',
   firstName: 'Ada',
   lastName: 'Civilian',
 });
-assert(structuredSurvivor.firstName === 'Ada' && structuredSurvivor.lastName === 'Civilian', 'a structured survivor prepopulates First Name and Last Name');
-const legacySurvivor = reconciliationStructuredNames({ name: 'Chaplain Rudd', rankTitle: 'Chaplain' });
-assert(legacySurvivor.firstName === '' && legacySurvivor.lastName === '', 'a legacy survivor is not split into First Name and Last Name');
+assert(structuredSurvivor.firstName === 'Ada' && structuredSurvivor.lastName === 'Civilian', 'a structured survivor uses stored First Name and Last Name');
+assert(legacyPersonnelNameDraft('Charles Owens').firstName === 'Charles' && legacyPersonnelNameDraft('Charles Owens').lastName === 'Owens', 'a two-token legacy name drafts Charles / Owens');
+assert(legacyPersonnelNameDraft('  John   Paul Smith  ').firstName === 'John Paul' && legacyPersonnelNameDraft('John Paul Smith').lastName === 'Smith', 'a three-token legacy name keeps the leading tokens as First Name');
+assert(legacyPersonnelNameDraft('Owens').firstName === '' && legacyPersonnelNameDraft('Owens').lastName === '', 'a one-token legacy name is not split');
+const legacyDraft = personnelEditorNameDraft({ name: 'Charles Owens' });
+assert(legacyDraft.suggested === true && legacyDraft.firstName === 'Charles' && legacyDraft.lastName === 'Owens', 'the editor drafts a legacy combined name without stored structured names');
+const storedDraft = personnelEditorNameDraft({ name: 'Charles Owens', firstName: 'Ada', lastName: 'Civilian' });
+assert(storedDraft.suggested === false && storedDraft.firstName === 'Ada' && storedDraft.lastName === 'Civilian', 'stored structured names are not rederived from the combined name');
+const legacySurvivor = reconciliationStructuredNames({ name: 'Charles Owens', rankTitle: 'CDR' });
+assert(legacySurvivor.firstName === 'Charles' && legacySurvivor.lastName === 'Owens', 'reconciliation drafts a multi-token legacy survivor name');
+const singleTokenSurvivor = reconciliationStructuredNames({ name: 'Owens' });
+assert(singleTokenSurvivor.firstName === '' && singleTokenSurvivor.lastName === '', 'reconciliation leaves a one-token legacy survivor unsplit');
 const editor = read('js/team-personnel-editor.js');
-assert(editor.includes('is shown for reference. A combined legacy name is not split automatically.'), 'a legacy combined name is reference text, not an editable full name');
+const draftFunction = editor.slice(editor.indexOf('export function legacyPersonnelNameDraft'), editor.indexOf('export function personnelEditorNameDraft'));
+assert(!/saveDirectoryPerson|onSave|supabase|\.rpc\(/.test(draftFunction), 'deriving a legacy name draft does not save anything');
+assert(editor.includes('personnelEditorNameDraft(person)'), 'Edit Person prefills from the draft when the dialog opens');
+assert(editor.includes('reconciliationStructuredNames(source)'), 'reconciliation prefills from the same draft when a survivor is chosen');
+assert(editor.includes('Review the suggested First Name and Last Name before saving.'), 'a drafted legacy name keeps the existing-name reference');
+assert(editor.includes('is shown for reference. A combined legacy name is not split automatically.'), 'a one-token legacy name stays reference text');
 assert(!editor.includes("field('Full Name'"), 'reconciliation no longer edits a combined Full Name');
 assert(validateReconciliationIdentity({ firstName: '', lastName: 'Rudd', rankTitle: '' }) === 'First Name is required.', 'reconciliation requires First Name');
 assert(validateReconciliationIdentity({ firstName: 'John', lastName: '', rankTitle: '' }) === 'Last Name is required.', 'reconciliation requires Last Name');

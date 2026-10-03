@@ -99,6 +99,27 @@ function hasStructuredName(firstName, lastName) {
   return Boolean(clean(firstName) && clean(lastName));
 }
 
+export function legacyPersonnelNameDraft(name) {
+  const tokens = clean(name).split(' ').filter(Boolean);
+  if (tokens.length < 2) return { firstName: '', lastName: '' };
+  return {
+    firstName: tokens.slice(0, -1).join(' '),
+    lastName: tokens[tokens.length - 1],
+  };
+}
+
+export function personnelEditorNameDraft(person) {
+  const firstName = clean(person?.firstName ?? person?.first_name);
+  const lastName = clean(person?.lastName ?? person?.last_name);
+  if (firstName || lastName) return { firstName, lastName, suggested: false };
+  const draft = legacyPersonnelNameDraft(person?.name);
+  return {
+    firstName: draft.firstName,
+    lastName: draft.lastName,
+    suggested: Boolean(draft.firstName && draft.lastName),
+  };
+}
+
 export function validatePersonnelEditor(values) {
   const firstName = clean(values.firstName);
   const lastName = clean(values.lastName);
@@ -128,10 +149,8 @@ export function validatePersonnelEditor(values) {
 }
 
 export function reconciliationStructuredNames(person) {
-  const firstName = clean(person?.firstName ?? person?.first_name);
-  const lastName = clean(person?.lastName ?? person?.last_name);
-  if (!firstName || !lastName) return { firstName: '', lastName: '' };
-  return { firstName, lastName };
+  const draft = personnelEditorNameDraft(person);
+  return { firstName: draft.firstName, lastName: draft.lastName };
 }
 
 export function reconciliationPersonalName(firstName, lastName) {
@@ -179,9 +198,10 @@ export function mountPersonnelEditor({
   let reuseSelectedId = '';
 
   const legacyRecord = Boolean(person?.id) && !hasStructuredName(person?.firstName, person?.lastName);
+  const editorDraft = personnelEditorNameDraft(person);
   const rankInput = textInput(person?.rankTitle, { maxLength: 40 });
-  const firstNameInput = textInput(person?.firstName, { required: !legacyRecord, maxLength: 100 });
-  const lastNameInput = textInput(person?.lastName, { required: !legacyRecord, maxLength: 100 });
+  const firstNameInput = textInput(editorDraft.firstName, { required: !legacyRecord, maxLength: 100 });
+  const lastNameInput = textInput(editorDraft.lastName, { required: !legacyRecord, maxLength: 100 });
   const commandInput = textInput(person?.commandOrganization, { maxLength: 200 });
   const installationInput = textInput(person?.installation, { maxLength: 200 });
   const staffInput = document.createElement('input');
@@ -254,7 +274,9 @@ export function mountPersonnelEditor({
     if (legacyRecord && clean(person?.name)) {
       const legacyNote = document.createElement('p');
       legacyNote.className = 'personnel-editor-help';
-      legacyNote.textContent = `Existing name “${clean(person.name)}” stays until both First Name and Last Name are entered.`;
+      legacyNote.textContent = editorDraft.suggested
+        ? `Existing name: “${clean(person.name)}”. Review the suggested First Name and Last Name before saving.`
+        : `Existing name “${clean(person.name)}” stays until both First Name and Last Name are entered.`;
       general.append(generalTitle, nameRow, legacyNote, placeRow);
     } else {
       general.append(generalTitle, nameRow, placeRow);
@@ -630,9 +652,12 @@ export function mountPersonnelEditor({
       identityTitle.textContent = 'Final Identity';
       const identityNote = document.createElement('p');
       identityNote.className = 'personnel-editor-help';
+      const survivorDraft = personnelEditorNameDraft(survivor);
       identityNote.textContent = survivorStructured || !clean(survivor?.name)
         ? 'These values are kept as entered.'
-        : `Existing name “${clean(survivor.name)}” is shown for reference. A combined legacy name is not split automatically.`;
+        : survivorDraft.suggested
+          ? `Existing name: “${clean(survivor.name)}”. Review the suggested First Name and Last Name before saving.`
+          : `Existing name “${clean(survivor.name)}” is shown for reference. A combined legacy name is not split automatically.`;
       const identityRow = document.createElement('div');
       identityRow.className = 'personnel-editor-row personnel-editor-row-name';
       identityRow.append(field('Rank / Title', rank), field('First Name', firstName), field('Last Name', lastName));
