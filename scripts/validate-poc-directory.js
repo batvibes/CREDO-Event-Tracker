@@ -92,8 +92,34 @@ const mixedRoster = [
 ];
 assert(
   filterTeamDirectory(mixedRoster, 'poc').map((entry) => entry.id).join(',')
-    === 'legacy-early,structured-adams,legacy-scanlon,partial,structured-young',
-  'mixed records stay deterministic without splitting a legacy name',
+    === 'legacy-early,partial,structured-adams,legacy-scanlon,structured-young',
+  'a last name alone sorts under that last name, and legacy names stay on display order',
+);
+const chaplainAdams = [
+  person('chaplain-adams', 'Adams', { last_name: 'Adams', rank_title: 'Chaplain' }),
+  person('legacy-chaplain', 'Chaplain Baker'),
+  person('young', 'Carl Young', { first_name: 'Carl', last_name: 'Young' }),
+];
+assert(
+  filterTeamDirectory(chaplainAdams, 'poc').map((entry) => entry.id).join(',')
+    === 'chaplain-adams,legacy-chaplain,young',
+  'Chaplain Adams with last name Adams sorts under Adams',
+);
+const lastOnly = [
+  person('young', 'Young', { last_name: 'Young' }),
+  person('adams', 'Adams', { last_name: 'Adams' }),
+];
+assert(
+  filterTeamDirectory(lastOnly, 'poc').map((entry) => entry.id).join(',') === 'adams,young',
+  'last-name-only people sort by last name',
+);
+const firstOnly = [
+  person('james', 'James', { first_name: 'James' }),
+  person('aaron', 'Aaron', { first_name: 'Aaron' }),
+];
+assert(
+  filterTeamDirectory(firstOnly, 'poc').map((entry) => entry.id).join(',') === 'aaron,james',
+  'first-name-only people sort by first name',
 );
 
 const sameName = [

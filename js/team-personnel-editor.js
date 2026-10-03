@@ -95,10 +95,6 @@ function isExistingPersonNameError(error) {
   return error?.code === 'REFERENCE_NAME_EXISTS' || /already exists/i.test(String(error?.message || ''));
 }
 
-function hasStructuredName(firstName, lastName) {
-  return Boolean(clean(firstName) && clean(lastName));
-}
-
 export function legacyPersonnelNameDraft(name) {
   const tokens = clean(name).split(' ').filter(Boolean);
   if (tokens.length < 2) return { firstName: '', lastName: '' };
@@ -120,25 +116,28 @@ export function personnelEditorNameDraft(person) {
   };
 }
 
+export function structuredPersonalName(firstName, lastName) {
+  const first = clean(firstName);
+  const last = clean(lastName);
+  if (first && last) return clean(`${first} ${last}`);
+  return first || last;
+}
+
 export function validatePersonnelEditor(values) {
   const firstName = clean(values.firstName);
   const lastName = clean(values.lastName);
   const rankTitle = clean(values.rankTitle);
   const existingId = values?.id ?? null;
-  const storedStructured = hasStructuredName(values?.storedFirstName, values?.storedLastName);
-  const suppliedStructured = Boolean(firstName || lastName);
-  const completeStructured = Boolean(firstName && lastName);
-  const legacyUntouched = Boolean(existingId) && !storedStructured && !suppliedStructured;
+  const storedPersonalName = Boolean(clean(values?.storedFirstName) || clean(values?.storedLastName));
+  const suppliedPersonalName = Boolean(firstName || lastName);
+  const legacyUntouched = Boolean(existingId) && !storedPersonalName && !suppliedPersonalName;
 
-  if (suppliedStructured && !completeStructured) {
-    return firstName ? 'Last Name is required.' : 'First Name is required.';
-  }
-  if (!legacyUntouched && !completeStructured) {
-    return firstName ? 'Last Name is required.' : 'First Name is required.';
+  if (!legacyUntouched && !suppliedPersonalName) {
+    return 'First Name or Last Name is required.';
   }
 
-  const name = completeStructured ? clean(`${firstName} ${lastName}`) : clean(values.name);
-  if (!name) return 'First Name is required.';
+  const name = suppliedPersonalName ? structuredPersonalName(firstName, lastName) : clean(values.name);
+  if (!name) return 'First Name or Last Name is required.';
   if (!legacyUntouched && fullNameIncludesRank(rankTitle, name)) {
     return 'Rank / Title should not be entered in First Name or Last Name.';
   }
@@ -154,19 +153,16 @@ export function reconciliationStructuredNames(person) {
 }
 
 export function reconciliationPersonalName(firstName, lastName) {
-  const first = clean(firstName);
-  const last = clean(lastName);
-  if (!first || !last) return '';
-  return clean(`${first} ${last}`);
+  return structuredPersonalName(firstName, lastName);
 }
 
 export function validateReconciliationIdentity(values) {
   const firstName = clean(values?.firstName);
   const lastName = clean(values?.lastName);
   const rankTitle = clean(values?.rankTitle);
-  if (!firstName) return 'First Name is required.';
-  if (!lastName) return 'Last Name is required.';
-  if (fullNameIncludesRank(rankTitle, reconciliationPersonalName(firstName, lastName))) {
+  const name = reconciliationPersonalName(firstName, lastName);
+  if (!name) return 'First Name or Last Name is required.';
+  if (fullNameIncludesRank(rankTitle, name)) {
     return 'Rank / Title should not be entered in First Name or Last Name.';
   }
   return '';
@@ -197,11 +193,11 @@ export function mountPersonnelEditor({
   let reuseCandidates = null;
   let reuseSelectedId = '';
 
-  const legacyRecord = Boolean(person?.id) && !hasStructuredName(person?.firstName, person?.lastName);
+  const legacyRecord = Boolean(person?.id) && !clean(person?.firstName) && !clean(person?.lastName);
   const editorDraft = personnelEditorNameDraft(person);
   const rankInput = textInput(person?.rankTitle, { maxLength: 40 });
-  const firstNameInput = textInput(editorDraft.firstName, { required: !legacyRecord, maxLength: 100 });
-  const lastNameInput = textInput(editorDraft.lastName, { required: !legacyRecord, maxLength: 100 });
+  const firstNameInput = textInput(editorDraft.firstName, { maxLength: 100 });
+  const lastNameInput = textInput(editorDraft.lastName, { maxLength: 100 });
   const commandInput = textInput(person?.commandOrganization, { maxLength: 200 });
   const installationInput = textInput(person?.installation, { maxLength: 200 });
   const staffInput = document.createElement('input');
@@ -218,7 +214,7 @@ export function mountPersonnelEditor({
   function currentValues() {
     const firstName = clean(firstNameInput.value);
     const lastName = clean(lastNameInput.value);
-    const structuredName = firstName && lastName ? clean(`${firstName} ${lastName}`) : '';
+    const personalName = structuredPersonalName(firstName, lastName);
     return {
       id: person?.id ?? null,
       rankTitle: clean(rankInput.value),
@@ -226,7 +222,7 @@ export function mountPersonnelEditor({
       lastName,
       storedFirstName: clean(person?.firstName),
       storedLastName: clean(person?.lastName),
-      name: structuredName || clean(person?.name),
+      name: personalName || clean(person?.name),
       commandOrganization: clean(commandInput.value),
       installation: clean(installationInput.value),
       ...personnelEditorRoleValues(roleSurface, person, {
@@ -607,10 +603,10 @@ export function mountPersonnelEditor({
     if (survivorChoice && selected) {
       const retiring = retiredRecord(selected);
       const survivor = survivorChoice === 'this' ? person : selected;
-      const survivorStructured = hasStructuredName(survivor?.firstName, survivor?.lastName);
+      const survivorHasStoredName = Boolean(clean(survivor?.firstName) || clean(survivor?.lastName));
       const rank = textInput(reconcileRank, { maxLength: 40 });
-      const firstName = textInput(reconcileFirstName, { required: true, maxLength: 100 });
-      const lastName = textInput(reconcileLastName, { required: true, maxLength: 100 });
+      const firstName = textInput(reconcileFirstName, { maxLength: 100 });
+      const lastName = textInput(reconcileLastName, { maxLength: 100 });
       const summary = document.createElement('div');
       summary.className = 'personnel-editor-reconcile-summary';
 
@@ -653,7 +649,7 @@ export function mountPersonnelEditor({
       const identityNote = document.createElement('p');
       identityNote.className = 'personnel-editor-help';
       const survivorDraft = personnelEditorNameDraft(survivor);
-      identityNote.textContent = survivorStructured || !clean(survivor?.name)
+      identityNote.textContent = survivorHasStoredName || !clean(survivor?.name)
         ? 'These values are kept as entered.'
         : survivorDraft.suggested
           ? `Existing name: “${clean(survivor.name)}”. Review the suggested First Name and Last Name before saving.`

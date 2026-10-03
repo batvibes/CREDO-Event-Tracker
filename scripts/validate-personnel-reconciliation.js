@@ -13,6 +13,7 @@ import {
   personnelEditorNameDraft,
   reconciliationPersonalName,
   reconciliationStructuredNames,
+  structuredPersonalName,
   validateReconciliationIdentity,
 } from '../js/team-personnel-editor.js';
 
@@ -240,8 +241,14 @@ assert(editor.includes('reconciliationStructuredNames(source)'), 'reconciliation
 assert(editor.includes('Review the suggested First Name and Last Name before saving.'), 'a drafted legacy name keeps the existing-name reference');
 assert(editor.includes('is shown for reference. A combined legacy name is not split automatically.'), 'a one-token legacy name stays reference text');
 assert(!editor.includes("field('Full Name'"), 'reconciliation no longer edits a combined Full Name');
-assert(validateReconciliationIdentity({ firstName: '', lastName: 'Rudd', rankTitle: '' }) === 'First Name is required.', 'reconciliation requires First Name');
-assert(validateReconciliationIdentity({ firstName: 'John', lastName: '', rankTitle: '' }) === 'Last Name is required.', 'reconciliation requires Last Name');
+assert(validateReconciliationIdentity({ firstName: '', lastName: 'Adams', rankTitle: 'Chaplain' }) === '', 'reconciliation allows a last name alone');
+assert(validateReconciliationIdentity({ firstName: 'James', lastName: '', rankTitle: '' }) === '', 'reconciliation allows a first name alone');
+assert(validateReconciliationIdentity({ firstName: 'John', lastName: 'Smith', rankTitle: 'Mr.' }) === '', 'reconciliation allows both names');
+assert(validateReconciliationIdentity({ firstName: '', lastName: '', rankTitle: 'Chaplain' }) === 'First Name or Last Name is required.', 'reconciliation rejects rank without a personal name');
+assert(structuredPersonalName('James', '') === 'James', 'a first name alone is the compatibility name');
+assert(structuredPersonalName('', 'Adams') === 'Adams', 'a last name alone is the compatibility name');
+assert(structuredPersonalName('John', 'Smith') === 'John Smith', 'both names become First Last');
+assert(!structuredPersonalName('John', 'Smith').includes('Mr.'), 'the compatibility name does not include a rank');
 assert(
   validateReconciliationIdentity({ firstName: 'CDR', lastName: 'Scanlon', rankTitle: 'CDR' })
     === 'Rank / Title should not be entered in First Name or Last Name.',

@@ -190,7 +190,7 @@ assert(personnelDisplayName('LCDR', 'Shane Freiberg') === 'LCDR Shane Freiberg',
 assert(personnelDisplayName('RP1', 'James Brantley') === 'RP1 James Brantley', 'RP1 display identity');
 assert(fullNameIncludesRank('CDR', 'CDR John Scanlon'), 'editor blocks storing the rank twice');
 assert(!fullNameIncludesRank('CDR', 'John Scanlon'), 'personal name with a separate rank is accepted');
-assert(validatePersonnelEditor({ name: '', isCredoStaff: false }) === 'First Name is required.', 'a new person requires a first name');
+assert(validatePersonnelEditor({ name: '', rankTitle: 'Chaplain', isCredoStaff: false }) === 'First Name or Last Name is required.', 'a new person requires a personal name');
 assert(
   validatePersonnelEditor({
     firstName: 'John',

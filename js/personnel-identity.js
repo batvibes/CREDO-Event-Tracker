@@ -22,29 +22,34 @@ function comparePersonnelText(left, right) {
   return cleanPersonnelText(left).localeCompare(cleanPersonnelText(right), 'en', { sensitivity: 'base' });
 }
 
-function structuredPersonnelName(person) {
+function structuredSortKey(person) {
   const firstName = cleanPersonnelText(person?.firstName ?? person?.first_name);
   const lastName = cleanPersonnelText(person?.lastName ?? person?.last_name);
-  if (!firstName || !lastName) return null;
-  return { firstName, lastName };
+  if (lastName) return { kind: 'last', lastName, firstName };
+  if (firstName) return { kind: 'first', lastName: '', firstName };
+  return null;
+}
+
+function structuredSortPrimary(person, displayName) {
+  const key = structuredSortKey(person);
+  if (!key) return displayName;
+  return key.kind === 'last' ? key.lastName : key.firstName;
 }
 
 export function comparePersonnelDisplayNames(left, right) {
-  const leftStructured = structuredPersonnelName(left);
-  const rightStructured = structuredPersonnelName(right);
   const leftDisplay = personnelDisplayName(left?.rankTitle ?? left?.rank_title, left?.name);
   const rightDisplay = personnelDisplayName(right?.rankTitle ?? right?.rank_title, right?.name);
+  const byPrimary = comparePersonnelText(
+    structuredSortPrimary(left, leftDisplay),
+    structuredSortPrimary(right, rightDisplay),
+  );
+  if (byPrimary !== 0) return byPrimary;
 
-  if (leftStructured && rightStructured) {
-    const byLast = comparePersonnelText(leftStructured.lastName, rightStructured.lastName);
-    if (byLast !== 0) return byLast;
-    const byFirst = comparePersonnelText(leftStructured.firstName, rightStructured.firstName);
+  const leftKey = structuredSortKey(left);
+  const rightKey = structuredSortKey(right);
+  if (leftKey?.kind === 'last' && rightKey?.kind === 'last') {
+    const byFirst = comparePersonnelText(leftKey.firstName, rightKey.firstName);
     if (byFirst !== 0) return byFirst;
-  } else if (leftStructured || rightStructured) {
-    const leftKey = leftStructured ? leftStructured.lastName : leftDisplay;
-    const rightKey = rightStructured ? rightStructured.lastName : rightDisplay;
-    const byKey = comparePersonnelText(leftKey, rightKey);
-    if (byKey !== 0) return byKey;
   }
 
   const byDisplay = comparePersonnelText(leftDisplay, rightDisplay);

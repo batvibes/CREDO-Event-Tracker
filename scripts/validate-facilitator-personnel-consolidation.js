@@ -92,27 +92,37 @@ assert(
     rankTitle: '',
     isCredoStaff: false,
   }) === '',
-  'a facilitator name requires structured first/last name but not rank, command, or installation',
+  'a facilitator name accepts a personal name without rank, command, or installation',
 );
 assert(
   validatePersonnelEditor({
     firstName: '',
-    lastName: 'Civilian',
-    name: 'Civilian',
-    rankTitle: '',
+    lastName: 'Adams',
+    name: 'Adams',
+    rankTitle: 'Chaplain',
     isCredoStaff: false,
-  }) === 'First Name is required.',
-  'structured personnel validation requires First Name',
+  }) === '',
+  'last name alone is a valid personal name',
 );
 assert(
   validatePersonnelEditor({
-    firstName: 'Ada',
+    firstName: 'James',
     lastName: '',
-    name: 'Ada',
+    name: 'James',
     rankTitle: '',
     isCredoStaff: false,
-  }) === 'Last Name is required.',
-  'structured personnel validation requires Last Name',
+  }) === '',
+  'first name alone is a valid personal name',
+);
+assert(
+  validatePersonnelEditor({
+    firstName: '',
+    lastName: '',
+    name: '',
+    rankTitle: 'Chaplain',
+    isCredoStaff: false,
+  }) === 'First Name or Last Name is required.',
+  'rank alone is not a personal name',
 );
 assert(
   validatePersonnelEditor({
@@ -123,8 +133,8 @@ assert(
     lastName: '',
     name: 'Ada Civilian',
     isCredoStaff: false,
-  }) === 'First Name is required.',
-  'an already structured person still requires both names',
+  }) === 'First Name or Last Name is required.',
+  'an already structured person cannot be saved with no personal name',
 );
 assert(
   validatePersonnelEditor({
@@ -149,8 +159,8 @@ assert(
     lastName: '',
     name: 'Chaplain Rudd',
     isCredoStaff: false,
-  }) === 'Last Name is required.',
-  'a legacy person cannot save only one structured name',
+  }) === '',
+  'a legacy person can save a first name without a last name',
 );
 assert(
   validatePersonnelEditor({
@@ -344,11 +354,15 @@ assert(reconcileSource.includes('validateReconciliationIdentity'), 'reconciliati
 assert(!reconcileSource.includes('validatePersonnelEditor'), 'reconciliation does not use the ordinary personnel validation path');
 assert(read('js/db.js').includes("rpc('reconcile_directory_people_structured'"), 'reconciliation saves through the structured wrapper');
 assert(!read('js/db.js').includes("rpc('reconcile_directory_people',"), 'the client does not call the legacy reconciliation RPC directly');
-const structuredSave = read('supabase/migrations/035_structured_personnel_name_writes.sql');
+const structuredSave = read('supabase/migrations/036_partial_structured_personnel_names.sql');
 assert(structuredSave.includes('public.save_directory_person('), 'structured saves still go through the proven personnel save');
-assert(structuredSave.includes("hint = 'STRUCTURED_NAME_INCOMPLETE'"), 'one structured name without the other is rejected');
-assert(structuredSave.includes('elsif p_id is null'), 'an existing legacy save can omit structured names');
-assert(structuredSave.includes('if v_first_name is not null then'), 'structured columns are written only when both names are supplied');
+assert(structuredSave.includes('public.reconcile_directory_people('), 'structured reconciliation still calls the legacy reconciliation function');
+assert(!structuredSave.includes('drop function public.reconcile_directory_people'), 'migration 036 does not remove the legacy reconciliation function');
+assert(structuredSave.includes('First Name or Last Name is required.'), 'a new person still needs a personal name');
+assert(structuredSave.includes('v_personal_name := v_first_name;'), 'a first name alone becomes the compatibility name');
+assert(structuredSave.includes('v_personal_name := v_last_name;'), 'a last name alone becomes the compatibility name');
+assert(structuredSave.includes("v_personal_name := v_first_name || ' ' || v_last_name;"), 'both names become First Last');
+assert(!/update public\.events|events\.facilitators|events\.poc|events\.credo_staff/.test(structuredSave), 'partial structured names do not rewrite event text');
 
 assert(editor.includes('Existing Person Found') && editor.includes('Use Existing Person'), 'Add Facilitator asks before reusing an existing person');
 assert(editor.includes("inactive.textContent = 'Inactive'"), 'an inactive match is labeled Inactive');
@@ -364,7 +378,7 @@ assert(
     .filter((name) => /^0(29|[3-9]\d)_/.test(name))
     .sort()
     .join('|')
-    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql',
+    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql|036_partial_structured_personnel_names.sql',
   'migrations after 028 include the established personnel migrations plus structured personnel names',
 );
 

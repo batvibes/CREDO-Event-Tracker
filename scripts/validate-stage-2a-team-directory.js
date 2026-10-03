@@ -242,7 +242,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(migrationLines.every((line) => line.includes('033_reuse_or_create_event_person.sql')), 'the only new migration is event person reuse');
+assert(migrationLines.every((line) => line.includes('036_partial_structured_personnel_names.sql')), 'the only new migration is partial structured personnel names');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',
