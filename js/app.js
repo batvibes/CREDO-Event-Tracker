@@ -4155,6 +4155,8 @@ function syncFacilitatorPickerPeople(sourceRows, relevantRecords, aliases) {
       id: row?.id ?? null,
       name: row?.name ?? '',
       rankTitle: row?.rank_title ?? row?.rankTitle ?? null,
+      firstName: row?.first_name ?? row?.firstName ?? null,
+      lastName: row?.last_name ?? row?.lastName ?? null,
       email: row?.email ?? null,
       phone: row?.phone ?? null,
       active: row?.active !== false,

@@ -18,11 +18,37 @@ export function personnelDisplayName(rankTitle, name) {
   return `${rank} ${personal}`;
 }
 
+function comparePersonnelText(left, right) {
+  return cleanPersonnelText(left).localeCompare(cleanPersonnelText(right), 'en', { sensitivity: 'base' });
+}
+
+function structuredPersonnelName(person) {
+  const firstName = cleanPersonnelText(person?.firstName ?? person?.first_name);
+  const lastName = cleanPersonnelText(person?.lastName ?? person?.last_name);
+  if (!firstName || !lastName) return null;
+  return { firstName, lastName };
+}
+
 export function comparePersonnelDisplayNames(left, right) {
-  const leftName = personnelDisplayName(left?.rankTitle ?? left?.rank_title, left?.name);
-  const rightName = personnelDisplayName(right?.rankTitle ?? right?.rank_title, right?.name);
-  const byName = leftName.localeCompare(rightName, 'en', { sensitivity: 'base' });
-  if (byName !== 0) return byName;
+  const leftStructured = structuredPersonnelName(left);
+  const rightStructured = structuredPersonnelName(right);
+  const leftDisplay = personnelDisplayName(left?.rankTitle ?? left?.rank_title, left?.name);
+  const rightDisplay = personnelDisplayName(right?.rankTitle ?? right?.rank_title, right?.name);
+
+  if (leftStructured && rightStructured) {
+    const byLast = comparePersonnelText(leftStructured.lastName, rightStructured.lastName);
+    if (byLast !== 0) return byLast;
+    const byFirst = comparePersonnelText(leftStructured.firstName, rightStructured.firstName);
+    if (byFirst !== 0) return byFirst;
+  } else if (leftStructured || rightStructured) {
+    const leftKey = leftStructured ? leftStructured.lastName : leftDisplay;
+    const rightKey = rightStructured ? rightStructured.lastName : rightDisplay;
+    const byKey = comparePersonnelText(leftKey, rightKey);
+    if (byKey !== 0) return byKey;
+  }
+
+  const byDisplay = comparePersonnelText(leftDisplay, rightDisplay);
+  if (byDisplay !== 0) return byDisplay;
   return String(left?.id ?? '').localeCompare(String(right?.id ?? ''), 'en');
 }
 

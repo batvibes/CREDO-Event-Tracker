@@ -79,8 +79,8 @@ assert(dbSource.includes('export async function createTeamMember('), 'legacy cre
 assert(dbSource.includes('export async function updateTeamMember('), 'legacy updateTeamMember helper remains');
 assert(dbSource.includes('export async function deleteTeamMember('), 'legacy deleteTeamMember helper remains');
 assert(
-  dbSource.includes(".select('id, name, normalized_name, rank_title, email, phone, active, created_at, updated_at')"),
-  'fetchPeople() keeps the reference roster columns and includes rank_title for display identity'
+  dbSource.includes(".select('id, name, first_name, last_name, normalized_name, rank_title, email, phone, active, created_at, updated_at')"),
+  'fetchPeople() keeps the reference roster columns and includes structured names for sorting'
 );
 
 const prepareMir = appSource.match(/async function prepareMirReportGenerationInput\(report\) \{[\s\S]*?\n\}/);

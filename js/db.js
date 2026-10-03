@@ -1290,6 +1290,8 @@ function personFromRow(row) {
   return {
     ...namedReferenceFromRow(row),
     rankTitle: row.rank_title ?? null,
+    firstName: row.first_name ?? null,
+    lastName: row.last_name ?? null,
     email: row.email ?? null,
     phone: row.phone ?? null,
   };
@@ -1382,7 +1384,7 @@ export async function createCaterer(name) {
 export async function fetchPeople() {
   const { data, error } = await supabase
     .from('people')
-    .select('id, name, normalized_name, rank_title, email, phone, active, created_at, updated_at')
+    .select('id, name, first_name, last_name, normalized_name, rank_title, email, phone, active, created_at, updated_at')
     .eq('active', true)
     .order('name', { ascending: true });
 

@@ -64,6 +64,61 @@ assert(
   'F: Points of Contact order follows the shared display-name comparator',
 );
 
+const structuredRoster = [
+  person('zoe', 'Zoe Adams', { first_name: 'Zoe', last_name: 'Adams', rank_title: 'CDR' }),
+  person('ann', 'Ann Adams', { first_name: 'Ann', last_name: 'Adams', rank_title: 'LCDR' }),
+  person('john', 'John Smith', { first_name: 'John', last_name: 'Smith' }),
+];
+assert(
+  filterTeamDirectory(structuredRoster, 'poc').map((entry) => entry.id).join(',') === 'ann,zoe,john',
+  'structured Points of Contact sort by last name, then first name',
+);
+
+const legacyRoster = [
+  person('late', 'Zoe Late'),
+  person('early', 'Aaron Early'),
+];
+assert(
+  filterTeamDirectory(legacyRoster, 'poc').map((entry) => entry.id).join(',') === 'early,late',
+  'legacy Points of Contact keep display-name order',
+);
+
+const mixedRoster = [
+  person('legacy-scanlon', 'CDR John Scanlon'),
+  person('structured-adams', 'Zoe Adams', { first_name: 'Zoe', last_name: 'Adams' }),
+  person('structured-young', 'Ann Young', { first_name: 'Ann', last_name: 'Young' }),
+  person('legacy-early', 'Aaron Early'),
+  person('partial', 'Marta Zoe', { last_name: 'Adams' }),
+];
+assert(
+  filterTeamDirectory(mixedRoster, 'poc').map((entry) => entry.id).join(',')
+    === 'legacy-early,structured-adams,legacy-scanlon,partial,structured-young',
+  'mixed records stay deterministic without splitting a legacy name',
+);
+
+const sameName = [
+  person('b', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
+  person('a', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
+];
+assert(
+  filterTeamDirectory(sameName, 'poc').map((entry) => entry.id).join(',') === 'a,b',
+  'equal structured names use the stable id tie-breaker',
+);
+const rankTie = [
+  person('lcdr', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'LCDR' }),
+  person('cdr', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
+];
+assert(
+  filterTeamDirectory(rankTie, 'poc').map((entry) => entry.id).join(',') === 'cdr,lcdr',
+  'matching structured names use display identity before the id',
+);
+
+const menuByLastName = visiblePersonnelMenuOptions([
+  { id: 'young', name: 'Ann Young', firstName: 'Ann', lastName: 'Young', rankTitle: null },
+  { id: 'adams', name: 'Zoe Adams', firstName: 'Zoe', lastName: 'Adams', rankTitle: 'CDR' },
+], '');
+assert(menuByLastName.map((entry) => entry.id).join(',') === 'adams,young', 'the person menu uses last name before display rank');
+
 const lateInFetch = { id: 'late', name: 'Aaron Early', rankTitle: null, email: 'aaron@example.test' };
 const earlyInFetch = { id: 'early', name: 'Zzz Late', rankTitle: null };
 const filler = Array.from({ length: 58 }, (_, index) => ({
@@ -91,6 +146,9 @@ const picker = read('js/event-reference-fields.js');
 const db = read('js/db.js');
 const createStart = db.indexOf('export async function createPerson');
 const createBody = db.slice(createStart, db.indexOf('function referenceNameConflictError'));
+assert(directory.includes('return [...personnel].sort(comparePersonnelDisplayNames)'), 'Points of Contact sorts with the shared personnel comparator');
+assert(directory.includes("if (tab === 'poc') return sortByDisplayName(active)"), 'Points of Contact uses that shared sort');
+assert(picker.includes('.sort(comparePersonnelDisplayNames)'), 'the person menu sorts with the shared personnel comparator');
 assert(!directory.includes("person.isPoc === true"), 'Points of Contact no longer filters on the POC flag');
 assert(!directory.includes("label: 'POC'"), 'the directory does not render a POC role badge');
 const editor = read('js/team-personnel-editor.js');
