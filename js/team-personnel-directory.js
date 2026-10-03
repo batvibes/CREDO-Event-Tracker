@@ -136,12 +136,42 @@ function appendRoleBadges(parent, person) {
   parent.appendChild(list);
 }
 
+export function directoryPersonnelName(person) {
+  const firstName = cleanText(person?.firstName);
+  const lastName = cleanText(person?.lastName);
+  if (lastName && firstName) return `${lastName}, ${firstName}`;
+  if (lastName) return lastName;
+  if (firstName) return firstName;
+  return cleanText(person?.name) ?? '';
+}
+
+export function directoryPersonnelNeedsReview(person) {
+  return !cleanText(person?.firstName) && !cleanText(person?.lastName);
+}
+
 function appendPersonName(parent, person) {
   const doc = parent.ownerDocument;
   const name = doc.createElement('div');
   name.className = 'team-directory-name';
   name.textContent = personnelDisplayName(person.rankTitle, person.name) || '—';
   parent.appendChild(name);
+}
+
+function appendDirectoryName(parent, person) {
+  const doc = parent.ownerDocument;
+  const line = doc.createElement('div');
+  line.className = 'team-directory-name-line';
+  const name = doc.createElement('div');
+  name.className = 'team-directory-name';
+  name.textContent = directoryPersonnelName(person) || '—';
+  line.appendChild(name);
+  if (directoryPersonnelNeedsReview(person)) {
+    const review = doc.createElement('span');
+    review.className = 'team-directory-review';
+    review.textContent = 'Needs Review';
+    line.appendChild(review);
+  }
+  parent.appendChild(line);
 }
 
 function appendEditButton(parent, person, onEdit) {
@@ -186,7 +216,7 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
 
   const head = doc.createElement('div');
   head.className = 'team-directory-head';
-  ['Person', 'Command / Organization', 'Roles'].forEach((label) => {
+  ['Name', 'Rank / Title', 'Command / Organization', 'Roles'].forEach((label) => {
     const cell = doc.createElement('span');
     cell.textContent = label;
     head.appendChild(cell);
@@ -206,7 +236,11 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
 
     const personCell = doc.createElement('div');
     personCell.className = 'team-directory-person';
-    appendPersonName(personCell, person);
+    appendDirectoryName(personCell, person);
+
+    const rankCell = doc.createElement('div');
+    rankCell.className = 'team-directory-rank';
+    if (person.rankTitle) rankCell.textContent = person.rankTitle;
 
     const commandCell = doc.createElement('div');
     commandCell.className = 'team-directory-command';
@@ -216,7 +250,7 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
     roleCell.className = 'team-directory-roles';
     appendRoleBadges(roleCell, person);
 
-    row.append(personCell, commandCell, roleCell);
+    row.append(personCell, rankCell, commandCell, roleCell);
     appendActionCell(row, person, onEdit, 'div');
     list.appendChild(row);
   });

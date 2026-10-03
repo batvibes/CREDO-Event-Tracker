@@ -3256,6 +3256,13 @@ body:has(#new-event-modal[open]) {
   min-width: 0;
 }
 
+#view-team .team-directory-name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 #view-team .team-directory-name {
   min-width: 0;
   overflow: hidden;
@@ -3267,6 +3274,16 @@ body:has(#new-event-modal[open]) {
   white-space: nowrap;
 }
 
+#view-team .team-directory-review {
+  flex: none;
+  color: #6b7280;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 #view-team .team-directory-org {
   margin-top: 2px;
   font-size: 0.8125rem;
@@ -3276,14 +3293,14 @@ body:has(#new-event-modal[open]) {
 
 #view-team .team-directory-list {
   display: grid;
-  grid-template-columns: minmax(12.5rem, 1.15fr) minmax(13.5rem, 1.45fr) max-content;
+  grid-template-columns: minmax(11rem, 1.25fr) minmax(5.75rem, 0.42fr) minmax(11rem, 1.2fr) max-content;
   column-gap: 24px;
   min-width: 0;
   overflow-x: auto;
 }
 
 #view-team .team-directory-list-editable {
-  grid-template-columns: minmax(12.5rem, 1.15fr) minmax(13.5rem, 1.45fr) max-content 4.5rem;
+  grid-template-columns: minmax(11rem, 1.25fr) minmax(5.75rem, 0.42fr) minmax(11rem, 1.2fr) max-content 4.5rem;
 }
 
 #view-team .team-directory-head,
@@ -3306,10 +3323,18 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-team .team-directory-person,
+#view-team .team-directory-rank,
 #view-team .team-directory-command,
 #view-team .team-directory-roles {
   min-width: 0;
   justify-self: start;
+}
+
+#view-team .team-directory-row .team-directory-rank {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #4b5563;
+  overflow-wrap: anywhere;
 }
 
 #view-team .team-directory-action {
@@ -3776,13 +3801,29 @@ body:has(#new-event-modal[open]) {
     display: grid;
     grid-column: auto;
     grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name action"
+      "rank rank"
+      "command command"
+      "roles roles";
     column-gap: 12px;
     row-gap: 2px;
   }
 
+  #view-team .team-directory-person {
+    grid-area: name;
+  }
+
+  #view-team .team-directory-rank {
+    grid-area: rank;
+  }
+
+  #view-team .team-directory-rank:empty {
+    display: none;
+  }
+
   #view-team .team-directory-command {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    grid-area: command;
   }
 
   #view-team .team-directory-command:empty {
@@ -3790,8 +3831,7 @@ body:has(#new-event-modal[open]) {
   }
 
   #view-team .team-directory-roles {
-    grid-column: 1 / -1;
-    grid-row: 3;
+    grid-area: roles;
   }
 
   #view-team .team-directory-roles:empty {
@@ -3799,8 +3839,7 @@ body:has(#new-event-modal[open]) {
   }
 
   #view-team .team-directory-action {
-    grid-column: 2;
-    grid-row: 1;
+    grid-area: action;
   }
 }
 

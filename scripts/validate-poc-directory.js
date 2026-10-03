@@ -14,6 +14,8 @@ import {
 } from '../js/event-reference-fields.js';
 import {
   TEAM_DIRECTORY_EMPTY_MESSAGES,
+  directoryPersonnelName,
+  directoryPersonnelNeedsReview,
   filterTeamDirectory,
   mapTeamDirectoryPerson,
 } from '../js/team-personnel-directory.js';
@@ -188,15 +190,32 @@ assert(picker.includes('reuse_or_create_event_person') === false, 'the picker ca
 assert(db.includes("rpc('reuse_or_create_event_person'"), 'event person creation uses the neutral reuse function');
 assert(!createBody.includes('.insert('), 'H: event person creation no longer inserts from the browser');
 assert(!createBody.includes('is_facilitator') && !createBody.includes('is_credo_staff') && !createBody.includes('is_poc'), 'H: the browser create wrapper does not set facilitator, staff, or POC flags');
-assert(directory.includes("'Person', 'Command / Organization', 'Roles'"), 'directory headers stay Person, Command / Organization, and Roles');
+assert(directory.includes("'Name', 'Rank / Title', 'Command / Organization', 'Roles'"), 'directory headers are Name, Rank / Title, Command / Organization, and Roles');
 assert(directory.includes("actionHead.textContent = 'Action'"), 'the edit column has an Action header');
+assert(directory.includes('button.textContent = \'Edit\''), 'the edit action remains');
+assert(directory.includes('rankCell.className = \'team-directory-rank\''), 'every row keeps a Rank / Title cell');
 assert(directory.includes('commandCell.className = \'team-directory-command\''), 'every row keeps a Command / Organization cell');
 assert(directory.includes('roleCell.className = \'team-directory-roles\''), 'every row keeps a Roles cell');
 assert(/if \(person\.commandOrganization\) commandCell\.textContent/.test(directory), 'a blank command leaves the cell in place');
+assert(/if \(person\.rankTitle\) rankCell\.textContent/.test(directory), 'a blank rank leaves the cell in place');
+assert(directory.includes('return [...personnel].sort(comparePersonnelDisplayNames)'), 'directory sorting still uses the shared structured-name comparator');
+const bothNames = person('bareng', 'Ryan Bareng', { first_name: 'Ryan', last_name: 'Bareng', rank_title: 'CDR' });
+const lastOnlyName = person('adams', 'Adams', { last_name: 'Adams', rank_title: 'Chaplain' });
+const firstOnlyName = person('james', 'James', { first_name: 'James' });
+const legacyName = person('legacy', 'Chaplain Alexander');
+assert(directoryPersonnelName(bothNames) === 'Bareng, Ryan', 'a structured name displays as Last, First');
+assert(directoryPersonnelName(lastOnlyName) === 'Adams', 'a last name alone displays without a comma');
+assert(directoryPersonnelName(firstOnlyName) === 'James', 'a first name alone displays without a comma');
+assert(!directoryPersonnelName(bothNames).includes('CDR'), 'rank stays out of the Name cell');
+assert(directoryPersonnelName(legacyName) === 'Chaplain Alexander', 'a legacy record keeps its existing combined name');
+assert(directoryPersonnelNeedsReview(legacyName) === true, 'a legacy record is marked Needs Review');
+assert(directoryPersonnelNeedsReview(lastOnlyName) === false, 'a last-name-only record is not marked Needs Review');
+assert(directoryPersonnelNeedsReview(firstOnlyName) === false, 'a first-name-only record is not marked Needs Review');
+assert(directory.includes("review.textContent = 'Needs Review'"), 'the directory renders the Needs Review indicator');
 const directoryCss = read('css/styles.css');
 const directoryLayout = directoryCss.slice(directoryCss.indexOf('#view-team .team-directory-list {'), directoryCss.indexOf('#view-team .team-directory-head {'));
 assert(directoryLayout.includes('grid-template-columns: subgrid'), 'directory rows share one set of column tracks');
-assert(directoryLayout.includes('minmax(12.5rem, 1.15fr) minmax(13.5rem, 1.45fr) max-content 4.5rem'), 'editable rows use fixed Person, Command, Roles, and Action tracks');
+assert(directoryLayout.includes('minmax(11rem, 1.25fr) minmax(5.75rem, 0.42fr) minmax(11rem, 1.2fr) max-content 4.5rem'), 'editable rows use Name, Rank / Title, Command, Roles, and Action tracks');
 assert(!directoryLayout.includes('auto 56px'), 'Roles is no longer an independent auto column');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'the empty directory copy matches the active-person view');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'the CREDO Staff empty copy is unchanged');
