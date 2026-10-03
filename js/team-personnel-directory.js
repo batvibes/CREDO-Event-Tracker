@@ -1,10 +1,12 @@
 /**
  * Team directory rules for the Unified Personnel view.
- * Roles come only from explicit public.people flags. This module does not
- * read events or team_members.
+ * CREDO Staff is the active people assigned to CREDO.
+ * Points of Contact is every active canonical person.
+ * Role badges still come only from explicit public.people flags.
+ * This module does not read events or team_members.
  */
 
-import { personnelDisplayName } from './personnel-identity.js';
+import { comparePersonnelDisplayNames, personnelDisplayName } from './personnel-identity.js';
 
 export const TEAM_DIRECTORY_TABS = [
   { id: 'staff', label: 'CREDO Staff' },
@@ -23,7 +25,7 @@ export const TEAM_STAFF_COLUMNS = [
 
 export const TEAM_DIRECTORY_EMPTY_MESSAGES = {
   staff: 'No active CREDO Staff have been designated yet.',
-  poc: 'No active Points of Contact have been designated yet.',
+  poc: 'No active people are in the directory.',
 };
 
 const ROLE_BADGES = [
@@ -96,6 +98,10 @@ function sortByName(personnel) {
   return [...personnel].sort(compareNames);
 }
 
+function sortByDisplayName(personnel) {
+  return [...personnel].sort(comparePersonnelDisplayNames);
+}
+
 function sortStaff(personnel) {
   return [...personnel].sort((left, right) => {
     const leftOrder = Number.isInteger(left.staffDisplayOrder) ? left.staffDisplayOrder : Number.POSITIVE_INFINITY;
@@ -109,7 +115,7 @@ export function filterTeamDirectory(personnel, tab) {
   const active = uniquePeople(personnel).filter((person) => person.active === true);
   if (tab === 'staff') return sortStaff(active.filter((person) => person.isCredoStaff === true));
   if (tab === 'facilitators') return sortByName(active.filter((person) => person.isFacilitator === true));
-  if (tab === 'poc') return sortByName(active.filter((person) => person.isPoc === true));
+  if (tab === 'poc') return sortByDisplayName(active);
   if (tab === 'all') return sortByName(active);
   return sortStaff(active.filter((person) => person.isCredoStaff === true));
 }

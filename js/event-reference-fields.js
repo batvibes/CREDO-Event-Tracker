@@ -1,4 +1,30 @@
-import { findPersonnelByHistoricalName, personnelDisplayName } from './personnel-identity.js';
+import {
+  comparePersonnelDisplayNames,
+  findPersonnelByHistoricalName,
+  personnelDisplayName,
+} from './personnel-identity.js';
+
+export const PERSONNEL_MENU_RESULT_LIMIT = 50;
+
+function personnelMenuHaystack(person) {
+  const aliasText = (person?.aliases || [])
+    .map((alias) => alias.displayName || alias.display_name || '')
+    .join(' ');
+  return `${personnelDisplayName(person?.rankTitle ?? person?.rank_title, person?.name)} ${person?.name || ''} ${aliasText} ${person?.email || ''} ${person?.phone || ''}`.toLowerCase();
+}
+
+export function visiblePersonnelMenuOptions(people, query, options = {}) {
+  const limit = Number.isInteger(options.limit) ? options.limit : PERSONNEL_MENU_RESULT_LIMIT;
+  const excluded = options.excludedIds instanceof Set ? options.excludedIds : new Set(options.excludedIds || []);
+  const needle = normalizeReferenceName(query);
+  const sorted = [...(people || [])]
+    .filter((person) => person && !excluded.has(person.id))
+    .sort(comparePersonnelDisplayNames);
+  const matched = needle
+    ? sorted.filter((person) => personnelMenuHaystack(person).includes(needle))
+    : sorted;
+  return matched.slice(0, Math.max(0, limit));
+}
 
 function cleanReferenceDisplayName(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
@@ -822,10 +848,6 @@ function mountPeopleMulti(root, options) {
     });
   }
 
-  function selectedKeys() {
-    return new Set(tokens.map(tokenKey));
-  }
-
   function addToken(token) {
     mode = 'tokens';
     legacyRaw = '';
@@ -868,6 +890,16 @@ function mountPeopleMulti(root, options) {
       const personName = cleanReferenceDisplayName(nameInput?.value);
       if (!personName) {
         alert('Name is required.');
+        return;
+      }
+      const existing = findPersonnelByHistoricalName(getPeople() || [], personName);
+      if (existing) {
+        addToken({
+          id: existing.id,
+          name: personnelDisplayName(existing.rankTitle, existing.name),
+          email: existing.email || null,
+          orphan: false,
+        });
         return;
       }
       try {
@@ -1100,17 +1132,9 @@ function mountPeopleMulti(root, options) {
     }
 
     const cleanedQuery = cleanReferenceDisplayName(input.value);
-    const query = normalizeReferenceName(cleanedQuery);
-    const selected = selectedKeys();
-    const people = (getPeople() || [])
-      .filter((person) => {
-        if (selected.has(`id:${person.id}`)) return false;
-        if (!query) return true;
-        const aliasText = (person.aliases || []).map((alias) => alias.displayName || '').join(' ');
-        const haystack = `${personnelDisplayName(person.rankTitle, person.name)} ${person.name} ${aliasText} ${person.email || ''} ${person.phone || ''}`.toLowerCase();
-        return haystack.includes(query);
-      })
-      .slice(0, 50);
+    const people = visiblePersonnelMenuOptions(getPeople(), cleanedQuery, {
+      excludedIds: tokens.filter((token) => token.id).map((token) => token.id),
+    });
 
     const exactPerson = cleanedQuery
       ? findPersonnelByHistoricalName(getPeople() || [], cleanedQuery)

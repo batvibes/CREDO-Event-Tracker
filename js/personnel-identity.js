@@ -18,6 +18,14 @@ export function personnelDisplayName(rankTitle, name) {
   return `${rank} ${personal}`;
 }
 
+export function comparePersonnelDisplayNames(left, right) {
+  const leftName = personnelDisplayName(left?.rankTitle ?? left?.rank_title, left?.name);
+  const rightName = personnelDisplayName(right?.rankTitle ?? right?.rank_title, right?.name);
+  const byName = leftName.localeCompare(rightName, 'en', { sensitivity: 'base' });
+  if (byName !== 0) return byName;
+  return String(left?.id ?? '').localeCompare(String(right?.id ?? ''), 'en');
+}
+
 export function personnelDisplayParts(rankTitle, name) {
   const rank = cleanPersonnelText(rankTitle);
   const personal = cleanPersonnelText(name);
