@@ -4,10 +4,10 @@
  * T4T facilitation comes from facilitator_t4t_product_experience.
  * The operational catalog is facilitator_products with active === true, ordered by sort_order.
  * A person is included when is_facilitator is true, or when ordinary experience, T4T
- * facilitation evidence, or a qualification row exists on an active product.
+ * facilitation evidence, a qualification row, or T4T completion history exists.
  * Inactive product rows stay stored and are omitted from the operational catalog.
- * T4T completion history is separate evidence. It does not add a person to this
- * roster by itself, and it does not change a qualification date or standing.
+ * T4T completion history makes the person visible. It does not change a qualification
+ * date or standing, and it is not counted as ordinary facilitation.
  * Stored qualification fields stay manual facts. Standing, T4T completion, and
  * trainer authority are not inferred from either experience aggregate. The
  * Facilitators roster summary counts unique products, distinct events, and the
@@ -405,11 +405,17 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
     const t4tExperience = experienceList(t4tByPerson, person.id);
     const qualificationProducts = [...(qualificationsByPerson.get(person.id)?.values() ?? [])]
       .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
-    if (person.isFacilitator !== true && experience.length === 0 && t4tExperience.length === 0 && qualificationProducts.length === 0) continue;
     const t4tCompletions = facilitatorT4tCompletionHistory(
       (completionRows ?? []).filter((row) => (row?.person_id ?? row?.personId) === person.id),
       products,
     );
+    if (
+      person.isFacilitator !== true
+      && experience.length === 0
+      && t4tExperience.length === 0
+      && qualificationProducts.length === 0
+      && t4tCompletions.length === 0
+    ) continue;
     seen.add(person.id);
     const roster = rosterFacilitationSummary(experience, t4tExperience, catalog);
     personnel.push({
@@ -449,7 +455,8 @@ export function filterFacilitatorPersonnel(records, filters = {}) {
       const inExperience = record.experience.some((row) => row.productId === productId);
       const inT4t = (record.t4tExperience ?? []).some((row) => row.productId === productId);
       const inQualification = record.qualificationProducts.some((row) => row.productId === productId);
-      if (!inExperience && !inT4t && !inQualification) return false;
+      const inCompletion = (record.t4tCompletions ?? []).some((row) => row.productId === productId);
+      if (!inExperience && !inT4t && !inQualification && !inCompletion) return false;
     }
     if (!query) return true;
     return normalizeSearch(`${record.displayName} ${record.name}`).includes(query);

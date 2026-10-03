@@ -1,3 +1,4 @@
+import { findAttendancePersonByName } from './t4t-attendance-suggestions.js';
 import { ordinaryLivingWorksWorkshops } from './livingworks-workshops.js';
 import { supabase } from './supabase.js';
 import { mapTeamDirectoryPerson } from './team-personnel-directory.js';
@@ -1755,6 +1756,30 @@ export async function removeFacilitatorT4tCompletionFromEvent(completion) {
   });
   if (error) throw t4tCompletionRpcError(error);
   return data;
+}
+
+async function fetchAllDirectoryPeople() {
+  const pageSize = 1000;
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('people')
+      .select(FACILITATOR_MANAGEMENT_PERSON_COLUMNS)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
+export async function findCanonicalAttendancePerson(identity) {
+  const [people, aliases] = await Promise.all([
+    fetchAllDirectoryPeople(),
+    fetchPersonnelAliases(),
+  ]);
+  return findAttendancePersonByName(identity, people, aliases);
 }
 
 export async function createT4tAttendancePerson(person) {

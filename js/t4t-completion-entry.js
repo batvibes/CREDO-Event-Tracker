@@ -6,7 +6,7 @@
  * Qualifications, facilitator text, and participant counts are not used.
  */
 import { matchDirectoryPerson, personnelDisplayName } from './personnel-identity.js';
-import { attendanceNameParts, suggestAttendancePeople } from './t4t-attendance-suggestions.js';
+import { attendancePersonalParts, findAttendancePersonByName, suggestAttendancePeople } from './t4t-attendance-suggestions.js';
 
 export const T4T_COMPLETION_ACTION_LABEL = 'Manage T4T Attendance';
 
@@ -719,10 +719,22 @@ export function mountT4tCompletionWorkflow(dialog, options) {
       if (person.id && !personById(person.id)) state.people = [...state.people, person];
       await writeAttendance(person);
     } catch (error) {
-      state.error = isDuplicatePersonError(error)
-        ? 'A personnel record with that name already exists. The name was not changed.'
-        : (error?.message || 'The attendee could not be added.');
-      state.notice = '';
+      const existing = isDuplicatePersonError(error) ? await recoverExistingPerson(payload) : null;
+      if (existing?.id || existing?.personId) {
+        const personId = existing.id ?? existing.personId;
+        if (!personById(personId)) state.people = [...state.people, existing];
+        try {
+          await writeAttendance(existing);
+        } catch (recordError) {
+          state.error = recordError?.message || 'The attendee could not be added.';
+          state.notice = '';
+        }
+      } else {
+        state.error = isDuplicatePersonError(error)
+          ? 'A personnel record with that name already exists. The name was not changed.'
+          : (error?.message || 'The attendee could not be added.');
+        state.notice = '';
+      }
     }
     const added = !state.error;
     state.busy = false;
@@ -763,10 +775,18 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     if (removed) await refreshFacilitatorManagement();
   }
 
+  async function recoverExistingPerson(payload) {
+    const loaded = findAttendancePersonByName(payload, state.people, state.aliases);
+    if (loaded) return loaded;
+    if (!options.findExistingPerson) return null;
+    return options.findExistingPerson(payload);
+  }
+
   function refreshSuggestion() {
     state.suggestion = suggestAttendancePeople({
       firstName: state.form.firstName,
       lastName: state.form.lastName,
+      rankTitle: state.form.rank,
     }, state.people, state.aliases);
   }
 
@@ -787,7 +807,7 @@ export function mountT4tCompletionWorkflow(dialog, options) {
   function useSuggestedPerson(personId) {
     const person = personById(personId);
     if (!person) return;
-    const parts = attendanceNameParts(person.name);
+    const parts = attendancePersonalParts(person, state.people, state.form.rank);
     captureFields();
     state.form = {
       ...state.form,

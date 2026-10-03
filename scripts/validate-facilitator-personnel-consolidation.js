@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
+import { filterFacilitatorPersonnel, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
 import {
   facilitatorReusePlan,
   facilitatorReuseValues,
@@ -156,6 +156,28 @@ const dedicated = roster.find((person) => person.id === 'dedicated');
 assert(dedicated.productCount === 1 && dedicated.eventsConducted === 3 && dedicated.mostRecentOn === '2026-06-01', 'ASIST T4T counts as ASIST and its events are added once');
 assert(dedicated.t4tExperience[0].productName === 'ASIST T4T' && dedicated.experience[0].productName === 'ASIST', 'the profile still names the dedicated T4T product separately');
 assert(roster.find((person) => person.id === 'future-only').eventsConducted === 0, 'a facilitator with no past facilitation row stays at zero');
+const completionOnly = summarizeFacilitatorPersonnel(
+  [
+    { id: 'jason', name: 'CDR Jason Dipinto', rank_title: null, active: true, is_facilitator: false },
+    { id: 'kermit-check', name: 'Kermit Jones', active: true, is_facilitator: false },
+  ],
+  [],
+  [],
+  rosterProducts,
+  [
+    { person_id: 'kermit-check', product_id: 'lenses', events_conducted: 1, first_recorded_facilitation_on: '2026-09-01', most_recent_facilitation_on: '2026-09-01' },
+  ],
+  [
+    { id: 'jason-completion', person_id: 'jason', product_id: 'lenses', completed_on: '2026-09-01' },
+  ],
+);
+const jasonRoster = completionOnly.find((person) => person.id === 'jason');
+assert(completionOnly.map((person) => person.id).join(',') === 'jason,kermit-check', 'T4T completion history places a person on the Facilitators roster once');
+assert(jasonRoster.isFacilitator === false && jasonRoster.eventsConducted === 0 && jasonRoster.productCount === 0, 'a completion-only roster row does not gain ordinary event counts');
+assert(jasonRoster.qualificationProducts.length === 0 && jasonRoster.experience.length === 0 && jasonRoster.t4tExperience.length === 0, 'a completion-only profile does not invent qualifications or facilitation');
+assert(jasonRoster.t4tCompletions.length === 1 && jasonRoster.t4tCompletions[0].productName === '4 Lenses', 'a completion-only profile keeps the T4T completion');
+assert(filterFacilitatorPersonnel(completionOnly, { query: 'dipinto' }).map((person) => person.id).join(',') === 'jason', 'search finds a T4T-completion-only person');
+assert(filterFacilitatorPersonnel(completionOnly, { productId: 'lenses' }).map((person) => person.id).sort().join(',') === 'jason,kermit-check', 'a product filter includes completion history without dropping facilitation');
 assert(!roster.some((person) => person.id == null), 'an unresolved identity is not added to the roster');
 const experienceView = read('supabase/migrations/025_facilitator_t4t_product_experience.sql');
 assert(experienceView.includes('count(distinct token.event_id)::integer as events_conducted'), 'roster event totals use the views’ distinct Event counts');

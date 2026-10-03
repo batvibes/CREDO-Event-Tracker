@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matchDirectoryPerson, personnelDisplayName } from '../js/personnel-identity.js';
-import { suggestAttendancePeople } from '../js/t4t-attendance-suggestions.js';
+import { findAttendancePersonByName, suggestAttendancePeople } from '../js/t4t-attendance-suggestions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -136,6 +136,17 @@ assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: 'Jone' }, kermit
 assert(suggestAttendancePeople({ firstName: 'Pat', lastName: 'Noone' }, kermit).status === 'none', 'an unrelated name is not suggested');
 assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: '' }, kermit).status === 'empty', 'suggestions wait until both names are entered');
 assert(matchDirectoryPerson('Kermit Joness', kermit, []).status === 'new', 'a typo stays a new result in the exact matcher');
+
+const jason = { id: 'jason', name: 'CDR Jason Dipinto', rank_title: null, active: true, is_facilitator: false, is_credo_staff: false, is_poc: false };
+const rankedDirectory = [jason, { id: 'scanlon', name: 'John Scanlon', rank_title: 'CDR', active: true }];
+const jasonMatch = suggestAttendancePeople({ firstName: 'Jason', lastName: 'Dipinto' }, rankedDirectory);
+assert(jasonMatch.status === 'exact' && jasonMatch.people[0].personId === 'jason', 'a legacy rank stored in the name still matches the personal name');
+assert(jasonMatch.people[0].displayName === 'CDR Jason Dipinto', 'the suggestion shows the canonical display name');
+assert(suggestAttendancePeople({ firstName: 'Jason', lastName: 'Dipinto', rankTitle: 'CDR' }, [jason]).people[0].personId === 'jason', 'the entered rank identifies a legacy rank prefix');
+assert(suggestAttendancePeople({ firstName: 'Jason', lastName: 'Dipinto' }, [{ ...jason, active: false }, rankedDirectory[1]]).status === 'exact', 'an inactive person remains an attendance candidate');
+assert(suggestAttendancePeople({ firstName: 'Lee', lastName: 'Jones' }, [{ id: 'mary', name: 'Mary Lee Jones', rank_title: null, active: true }, { id: 'scanlon', name: 'John Scanlon', rank_title: 'CDR', active: true }]).status === 'none', 'a middle name is not treated as a rank prefix');
+const recovered = findAttendancePersonByName({ rankTitle: 'CDR', name: 'Jason Dipinto' }, [jason], []);
+assert(recovered?.id === 'jason', 'a duplicate display name resolves to the existing person');
 
 assert(JSON.stringify(people) === peopleSnapshot && JSON.stringify(aliases) === aliasSnapshot, 'matching does not change people or aliases');
 

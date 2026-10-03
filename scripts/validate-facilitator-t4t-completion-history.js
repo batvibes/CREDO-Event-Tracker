@@ -151,7 +151,11 @@ const personnel = summarizeFacilitatorPersonnel(
     { id: 'hidden', person_id: 'history-only', product_id: 'lenses', completed_on: '2025-02-01' },
   ],
 );
-assert(personnel.map((person) => person.id).join(',') === 'ada', 'completion history alone does not add a person to Facilitator Management');
+assert(personnel.map((person) => person.id).join(',') === 'ada,history-only', 'T4T completion history includes the person in Facilitator Management');
+const historyOnly = personnel.find((person) => person.id === 'history-only');
+assert(historyOnly.isFacilitator === false && historyOnly.eventsConducted === 0 && historyOnly.productCount === 0, 'completion history does not count as ordinary facilitation');
+assert(historyOnly.experience.length === 0 && historyOnly.t4tExperience.length === 0 && historyOnly.qualificationProducts.length === 0, 'a completion-only profile has no invented qualification or facilitation');
+assert(historyOnly.t4tCompletions.map((row) => row.id).join('|') === 'hidden', 'a completion-only profile keeps that completion history');
 assert(personnel[0].t4tCompletions.map((row) => row.id).join('|') === 'renewal|older', 'an included person keeps every completion, newest first');
 assert(personnel[0].qualificationProducts[0].t4tCompletedOn === '2026-05-18', 'completion history does not replace the qualification T4T date');
 assert(personnel[0].qualificationProducts[0].standing === 'provisional', 'completion history does not change standing');

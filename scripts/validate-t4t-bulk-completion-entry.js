@@ -297,6 +297,7 @@ assert(moduleSource.includes('People already saved keep their recorded date.'), 
 assert(writeAttendance.includes('await options.recordCompletion') && writeAttendance.indexOf('await options.recordCompletion') < writeAttendance.indexOf('showSavedRoster()'), 'Add Attendee records attendance before the person appears on the roster');
 assert(writeAttendance.includes("if (completionErrorCode(error) !== 'T4T_COMPLETION_EVENT_DUPLICATE') throw error;"), 'a failed attendance record is not treated as a saved attendee');
 assert(createPerson.indexOf('await options.createAttendancePerson') >= 0 && createPerson.indexOf('await options.createAttendancePerson') < createPerson.indexOf('await writeAttendance'), 'a new person is created, then their attendance is recorded');
+assert(createPerson.includes('recoverExistingPerson') && createPerson.includes('isDuplicatePersonError'), 'a duplicate canonical name records attendance for the existing person');
 assert(moduleSource.includes('suggestAttendancePeople') && moduleSource.includes('scheduleSuggestion') && moduleSource.includes(', 300)'), 'name suggestions are checked while typing, after a short pause');
 assert(!createPerson.slice(createPerson.indexOf('} catch (error)')).includes('showSavedRoster'), 'a failed new-person attendance save does not show that person as an attendee');
 assert(removeAttendee.indexOf('await options.removeCompletion') >= 0 && removeAttendee.indexOf('await options.removeCompletion') < removeAttendee.indexOf('showSavedRoster()'), 'Remove deletes the saved attendance before the row disappears');
@@ -314,7 +315,7 @@ assert(!writeAttendance.includes('dialog.close') && !removeAttendee.includes('di
 assert(!/\.(insert|update|delete|upsert)\(/.test(moduleSource), 'the workflow does not write tables directly');
 
 assert(opener.includes('if (!canEditEvents()) return'), 'opening the workflow requires an editor or admin');
-assert(opener.includes('createT4tAttendancePerson') && opener.includes('recordFacilitatorT4tCompletion') && opener.includes('removeT4tAttendanceAttendee'), 'new people, additions, and removals use the attendance RPCs');
+assert(opener.includes('createT4tAttendancePerson') && opener.includes('findCanonicalAttendancePerson') && opener.includes('recordFacilitatorT4tCompletion') && opener.includes('removeT4tAttendanceAttendee'), 'new people, additions, and removals use the attendance RPCs');
 assert(opener.includes('fetchT4tCompletionEntrySources') && opener.includes('renderFacilitatorManagement'), 'the workflow loads the directory and refreshes Facilitator Management');
 assert(opener.includes('startDate: event.startDate') && opener.includes('date: event.date'), 'the workflow receives the start date and legacy date');
 assert(!opener.includes('endDate') && !opener.includes('facilitators') && !opener.includes('participants') && !opener.includes('roster'), 'the event handoff omits end date, facilitators, participant count, and roster status');
