@@ -1923,6 +1923,11 @@ function personnelRpcError(error, fallbackName = 'that name') {
     missing.code = 'PERSONNEL_NOT_FOUND';
     return missing;
   }
+  if (hint === 'PERSONNEL_DELETE_REFERENCE') {
+    const blocked = new Error(message || 'This person could not be deleted because another record still references them. Nothing was changed.');
+    blocked.code = 'PERSONNEL_DELETE_REFERENCE';
+    return blocked;
+  }
   if (hint === 'PERSONNEL_USE_TEAM') {
     const blocked = new Error('Personnel identity is edited from the Team directory.');
     blocked.code = 'PERSONNEL_USE_TEAM';
@@ -1953,6 +1958,15 @@ export async function saveDirectoryPerson(person) {
 
 export async function archiveDirectoryPerson(id) {
   const { data, error } = await supabase.rpc('archive_directory_person', {
+    p_id: id,
+  });
+
+  if (error) throw personnelRpcError(error);
+  return data;
+}
+
+export async function deleteDirectoryPerson(id) {
+  const { data, error } = await supabase.rpc('delete_directory_person', {
     p_id: id,
   });
 

@@ -188,6 +188,127 @@ export function eventPersonRoleUpdate(person, role) {
   };
 }
 
+export function personnelRoleRemovalValues(person, role) {
+  return {
+    id: person?.id ?? null,
+    rankTitle: clean(person?.rankTitle),
+    firstName: clean(person?.firstName),
+    lastName: clean(person?.lastName),
+    name: clean(person?.name),
+    commandOrganization: clean(person?.commandOrganization),
+    installation: clean(person?.installation),
+    active: person?.active !== false,
+    isCredoStaff: person?.isCredoStaff === true,
+    isFacilitator: role === 'facilitator' ? false : person?.isFacilitator === true,
+    isPoc: role === 'poc' ? false : person?.isPoc === true,
+    staffBilletOrRole: clean(person?.staffBilletOrRole),
+    staffPrdEaos: clean(person?.staffPrdEaos),
+  };
+}
+
+export function personnelLifecycleActions(person, surface) {
+  if (!person?.id) return [];
+  const actions = [];
+  if (surface !== 'facilitator' && person.isPoc === true) actions.push('remove-poc');
+  if (surface === 'facilitator' && person.isFacilitator === true) actions.push('remove-facilitator');
+  actions.push('delete');
+  return actions;
+}
+
+export function personnelLifecycleCopy(person, action) {
+  const identity = personnelDisplayName(person?.rankTitle, person?.name) || 'this person';
+  if (action === 'delete') {
+    return {
+      title: `Delete ${identity}?`,
+      body: 'This permanently removes this personnel record. Any roles, qualifications, aliases, and linked personnel data may also be removed. Historical event information may be affected.',
+      confirm: 'Delete Person',
+    };
+  }
+  if (action === 'remove-facilitator') {
+    return {
+      title: `Remove facilitator status from ${identity}?`,
+      body: 'This removes only facilitator status. Points of Contact status, CREDO Staff status, qualifications, and facilitation history stay with this person. They leave the Facilitator Management roster. The personnel record is kept.',
+      confirm: 'Remove Facilitator',
+    };
+  }
+  if (action === 'remove-poc') {
+    return {
+      title: `Remove ${identity} from Points of Contact?`,
+      body: 'This removes only the Points of Contact role. Facilitator status, CREDO Staff status, qualifications, and history stay with this person. They leave the Points of Contact roster. The personnel record is kept.',
+      confirm: 'Remove from Points of Contact',
+    };
+  }
+  return null;
+}
+
+const PERSONNEL_LIFECYCLE_LABELS = {
+  'remove-poc': 'Remove from Points of Contact',
+  'remove-facilitator': 'Remove Facilitator',
+  delete: 'Delete Person',
+};
+
+export function createPersonnelLifecycleControls({
+  person,
+  surface = 'team',
+  pending = '',
+  busy = false,
+  message = '',
+  onArm,
+  onCancel,
+  onConfirm,
+}) {
+  const section = document.createElement('div');
+  section.className = 'personnel-editor-section personnel-lifecycle';
+  const title = document.createElement('h4');
+  title.textContent = 'Record';
+  section.appendChild(title);
+
+  const pendingAction = personnelLifecycleActions(person, surface).includes(pending) ? pending : '';
+  if (!pendingAction) {
+    personnelLifecycleActions(person, surface).forEach((action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'personnel-editor-quiet';
+      button.textContent = PERSONNEL_LIFECYCLE_LABELS[action];
+      button.disabled = busy;
+      button.addEventListener('click', () => onArm?.(action));
+      section.appendChild(button);
+    });
+  } else {
+    const copy = personnelLifecycleCopy(person, pendingAction);
+    const question = document.createElement('p');
+    question.className = 'personnel-lifecycle-question';
+    question.textContent = copy.title;
+    const body = document.createElement('p');
+    body.className = 'personnel-editor-help';
+    body.textContent = copy.body;
+    const actions = document.createElement('div');
+    actions.className = 'personnel-editor-inline-actions';
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'btn btn-secondary';
+    back.textContent = 'Cancel';
+    back.disabled = busy;
+    back.addEventListener('click', () => onCancel?.());
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = pendingAction === 'delete' ? 'btn btn-danger' : 'btn btn-primary';
+    confirm.textContent = copy.confirm;
+    confirm.disabled = busy;
+    confirm.addEventListener('click', () => onConfirm?.(pendingAction));
+    actions.append(back, confirm);
+    section.append(question, body, actions);
+  }
+
+  if (message) {
+    const note = document.createElement('p');
+    note.className = 'personnel-editor-message';
+    note.textContent = message;
+    section.appendChild(note);
+  }
+  return section;
+}
+
 export function validatePersonnelEditor(values) {
   const firstName = clean(values.firstName);
   const lastName = clean(values.lastName);
@@ -242,9 +363,12 @@ export function mountPersonnelEditor({
   onSave,
   onArchive,
   onReconcile,
+  onRemoveRole,
+  onDelete,
 }) {
   const editing = Boolean(person?.id);
   let archiveConfirm = false;
+  let lifecycleAction = '';
   let reconcileOpen = false;
   let reconcileQuery = '';
   let reconcileSelectedId = '';
@@ -381,7 +505,42 @@ export function mountPersonnelEditor({
     if (editing) {
       const management = document.createElement('div');
       management.className = 'personnel-editor-management';
-      management.append(renderArchive(), renderReconcile());
+      management.append(
+        createPersonnelLifecycleControls({
+          person,
+          surface: roleSurface,
+          pending: lifecycleAction,
+          busy,
+          onArm: (action) => {
+            lifecycleAction = action;
+            archiveConfirm = false;
+            message = '';
+            render();
+          },
+          onCancel: () => {
+            lifecycleAction = '';
+            render();
+          },
+          onConfirm: async (action) => {
+            busy = true;
+            message = '';
+            render();
+            try {
+              if (action === 'delete') await onDelete(person.id);
+              else await onRemoveRole(action === 'remove-facilitator' ? 'facilitator' : 'poc');
+              document.getElementById('personnel-editor-modal')?.close();
+            } catch (error) {
+              console.error(error);
+              message = error?.message || 'Failed to update the personnel record.';
+              busy = false;
+              lifecycleAction = '';
+              render();
+            }
+          },
+        }),
+        renderArchive(),
+        renderReconcile(),
+      );
       body.appendChild(management);
       const reveal = reconcileConfirm
         ? '.personnel-editor-reconcile-confirm'
@@ -526,6 +685,7 @@ export function mountPersonnelEditor({
       button.disabled = busy;
       button.addEventListener('click', () => {
         archiveConfirm = true;
+        lifecycleAction = '';
         message = '';
         render();
       });

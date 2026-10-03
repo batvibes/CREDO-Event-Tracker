@@ -448,6 +448,10 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
   return personnel;
 }
 
+export function activeFacilitatorRoster(records) {
+  return (records ?? []).filter((record) => record?.isFacilitator === true);
+}
+
 export function filterFacilitatorPersonnel(records, filters = {}) {
   const query = normalizeSearch(filters.query);
   const active = filters.active === 'active' || filters.active === 'inactive' ? filters.active : 'all';

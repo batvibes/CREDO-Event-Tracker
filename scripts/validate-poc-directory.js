@@ -44,32 +44,40 @@ function person(id, name, extra = {}) {
   });
 }
 
+function listed(id, name, extra = {}) {
+  return person(id, name, { is_poc: true, ...extra });
+}
+
 const ordinary = person('ordinary', 'Hotel Contact');
 const staff = person('staff', 'John Scanlon', { rank_title: 'CDR', is_credo_staff: true, staff_display_order: 1 });
 const facilitator = person('facilitator', 'Brian Hamer', { rank_title: 'LCDR', is_facilitator: true });
 const inactive = person('inactive', 'Former Contact', { active: false, is_poc: true });
-const roster = [ordinary, staff, facilitator, inactive];
+const designated = person('designated', 'Abril Betancourt', { is_poc: true, is_facilitator: true });
+const staffPoc = person('staff-poc', 'Ada Staff', { rank_title: 'CDR', is_credo_staff: true, is_poc: true });
+const roster = [ordinary, staff, facilitator, inactive, designated, staffPoc];
 const pocIds = filterTeamDirectory(roster, 'poc').map((entry) => entry.id);
 const staffIds = filterTeamDirectory(roster, 'staff').map((entry) => entry.id);
 
-assert(pocIds.includes('ordinary'), 'A: an active person with every role flag false is in Points of Contact');
-assert(pocIds.includes('staff'), 'B: active CREDO Staff are in Points of Contact');
-assert(pocIds.includes('facilitator'), 'C: active facilitators are in Points of Contact');
+assert(pocIds.includes('designated'), 'A: an active person with the POC role is in Points of Contact');
+assert(pocIds.includes('staff-poc'), 'B: active CREDO Staff with the POC role are in Points of Contact');
+assert(!pocIds.includes('ordinary'), 'an active person with every role flag false is absent from Points of Contact');
+assert(!pocIds.includes('staff'), 'active CREDO Staff without the POC role are absent from Points of Contact');
+assert(!pocIds.includes('facilitator'), 'an active facilitator without the POC role is absent from Points of Contact');
 assert(!pocIds.includes('inactive'), 'D: inactive people stay out of Points of Contact');
-assert(staffIds.join(',') === 'staff', 'J: CREDO Staff still uses the staff flag');
-assert(!staffIds.includes('ordinary') && !staffIds.includes('facilitator'), 'J: the staff tab does not gain ordinary or facilitator-only people');
+assert(staffIds.join(',') === 'staff,staff-poc', 'J: CREDO Staff still uses the staff flag');
+assert(!staffIds.includes('ordinary') && !staffIds.includes('facilitator') && !staffIds.includes('designated'), 'J: the staff tab does not gain ordinary or facilitator-only people');
 assert(filterTeamDirectory(roster, 'poc').every((entry) => entry.active === true), 'Points of Contact stays limited to active people');
 assert(new Set(pocIds).size === pocIds.length, 'Points of Contact does not duplicate a person');
 assert(
   filterTeamDirectory(roster, 'poc').map((entry) => entry.id).join(',')
-    === [...roster.filter((entry) => entry.active)].sort(comparePersonnelDisplayNames).map((entry) => entry.id).join(','),
+    === [...roster.filter((entry) => entry.active && entry.isPoc === true)].sort(comparePersonnelDisplayNames).map((entry) => entry.id).join(','),
   'F: Points of Contact order follows the shared display-name comparator',
 );
 
 const structuredRoster = [
-  person('zoe', 'Zoe Adams', { first_name: 'Zoe', last_name: 'Adams', rank_title: 'CDR' }),
-  person('ann', 'Ann Adams', { first_name: 'Ann', last_name: 'Adams', rank_title: 'LCDR' }),
-  person('john', 'John Smith', { first_name: 'John', last_name: 'Smith' }),
+  listed('zoe', 'Zoe Adams', { first_name: 'Zoe', last_name: 'Adams', rank_title: 'CDR' }),
+  listed('ann', 'Ann Adams', { first_name: 'Ann', last_name: 'Adams', rank_title: 'LCDR' }),
+  listed('john', 'John Smith', { first_name: 'John', last_name: 'Smith' }),
 ];
 assert(
   filterTeamDirectory(structuredRoster, 'poc').map((entry) => entry.id).join(',') === 'ann,zoe,john',
@@ -77,8 +85,8 @@ assert(
 );
 
 const legacyRoster = [
-  person('late', 'Zoe Late'),
-  person('early', 'Aaron Early'),
+  listed('late', 'Zoe Late'),
+  listed('early', 'Aaron Early'),
 ];
 assert(
   filterTeamDirectory(legacyRoster, 'poc').map((entry) => entry.id).join(',') === 'early,late',
@@ -86,11 +94,11 @@ assert(
 );
 
 const mixedRoster = [
-  person('legacy-scanlon', 'CDR John Scanlon'),
-  person('structured-adams', 'Zoe Adams', { first_name: 'Zoe', last_name: 'Adams' }),
-  person('structured-young', 'Ann Young', { first_name: 'Ann', last_name: 'Young' }),
-  person('legacy-early', 'Aaron Early'),
-  person('partial', 'Marta Zoe', { last_name: 'Adams' }),
+  listed('legacy-scanlon', 'CDR John Scanlon'),
+  listed('structured-adams', 'Zoe Adams', { first_name: 'Zoe', last_name: 'Adams' }),
+  listed('structured-young', 'Ann Young', { first_name: 'Ann', last_name: 'Young' }),
+  listed('legacy-early', 'Aaron Early'),
+  listed('partial', 'Marta Zoe', { last_name: 'Adams' }),
 ];
 assert(
   filterTeamDirectory(mixedRoster, 'poc').map((entry) => entry.id).join(',')
@@ -98,9 +106,9 @@ assert(
   'a last name alone sorts under that last name, and legacy names stay on display order',
 );
 const chaplainAdams = [
-  person('chaplain-adams', 'Adams', { last_name: 'Adams', rank_title: 'Chaplain' }),
-  person('legacy-chaplain', 'Chaplain Baker'),
-  person('young', 'Carl Young', { first_name: 'Carl', last_name: 'Young' }),
+  listed('chaplain-adams', 'Adams', { last_name: 'Adams', rank_title: 'Chaplain' }),
+  listed('legacy-chaplain', 'Chaplain Baker'),
+  listed('young', 'Carl Young', { first_name: 'Carl', last_name: 'Young' }),
 ];
 assert(
   filterTeamDirectory(chaplainAdams, 'poc').map((entry) => entry.id).join(',')
@@ -108,16 +116,16 @@ assert(
   'Chaplain Adams with last name Adams sorts under Adams',
 );
 const lastOnly = [
-  person('young', 'Young', { last_name: 'Young' }),
-  person('adams', 'Adams', { last_name: 'Adams' }),
+  listed('young', 'Young', { last_name: 'Young' }),
+  listed('adams', 'Adams', { last_name: 'Adams' }),
 ];
 assert(
   filterTeamDirectory(lastOnly, 'poc').map((entry) => entry.id).join(',') === 'adams,young',
   'last-name-only people sort by last name',
 );
 const firstOnly = [
-  person('james', 'James', { first_name: 'James' }),
-  person('aaron', 'Aaron', { first_name: 'Aaron' }),
+  listed('james', 'James', { first_name: 'James' }),
+  listed('aaron', 'Aaron', { first_name: 'Aaron' }),
 ];
 assert(
   filterTeamDirectory(firstOnly, 'poc').map((entry) => entry.id).join(',') === 'aaron,james',
@@ -125,16 +133,16 @@ assert(
 );
 
 const sameName = [
-  person('b', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
-  person('a', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
+  listed('b', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
+  listed('a', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
 ];
 assert(
   filterTeamDirectory(sameName, 'poc').map((entry) => entry.id).join(',') === 'a,b',
   'equal structured names use the stable id tie-breaker',
 );
 const rankTie = [
-  person('lcdr', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'LCDR' }),
-  person('cdr', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
+  listed('lcdr', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'LCDR' }),
+  listed('cdr', 'John Smith', { first_name: 'John', last_name: 'Smith', rank_title: 'CDR' }),
 ];
 assert(
   filterTeamDirectory(rankTie, 'poc').map((entry) => entry.id).join(',') === 'cdr,lcdr',
@@ -175,9 +183,9 @@ const db = read('js/db.js');
 const createStart = db.indexOf('export async function createPerson');
 const createBody = db.slice(createStart, db.indexOf('function referenceNameConflictError'));
 assert(directory.includes('return [...personnel].sort(comparePersonnelDisplayNames)'), 'Points of Contact sorts with the shared personnel comparator');
-assert(directory.includes("if (tab === 'poc') return sortByDisplayName(active)"), 'Points of Contact uses that shared sort');
+assert(directory.includes("if (tab === 'poc') return sortByDisplayName(active.filter((person) => person.isPoc === true))"), 'Points of Contact uses the POC role and that shared sort');
 assert(picker.includes('.sort(comparePersonnelDisplayNames)'), 'the person menu sorts with the shared personnel comparator');
-assert(!directory.includes("person.isPoc === true"), 'Points of Contact no longer filters on the POC flag');
+assert(directory.includes("person.isPoc === true"), 'Points of Contact membership is the POC role');
 assert(!directory.includes("label: 'POC'"), 'the directory does not render a POC role badge');
 const editor = read('js/team-personnel-editor.js');
 assert(!editor.includes("checkbox(pocInput, 'Point of Contact')") && !editor.includes('Point of Contact'), 'the personnel editor has no Point of Contact role control');
@@ -226,7 +234,7 @@ const rankRule = directoryCss.slice(
 );
 assert(rankRule.includes('font-weight: 400') && rankRule.includes('color: #4b5563') && !rankRule.includes('font-weight: 700'), 'Rank / Title stays subdued');
 assert(!directoryLayout.includes('auto 56px'), 'Roles is no longer an independent auto column');
-assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No active people are in the directory.', 'the empty directory copy matches the active-person view');
+assert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc === 'No Points of Contact have been designated yet.', 'the empty directory copy matches the POC roster');
 assert(TEAM_DIRECTORY_EMPTY_MESSAGES.staff === 'No active CREDO Staff have been designated yet.', 'the CREDO Staff empty copy is unchanged');
 
 if (errors.length) {

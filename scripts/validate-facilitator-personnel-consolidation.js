@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { filterFacilitatorPersonnel, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
+import { activeFacilitatorRoster, filterFacilitatorPersonnel, summarizeFacilitatorPersonnel } from '../js/facilitator-management.js';
 import {
   facilitatorReusePlan,
   facilitatorReuseValues,
@@ -212,7 +212,8 @@ const historical = summarizeFacilitatorPersonnel(
   [],
   products,
 );
-assert(historical.length === 1 && historical[0].isFacilitator === false, 'historical facilitators remain without an explicit facilitator flag');
+assert(historical.length === 1 && historical[0].isFacilitator === false, 'historical facilitation stays attached without an explicit facilitator flag');
+assert(activeFacilitatorRoster(historical).length === 0, 'historical facilitation does not keep them on the active roster');
 assert(historical[0].isCredoStaff === true && historical[0].isPoc === true, 'historical facilitator records keep their other roles');
 assert(historical[0].productCount === 1 && historical[0].eventsConducted === 2 && historical[0].mostRecentOn === '2024-06-01', 'an ordinary-only facilitator still counts only that experience');
 assert(historical[0].experience.length === 1 && historical[0].t4tExperience.length === 0, 'an ordinary-only profile keeps T4T facilitation empty');
@@ -378,8 +379,8 @@ assert(
     .filter((name) => /^0(29|[3-9]\d)_/.test(name))
     .sort()
     .join('|')
-    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql|036_partial_structured_personnel_names.sql',
-  'migrations after 028 include the established personnel migrations plus structured personnel names',
+    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql|036_partial_structured_personnel_names.sql|037_delete_directory_person.sql',
+  'migrations after 028 include the established personnel migrations plus structured personnel names and personnel deletion',
 );
 
 if (errors.length) {

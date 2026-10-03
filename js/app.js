@@ -42,6 +42,7 @@ import {
   insertEventType,
   renameEventTypeInEvents,
   archiveDirectoryPerson,
+  deleteDirectoryPerson,
   reconcileDirectoryPeople,
   saveDirectoryPerson,
   saveMonthlyReport,
@@ -121,6 +122,7 @@ import {
   formatRecordedFacilitationDate,
   sortFacilitatorPersonnel,
   sortFacilitatorProgramCapabilities,
+  activeFacilitatorRoster,
   summarizeFacilitatorPersonnel,
 } from './facilitator-management.js';
 import {
@@ -129,7 +131,11 @@ import {
   mapTeamDirectoryPerson,
   renderTeamDirectoryView,
 } from './team-personnel-directory.js';
-import { mountPersonnelEditor } from './team-personnel-editor.js';
+import {
+  createPersonnelLifecycleControls,
+  mountPersonnelEditor,
+  personnelRoleRemovalValues,
+} from './team-personnel-editor.js';
 import {
   exportMonthlyImpactReportPptx,
   generateMirPresentationBlob,
@@ -4252,6 +4258,12 @@ function openPersonnelEditor(person = null, options = {}) {
       document.getElementById('facilitator-detail-modal')?.close();
       await renderFacilitatorManagement();
       await renderTeam();
+    },
+    onRemoveRole: async (role) => {
+      await applyPersonnelRoleRemoval(person, role);
+    },
+    onDelete: async (id) => {
+      await applyPersonnelDeletion(id);
     },
     onReconcile: async (survivorId, retiredId, identity) => {
       await reconcileDirectoryPeople(survivorId, retiredId, identity);
@@ -11357,7 +11369,7 @@ function facilitatorFilterState() {
 
 function visibleFacilitatorPersonnel() {
   return sortFacilitatorPersonnel(
-    filterFacilitatorPersonnel(facilitatorPersonnel, facilitatorFilterState()),
+    filterFacilitatorPersonnel(activeFacilitatorRoster(facilitatorPersonnel), facilitatorFilterState()),
     facilitatorSort.column,
     facilitatorSort.direction,
   );
@@ -11556,6 +11568,44 @@ function appendDetailLine(parent, text, className) {
   parent.appendChild(line);
 }
 
+let facilitatorLifecyclePersonId = '';
+let facilitatorLifecyclePending = '';
+let facilitatorLifecycleBusy = false;
+let facilitatorLifecycleMessage = '';
+
+function resetFacilitatorLifecycle(personId = '') {
+  facilitatorLifecyclePersonId = personId;
+  facilitatorLifecyclePending = '';
+  facilitatorLifecycleBusy = false;
+  facilitatorLifecycleMessage = '';
+}
+
+async function refreshPersonnelSurfaces(personId) {
+  const detailOpen = document.getElementById('facilitator-detail-modal')?.open === true;
+  await renderFacilitatorManagement();
+  if (detailOpen && personId && activeFacilitatorRoster(facilitatorPersonnel).some((record) => record.id === personId)) {
+    openFacilitatorDetail(personId);
+  } else if (detailOpen) {
+    closeFacilitatorDetail();
+  }
+  await renderTeam();
+}
+
+async function applyPersonnelRoleRemoval(person, role) {
+  const values = personnelRoleRemovalValues(person, role);
+  await saveDirectoryPerson(values);
+  resetFacilitatorLifecycle(person?.id || '');
+  await refreshPersonnelSurfaces(person?.id);
+}
+
+async function applyPersonnelDeletion(id) {
+  await deleteDirectoryPerson(id);
+  resetFacilitatorLifecycle();
+  closeFacilitatorDetail();
+  await renderFacilitatorManagement();
+  await renderTeam();
+}
+
 function openFacilitatorDetail(personId) {
   const person = facilitatorPersonnel.find((record) => record.id === personId);
   const modal = document.getElementById('facilitator-detail-modal');
@@ -11563,6 +11613,7 @@ function openFacilitatorDetail(personId) {
   const body = document.getElementById('facilitator-detail-body');
   if (!person || !modal || !title || !body) return;
 
+  if (facilitatorLifecyclePersonId !== personId) resetFacilitatorLifecycle(personId);
   title.textContent = person.displayName || 'Facilitator';
   body.replaceChildren();
   const header = modal.querySelector('.modal-header');
@@ -11751,10 +11802,45 @@ function openFacilitatorDetail(personId) {
     }
   }
 
+  if (canEditTeam()) {
+    body.appendChild(createPersonnelLifecycleControls({
+      person,
+      surface: 'facilitator',
+      pending: facilitatorLifecyclePending,
+      busy: facilitatorLifecycleBusy,
+      message: facilitatorLifecycleMessage,
+      onArm: (action) => {
+        facilitatorLifecyclePending = action;
+        facilitatorLifecycleMessage = '';
+        openFacilitatorDetail(personId);
+      },
+      onCancel: () => {
+        facilitatorLifecyclePending = '';
+        facilitatorLifecycleMessage = '';
+        openFacilitatorDetail(personId);
+      },
+      onConfirm: async (action) => {
+        facilitatorLifecycleBusy = true;
+        facilitatorLifecycleMessage = '';
+        openFacilitatorDetail(personId);
+        try {
+          if (action === 'delete') await applyPersonnelDeletion(person.id);
+          else await applyPersonnelRoleRemoval(person, action === 'remove-facilitator' ? 'facilitator' : 'poc');
+        } catch (error) {
+          console.error(error);
+          facilitatorLifecycleBusy = false;
+          facilitatorLifecycleMessage = error?.message || 'Failed to update the personnel record.';
+          openFacilitatorDetail(personId);
+        }
+      },
+    }));
+  }
+
   if (!modal.open) modal.showModal();
 }
 
 function closeFacilitatorDetail() {
+  resetFacilitatorLifecycle();
   document.getElementById('facilitator-detail-modal')?.close();
 }
 

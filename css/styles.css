@@ -235,6 +235,20 @@ body {
   background: #f9fafb;
 }
 
+.btn-danger {
+  background: #991b1b;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #7f1d1d;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* KPI cards */
 .kpi-grid {
   display: grid;
@@ -7523,6 +7537,73 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-detail-modal .facilitator-detail-actions .btn {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+}
+
+#facilitator-detail-modal .personnel-lifecycle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e6ebf1;
+}
+
+#facilitator-detail-modal .personnel-lifecycle h4 {
+  margin: 0 0 2px;
+  color: #00205b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#facilitator-detail-modal .personnel-editor-quiet {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #6b7280;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#facilitator-detail-modal .personnel-editor-quiet:hover {
+  color: #991b1b;
+  text-decoration: underline;
+}
+
+#facilitator-detail-modal .personnel-lifecycle-question,
+#personnel-editor-modal .personnel-lifecycle-question {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#facilitator-detail-modal .personnel-editor-help,
+#facilitator-detail-modal .personnel-editor-message {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+#facilitator-detail-modal .personnel-editor-message {
+  color: #9f1239;
+}
+
+#facilitator-detail-modal .personnel-editor-inline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#facilitator-detail-modal .personnel-editor-inline-actions .btn {
   padding: 6px 12px;
   font-size: 0.8125rem;
 }
