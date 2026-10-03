@@ -125,6 +125,7 @@ import {
   summarizeFacilitatorPersonnel,
 } from './facilitator-management.js';
 import {
+  createPersonnelRowDeleteButton,
   isCommandHighlightsNotesVisible,
   isTeamDirectoryTab,
   mapTeamDirectoryPerson,
@@ -133,6 +134,7 @@ import {
 import {
   createPersonnelLifecycleControls,
   mountPersonnelEditor,
+  personnelLifecycleCopy,
   personnelRoleRemovalValues,
 } from './team-personnel-editor.js';
 import {
@@ -4208,6 +4210,77 @@ function attachPersonnelAliases(people, aliases) {
   }));
 }
 
+let personnelDeleteTarget = null;
+let personnelDeleteBusy = false;
+let personnelDeleteBound = false;
+
+function requestPersonnelDeletion(person) {
+  if (!person?.id || !canEditTeam()) return;
+  const modal = document.getElementById('personnel-delete-modal');
+  const copy = personnelLifecycleCopy(person, 'delete');
+  if (!modal || !copy) return;
+  personnelDeleteTarget = person;
+  personnelDeleteBusy = false;
+  document.getElementById('personnel-delete-title').textContent = copy.title;
+  document.getElementById('personnel-delete-body').textContent = copy.body;
+  document.getElementById('personnel-delete-confirm').textContent = copy.confirm;
+  const message = document.getElementById('personnel-delete-message');
+  message.hidden = true;
+  message.textContent = '';
+  document.getElementById('personnel-delete-confirm').disabled = false;
+  document.getElementById('personnel-delete-cancel').disabled = false;
+  if (!modal.open) modal.showModal();
+}
+
+function cancelPersonnelDeletion() {
+  if (personnelDeleteBusy) return;
+  personnelDeleteTarget = null;
+  document.getElementById('personnel-delete-modal')?.close();
+}
+
+async function confirmPersonnelDeletion() {
+  const person = personnelDeleteTarget;
+  if (!person?.id || personnelDeleteBusy) return;
+  personnelDeleteBusy = true;
+  const confirm = document.getElementById('personnel-delete-confirm');
+  const cancel = document.getElementById('personnel-delete-cancel');
+  confirm.disabled = true;
+  cancel.disabled = true;
+  try {
+    await applyPersonnelDeletion(person.id);
+    personnelDeleteTarget = null;
+    personnelDeleteBusy = false;
+    document.getElementById('personnel-delete-modal')?.close();
+  } catch (error) {
+    console.error(error);
+    personnelDeleteBusy = false;
+    confirm.disabled = false;
+    cancel.disabled = false;
+    const message = document.getElementById('personnel-delete-message');
+    message.hidden = false;
+    message.textContent = error?.message || 'This person could not be deleted.';
+  }
+}
+
+function bindPersonnelDeleteModal() {
+  if (personnelDeleteBound) return;
+  const modal = document.getElementById('personnel-delete-modal');
+  if (!modal) return;
+  personnelDeleteBound = true;
+  document.getElementById('personnel-delete-cancel')?.addEventListener('click', cancelPersonnelDeletion);
+  document.getElementById('personnel-delete-close')?.addEventListener('click', cancelPersonnelDeletion);
+  document.getElementById('personnel-delete-confirm')?.addEventListener('click', () => {
+    confirmPersonnelDeletion();
+  });
+  modal.addEventListener('cancel', (event) => {
+    if (personnelDeleteBusy) {
+      event.preventDefault();
+      return;
+    }
+    personnelDeleteTarget = null;
+  });
+}
+
 function bindPersonnelEditorModal() {
   if (personnelEditorBound) return;
   const modal = document.getElementById('personnel-editor-modal');
@@ -4281,6 +4354,7 @@ function renderTeamDirectoryPanel(panel) {
   renderTeamDirectoryView(panel, teamDirectoryPersonnel, tab, label, {
     editable: canEditTeam(),
     onEdit: openPersonnelEditor,
+    onDelete: requestPersonnelDeletion,
   });
 }
 
@@ -11517,11 +11591,12 @@ function paintFacilitatorPersonnel() {
   if (!body) return;
   body.replaceChildren();
   const visible = visibleFacilitatorPersonnel();
+  const facilitatorColumns = document.querySelectorAll('#facilitator-personnel-table thead th').length || 7;
   if (!visible.length) {
     const row = document.createElement('tr');
     row.className = 'facilitator-empty';
     const cell = document.createElement('td');
-    cell.colSpan = 6;
+    cell.colSpan = facilitatorColumns;
     cell.textContent = FACILITATOR_EMPTY_PERSONNEL;
     row.appendChild(cell);
     body.appendChild(row);
@@ -11532,11 +11607,15 @@ function paintFacilitatorPersonnel() {
     const row = document.createElement('tr');
     row.className = 'facilitator-personnel-row';
     row.tabIndex = 0;
-    row.setAttribute('role', 'button');
+    if (!canEditTeam()) row.setAttribute('role', 'button');
     row.setAttribute('aria-label', person.displayName || 'Facilitator');
     const open = () => openFacilitatorDetail(person.id);
-    row.addEventListener('click', open);
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('.personnel-row-delete')) return;
+      open();
+    });
     row.addEventListener('keydown', (event) => {
+      if (event.target.closest('.personnel-row-delete')) return;
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       open();
@@ -11556,6 +11635,13 @@ function paintFacilitatorPersonnel() {
     appendFacilitatorCell(row, String(person.productCount), 'facilitator-count');
     appendFacilitatorCell(row, String(person.eventsConducted), 'facilitator-count');
     appendFacilitatorCell(row, formatRecordedFacilitationDate(person.mostRecentOn));
+    const deleteCell = document.createElement('td');
+    deleteCell.className = 'personnel-row-delete-cell';
+    if (canEditTeam()) {
+      deleteCell.appendChild(createPersonnelRowDeleteButton(person, requestPersonnelDeletion));
+      deleteCell.addEventListener('click', (event) => event.stopPropagation());
+    }
+    row.appendChild(deleteCell);
     body.appendChild(row);
   }
 }
@@ -12312,7 +12398,7 @@ async function renderFacilitatorManagement() {
     const row = document.createElement('tr');
     row.className = 'facilitator-empty';
     const cell = document.createElement('td');
-    cell.colSpan = 6;
+    cell.colSpan = document.querySelectorAll('#facilitator-personnel-table thead th').length || 7;
     cell.textContent = 'Facilitators could not be loaded.';
     row.appendChild(cell);
     body.appendChild(row);
@@ -13352,6 +13438,7 @@ export async function initApp() {
   setupMirDraft();
   setupMirHistoryLog();
   setupModal();
+  bindPersonnelDeleteModal();
   applyPermissions();
   switchView('events');
 }

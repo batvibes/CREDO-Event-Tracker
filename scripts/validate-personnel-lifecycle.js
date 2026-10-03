@@ -203,7 +203,7 @@ assert(!personnelLifecycleActions(both, 'facilitator').includes('remove-poc'), '
 
 const deleteCopy = personnelLifecycleCopy({ rankTitle: 'LT', name: 'Test McTesterton' }, 'delete');
 assert(deleteCopy.title === 'Delete LT Test McTesterton?', 'deletion names the person');
-assert(deleteCopy.body === 'This permanently removes this personnel record. Any roles, qualifications, aliases, and linked personnel data may also be removed. Historical event information may be affected.', 'deletion explains the impact');
+assert(deleteCopy.body === 'This permanently removes this personnel record and its linked qualifications, T4T records, aliases, and other personnel data. Historical event text will remain, but this person will no longer resolve as a personnel record.', 'deletion explains the impact');
 assert(deleteCopy.confirm === 'Delete Person', 'deletion is labeled Delete Person');
 assert(personnelLifecycleCopy(pocOnly, 'remove-poc') === null, 'there is no Points of Contact removal confirmation');
 const facilitatorCopy = personnelLifecycleCopy(both, 'clear-facilitator');

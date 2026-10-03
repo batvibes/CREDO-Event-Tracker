@@ -219,7 +219,7 @@ export function personnelLifecycleCopy(person, action) {
   if (action === 'delete') {
     return {
       title: `Delete ${identity}?`,
-      body: 'This permanently removes this personnel record. Any roles, qualifications, aliases, and linked personnel data may also be removed. Historical event information may be affected.',
+      body: 'This permanently removes this personnel record and its linked qualifications, T4T records, aliases, and other personnel data. Historical event text will remain, but this person will no longer resolve as a personnel record.',
       confirm: 'Delete Person',
     };
   }

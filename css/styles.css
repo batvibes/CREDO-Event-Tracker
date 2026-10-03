@@ -3314,7 +3314,7 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-team .team-directory-list-editable {
-  grid-template-columns: 7.5rem minmax(10rem, 1.05fr) minmax(12rem, 1.5fr) max-content 4.5rem;
+  grid-template-columns: 7.5rem minmax(10rem, 1.05fr) minmax(12rem, 1.5fr) max-content 4.5rem 1.75rem;
 }
 
 #view-team .team-directory-head,
@@ -3352,6 +3352,11 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-team .team-directory-action {
+  justify-self: end;
+  text-align: right;
+}
+
+#view-team .personnel-row-delete-cell {
   justify-self: end;
   text-align: right;
 }
@@ -3861,6 +3866,26 @@ body:has(#new-event-modal[open]) {
 
   #view-team .team-directory-action {
     grid-area: action;
+  }
+
+  #view-team .team-directory-list-editable .team-directory-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "rank rank rank"
+      "name action delete"
+      "command command command"
+      "roles roles roles";
+  }
+
+  #view-team .team-directory-list-editable .team-directory-row:has(.team-directory-rank:empty) {
+    grid-template-areas:
+      "name action delete"
+      "command command command"
+      "roles roles roles";
+  }
+
+  #view-team .personnel-row-delete-cell {
+    grid-area: delete;
   }
 }
 
@@ -7440,6 +7465,55 @@ body:has(#new-event-modal[open]) {
 
 #view-facilitators .facilitator-personnel-row {
   cursor: pointer;
+}
+
+.personnel-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #9ca3af;
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.personnel-row-delete:hover,
+.personnel-row-delete:focus-visible {
+  color: #991b1b;
+  background: #fef2f2;
+  outline: 2px solid #991b1b;
+  outline-offset: 1px;
+}
+
+#facilitator-personnel-table .personnel-row-delete-head,
+#facilitator-personnel-table .personnel-row-delete-cell {
+  width: 2.25rem;
+  padding-right: 8px;
+  text-align: right;
+}
+
+#personnel-delete-modal .personnel-delete-content {
+  width: min(32rem, calc(100vw - 32px));
+}
+
+#personnel-delete-modal .modal-body p {
+  margin: 0;
+  color: #374151;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+#personnel-delete-modal .personnel-delete-message {
+  margin-top: 10px;
+  color: #991b1b;
 }
 
 #view-facilitators .facilitator-inactive {

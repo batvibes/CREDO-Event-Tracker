@@ -1279,6 +1279,7 @@
                   <th class="facilitator-count">Products</th>
                   <th class="facilitator-count">Events Conducted</th>
                   <th class="facilitator-metric">Most Recent</th>
+                  <th class="personnel-row-delete-head" aria-hidden="true"></th>
                 </tr>
               </thead>
               <tbody id="facilitator-personnel-body"></tbody>
@@ -1404,6 +1405,23 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="mir-photo-crop-cancel-btn">Cancel</button>
         <button type="button" class="btn btn-primary" id="mir-photo-crop-use-btn" disabled>Use Photo</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal" id="personnel-delete-modal">
+    <div class="modal-content personnel-delete-content">
+      <div class="modal-header">
+        <h3 id="personnel-delete-title">Delete this person?</h3>
+        <button type="button" class="modal-close" id="personnel-delete-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="personnel-delete-body"></p>
+        <p id="personnel-delete-message" class="personnel-delete-message" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="personnel-delete-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="personnel-delete-confirm">Delete Person</button>
       </div>
     </div>
   </dialog>

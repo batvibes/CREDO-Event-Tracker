@@ -174,6 +174,23 @@ function appendDirectoryName(parent, person) {
   parent.appendChild(line);
 }
 
+export function createPersonnelRowDeleteButton(person, onRequestDelete) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'personnel-row-delete';
+  button.textContent = '×';
+  const identity = personnelDisplayName(person?.rankTitle, person?.name) || person?.displayName || 'person';
+  button.setAttribute('aria-label', `Delete ${identity}`);
+  button.title = 'Delete person';
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onRequestDelete?.(person);
+  });
+  button.addEventListener('keydown', (event) => event.stopPropagation());
+  return button;
+}
+
 function appendEditButton(parent, person, onEdit) {
   if (!onEdit) return;
   const doc = parent.ownerDocument;
@@ -194,6 +211,16 @@ function appendDirectoryIdentity(parent, person) {
   parent.appendChild(identity);
 }
 
+function appendDeleteCell(parent, person, onDelete, tagName) {
+  if (!onDelete) return;
+  const doc = parent.ownerDocument;
+  const cell = doc.createElement(tagName);
+  cell.className = 'personnel-row-delete-cell';
+  cell.appendChild(createPersonnelRowDeleteButton(person, onDelete));
+  cell.addEventListener('click', (event) => event.stopPropagation());
+  parent.appendChild(cell);
+}
+
 function appendActionCell(parent, person, onEdit, tagName) {
   if (!onEdit) return;
   const doc = parent.ownerDocument;
@@ -203,7 +230,7 @@ function appendActionCell(parent, person, onEdit, tagName) {
   parent.appendChild(cell);
 }
 
-function renderCompactDirectory(doc, people, tab, onEdit) {
+function renderCompactDirectory(doc, people, tab, onEdit, onDelete) {
   const list = doc.createElement('div');
   list.className = onEdit ? 'team-directory-list team-directory-list-editable' : 'team-directory-list';
   if (!people.length) {
@@ -226,6 +253,12 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
     actionHead.className = 'team-directory-action';
     actionHead.textContent = 'Action';
     head.appendChild(actionHead);
+  }
+  if (onDelete) {
+    const deleteHead = doc.createElement('span');
+    deleteHead.className = 'personnel-row-delete-head';
+    deleteHead.setAttribute('aria-hidden', 'true');
+    head.appendChild(deleteHead);
   }
   list.appendChild(head);
 
@@ -252,6 +285,7 @@ function renderCompactDirectory(doc, people, tab, onEdit) {
 
     row.append(rankCell, personCell, commandCell, roleCell);
     appendActionCell(row, person, onEdit, 'div');
+    appendDeleteCell(row, person, onDelete, 'div');
     list.appendChild(row);
   });
   return list;
@@ -323,6 +357,7 @@ export function renderTeamDirectoryView(panel, personnel, tab, headingLabel, opt
   const people = filterTeamDirectory(personnel, selectedTab);
   const doc = panel.ownerDocument;
   const onEdit = options.editable ? options.onEdit : null;
+  const onDelete = options.editable && selectedTab === 'poc' ? options.onDelete : null;
   panel.replaceChildren();
 
   const heading = doc.createElement('h2');
@@ -333,6 +368,6 @@ export function renderTeamDirectoryView(panel, personnel, tab, headingLabel, opt
   panel.appendChild(
     selectedTab === 'staff'
       ? renderStaffDirectory(doc, people, onEdit)
-      : renderCompactDirectory(doc, people, selectedTab, onEdit)
+      : renderCompactDirectory(doc, people, selectedTab, onEdit, onDelete)
   );
 }

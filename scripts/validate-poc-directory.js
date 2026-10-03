@@ -226,7 +226,7 @@ assert(directory.includes("review.textContent = 'Needs Review'"), 'the directory
 const directoryCss = read('css/styles.css');
 const directoryLayout = directoryCss.slice(directoryCss.indexOf('#view-team .team-directory-list {'), directoryCss.indexOf('#view-team .team-directory-head {'));
 assert(directoryLayout.includes('grid-template-columns: subgrid'), 'directory rows share one set of column tracks');
-assert(directoryLayout.includes('7.5rem minmax(10rem, 1.05fr) minmax(12rem, 1.5fr) max-content 4.5rem'), 'editable rows use a narrow Rank / Title track immediately before Name');
+assert(directoryLayout.includes('7.5rem minmax(10rem, 1.05fr) minmax(12rem, 1.5fr) max-content 4.5rem 1.75rem'), 'editable rows use a narrow Rank / Title track immediately before Name');
 const rankRule = directoryCss.slice(
   directoryCss.indexOf('#view-team .team-directory-row .team-directory-rank {'),
   directoryCss.indexOf('#view-team .team-directory-action {'),
