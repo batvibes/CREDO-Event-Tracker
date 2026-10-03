@@ -1880,6 +1880,29 @@ export async function archiveDirectoryPerson(id) {
   return data;
 }
 
+function reconciliationRpcError(error) {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '').trim();
+  const specific = new Set([
+    'REFERENCE_NAME_EXISTS',
+    'PERSONNEL_ALIAS_CONFLICT',
+    'PERSONNEL_CONFLICT',
+    'STAFF_LINK_CONFLICT',
+    'PERSONNEL_RECONCILE_DUPLICATE',
+    'PERSONNEL_RECONCILE_REFERENCE',
+    'PERSONNEL_RECONCILE_PAIR',
+    'NAME_REQUIRED',
+    'BILLET_REQUIRED',
+    'PERSONNEL_NOT_FOUND',
+  ]);
+  if (specific.has(hint) && message) {
+    const mapped = new Error(message);
+    mapped.code = hint;
+    return mapped;
+  }
+  return personnelRpcError(error);
+}
+
 export async function reconcileDirectoryPeople(survivorId, retiredId, identity) {
   const { data, error } = await supabase.rpc('reconcile_directory_people', {
     p_survivor_id: survivorId,
@@ -1888,7 +1911,7 @@ export async function reconcileDirectoryPeople(survivorId, retiredId, identity) 
     p_name: identity?.name ?? '',
   });
 
-  if (error) throw personnelRpcError(error, identity?.name);
+  if (error) throw reconciliationRpcError(error);
   return data;
 }
 

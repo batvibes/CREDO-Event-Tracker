@@ -179,7 +179,7 @@ assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T
 assert(migrationNames.includes('026_facilitator_product_authority_defaults.sql'), 'verified product authority defaults use migration 026');
 assert(migrationNames.includes('027_facilitator_qualification_delete.sql'), 'qualification removal uses migration 027');
 assert(migrationNames.includes('028_facilitator_t4t_completion_history.sql'), 'T4T completion history uses migration 028');
-assert(migrationNames.filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql', 'migrations after 028 are attendance removal, completion provenance, and attendance-created person cleanup');
+assert(migrationNames.filter((name) => /^0(29|[3-9]\d)_/.test(name)).sort().join('|') === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql', 'migrations after 028 are attendance removal, completion provenance, attendance-created person cleanup, and personnel reconciliation repair');
 
 if (errors.length) {
   console.error('validate-facilitator-qualification-editing failed:');
