@@ -88,14 +88,14 @@ assert(review.includes('link.source_text') && review.includes('link.position') &
 assert(review.includes('event.event_type') && review.includes('as event_date'), 'the review read model returns the event type and date');
 
 for (const relativePath of [
-  'js/app.js',
-  'js/event-reference-fields.js',
   'js/facilitator-management.js',
   'js/aar-pdf-export.js',
   'js/event-report-pdf-export.js',
 ]) {
-  assert(!read(relativePath).includes('fetchEventPersonnel'), `${relativePath} does not read event personnel yet`);
+  assert(!read(relativePath).includes('fetchEventPersonnel'), `${relativePath} does not query event personnel directly`);
 }
+assert(read('js/app.js').includes('fetchEventPersonnel'), 'event screens load event personnel in one request');
+assert(read('js/event-reference-fields.js').includes('setFromPersonnel'), 'the event editor loads canonical personnel rows');
 
 if (errors.length) {
   console.error(`validate-event-personnel-credo-staff-backfill failed:\n- ${errors.join('\n- ')}`);

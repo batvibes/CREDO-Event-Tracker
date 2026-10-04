@@ -81,9 +81,10 @@ assert(!/update\s+public\.events/i.test(resolveFile), 'resolution does not rewri
 
 for (const relativePath of ['js/app.js', 'js/event-reference-fields.js', 'js/facilitator-management.js']) {
   const source = read(relativePath);
-  assert(!source.includes('resolve_event_personnel'), `${relativePath} does not call event personnel resolution yet`);
-  assert(!source.includes('fetchEventPersonnel'), `${relativePath} does not read event personnel yet`);
+  assert(!source.includes('resolve_event_personnel'), `${relativePath} does not call event personnel resolution`);
 }
+assert(read('js/app.js').includes('fetchEventPersonnel'), 'event screens load canonical event personnel');
+assert(!read('js/facilitator-management.js').includes('fetchEventPersonnel'), 'Facilitator Management does not query event personnel');
 
 if (errors.length) {
   console.error(`validate-event-personnel-reconciliation failed:\n- ${errors.join('\n- ')}`);

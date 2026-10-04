@@ -354,15 +354,53 @@ export async function fetchEventPersonnel(eventIds) {
       .filter(Boolean),
   )];
   if (!ids.length) return [];
+  const pageSize = 1000;
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('event_personnel_display')
+      .select(EVENT_PERSONNEL_COLUMNS)
+      .in('event_id', ids)
+      .order('event_id', { ascending: true })
+      .order('role', { ascending: true })
+      .order('position', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page.map(eventPersonnelFromRow));
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
+export async function replaceEventPersonnel(eventId, rows) {
+  const id = typeof eventId === 'string' ? eventId.trim() : '';
+  if (!id) throw new Error('Event is required.');
+  const { error: deleteError } = await supabase
+    .from('event_personnel')
+    .delete()
+    .eq('event_id', id)
+    .in('role', ['facilitator', 'poc', 'credo_staff']);
+  if (deleteError) throw deleteError;
+
+  const payload = (rows || [])
+    .filter((row) => String(row?.sourceText || '').trim())
+    .map((row) => ({
+      event_id: id,
+      person_id: row.personId || null,
+      role: row.role,
+      position: row.position,
+      source_text: String(row.sourceText).trim(),
+      contact_email: row.contactEmail || null,
+    }));
+  if (!payload.length) return [];
+
   const { data, error } = await supabase
-    .from('event_personnel_display')
-    .select(EVENT_PERSONNEL_COLUMNS)
-    .in('event_id', ids)
-    .order('event_id', { ascending: true })
-    .order('role', { ascending: true })
-    .order('position', { ascending: true });
+    .from('event_personnel')
+    .insert(payload)
+    .select('id');
   if (error) throw error;
-  return (data ?? []).map(eventPersonnelFromRow);
+  return data ?? [];
 }
 
 export async function fetchEvents() {
@@ -1152,6 +1190,7 @@ export async function updateTeam(team) {
 function teamMemberFromRow(row) {
   return {
     id: row.id,
+    personId: row.person_id ?? null,
     name: row.name,
     billetOrRole: row.billet_or_role,
     statusNextAction: row.status_next_action || '',

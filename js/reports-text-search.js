@@ -1,3 +1,5 @@
+import { visibleEventPersonnel } from './event-personnel-view.js';
+
 const TBD_TOKEN = 'TBD';
 
 export const REPORTS_TEXT_SEARCH_FIELDS = [
@@ -61,7 +63,15 @@ export function collectReportsSearchMatches(event, needle) {
   const seenLabels = new Set();
   REPORTS_TEXT_SEARCH_FIELDS.forEach((field) => {
     if (seenLabels.has(field.label)) return;
-    if (!fieldContainsReportsSearchQuery(event?.[field.key], needle)) return;
+    const operational = field.key === 'facilitators'
+      ? visibleEventPersonnel(event, 'facilitator')
+      : field.key === 'credoStaff'
+        ? visibleEventPersonnel(event, 'credo_staff')
+        : field.key === 'poc'
+          ? visibleEventPersonnel(event, 'poc')
+          : '';
+    if (!fieldContainsReportsSearchQuery(event?.[field.key], needle)
+      && !fieldContainsReportsSearchQuery(operational, needle)) return;
     seenLabels.add(field.label);
     matches.push({ key: field.key, label: field.label });
   });

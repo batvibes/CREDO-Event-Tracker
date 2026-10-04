@@ -74,9 +74,9 @@ assert(wrapper.includes("from('event_personnel_display')"), 'the read wrapper us
 assert(wrapper.includes('.in(\'event_id\', ids)'), 'the wrapper accepts one event or several');
 assert(wrapper.includes('eventPersonnelFromRow'), 'the wrapper returns an explicit row shape');
 assert(wrapper.includes('sourceText:') && wrapper.includes('contactEmail:') && wrapper.includes('canonicalDisplayName:') && wrapper.includes('displayName:'), 'the wrapper keeps provenance and canonical display separate');
-assert(!read('js/app.js').includes('fetchEventPersonnel'), 'Event Details and AARs do not read event personnel yet');
-assert(!read('js/event-reference-fields.js').includes('fetchEventPersonnel'), 'the event editor does not write event personnel yet');
-assert(!read('js/facilitator-management.js').includes('fetchEventPersonnel'), 'Facilitator Management does not read event personnel yet');
+assert(read('js/app.js').includes('fetchEventPersonnel'), 'event screens load canonical event personnel');
+assert(read('js/event-reference-fields.js').includes('setFromPersonnel'), 'the event editor loads canonical event personnel');
+assert(!read('js/facilitator-management.js').includes('fetchEventPersonnel'), 'Facilitator Management does not replace experience calculations with event personnel');
 
 if (errors.length) {
   console.error(`validate-event-personnel-foundation failed:\n- ${errors.join('\n- ')}`);

@@ -152,12 +152,10 @@ assert(resolutionFn.includes('count(*) = 1') && resolutionFn.includes('else null
 assert(!/levenshtein|similarity\s*\(|pg_trgm|soundex/i.test(resolutionFn), 'facilitator resolution is not fuzzy');
 
 const aarBody = sliceBetween(app, 'function populateAarDocument', 'syncAarCurriculumRow(event, root);');
-assert(count(aarBody, 'event.facilitators') === 1, 'AAR reads facilitator text once');
-assert(count(aarBody, 'event.credoStaff') === 1, 'AAR reads staffing text once');
-assert(count(aarBody, 'event.poc') === 1, 'AAR reads POC text once');
-assert(aarBody.includes("setAarRmtField('Facilitator(s)', aarPlainField(event.facilitators)"), 'AAR Facilitator(s) comes from events.facilitators');
-assert(aarBody.includes("setAarRmtField('Staffing', aarPlainField(event.credoStaff)"), 'AAR Staffing comes from events.credo_staff');
-assert(aarBody.includes("setAarRmtField(\n    'Point(s) of Contact',\n    aarPlainField(event.poc)"), 'AAR Point(s) of Contact comes from events.poc');
+assert(aarBody.includes("visibleEventPersonnel(event, 'facilitator')"), 'AAR facilitators use canonical event personnel');
+assert(aarBody.includes("visibleEventPersonnel(event, 'credo_staff')"), 'AAR staffing uses canonical event personnel');
+assert(aarBody.includes("visibleEventPersonnel(event, 'poc')"), 'AAR points of contact use canonical event personnel');
+assert(!aarBody.includes('event.facilitators') && !aarBody.includes('event.credoStaff') && !aarBody.includes('event.poc'), 'AAR structured personnel does not display legacy event text');
 
 const eventRow = sliceBetween(db, 'export function eventToRow', 'function eventWriteRow');
 assert(eventRow.includes("facilitators: event.facilitators ?? ''"), 'event save writes facilitator text');

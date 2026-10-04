@@ -15,6 +15,7 @@ import {
   eventCurriculumControlValue,
   eventT4tValueForSave,
   eventTypeAllowsWorkshopT4t,
+  fetchEventPersonnel,
   fetchEvents,
   fetchFacilitatorManagementSources,
   deleteFacilitatorQualification,
@@ -65,8 +66,15 @@ import {
   removeLocation,
   removePerson,
   removeVenue,
+  replaceEventPersonnel,
 } from './db.js';
 import { initEventReferenceFields } from './event-reference-fields.js';
+import {
+  attachEventPersonnel,
+  personnelViewFromEditorTokens,
+  personnelWriteRows,
+  visibleEventPersonnel,
+} from './event-personnel-view.js';
 import {
   curriculumChoicesForEventType,
   reconcileCurriculumProductId,
@@ -609,9 +617,11 @@ async function persistEvent(event) {
     applySavedEvent(event, saved);
     applyAarResequencePatches(result.resequenced);
     refreshOpenAarDocumentIfNeeded();
+    return true;
   } catch (err) {
     console.error(err);
     alert('Failed to save event.');
+    return false;
   }
 }
 
@@ -627,10 +637,33 @@ async function persistNewEvent(event) {
   }
 }
 
+async function withEventPersonnel(loadedEvents) {
+  const normalized = loadedEvents.map(normalizeEvent);
+  try {
+    const personnel = await fetchEventPersonnel(normalized.map((event) => event.id));
+    attachEventPersonnel(normalized, personnel);
+  } catch (err) {
+    console.error(err);
+  }
+  return normalized;
+}
+
+async function syncSavedEventPersonnel(event) {
+  const plan = eventReferenceFields?.getPersonnelPlan?.();
+  if (!plan || !event?.id) return;
+  try {
+    await replaceEventPersonnel(event.id, personnelWriteRows(plan));
+    event.personnel = personnelViewFromEditorTokens(plan);
+    event.personnelLoaded = true;
+  } catch (err) {
+    console.error(err);
+    alert('The event was saved, but its personnel links could not be updated.');
+  }
+}
+
 async function reloadEventsAfterCanonicalRename() {
   try {
-    const loaded = await fetchEvents();
-    events = loaded.map(normalizeEvent);
+    events = await withEventPersonnel(await fetchEvents());
     render();
     refreshOpenAarDocumentIfNeeded();
   } catch (err) {
@@ -829,7 +862,10 @@ const EVENTS_SORT_COMPARATORS = {
   date: compareEventDates,
   eventType: (a, b) => compareTextValues(a.eventType, b.eventType),
   command: (a, b) => compareWithTbdLast(a.command, b.command),
-  facilitators: (a, b) => compareWithTbdLast(a.facilitators, b.facilitators),
+  facilitators: (a, b) => compareWithTbdLast(
+    visibleEventPersonnel(a, 'facilitator'),
+    visibleEventPersonnel(b, 'facilitator'),
+  ),
   location: (a, b) => compareWithTbdLast(a.location, b.location),
   reservation: (a, b) => compareWorkflowStatus(a.reservation, b.reservation),
   catering: (a, b) => compareWorkflowStatus(a.catering, b.catering),
@@ -1507,8 +1543,8 @@ async function exportReportPdf() {
     dates: formatEventDateDisplay(event),
     eventType: event.eventType,
     command: displayValue(event.command, 'command'),
-    facilitators: event.facilitators || TBD,
-    staff: event.credoStaff || TBD,
+    facilitators: visibleEventPersonnel(event, 'facilitator') || TBD,
+    staff: visibleEventPersonnel(event, 'credo_staff') || TBD,
     expectedParticipants: displayValue(event.participants, 'participants'),
     location: displayValue(event.location, 'location'),
     reservation: event.reservation || 'Not Started',
@@ -2940,13 +2976,13 @@ function populateAarDocument(event, options = {}) {
     'Participants will appear here.',
     root
   );
-  setAarRmtField('Facilitator(s)', aarPlainField(event.facilitators), 'Facilitator(s) will appear here.', root);
-  setAarRmtField('Staffing', aarPlainField(event.credoStaff), 'Staffing will appear here.', root);
+  setAarRmtField('Facilitator(s)', aarPlainField(visibleEventPersonnel(event, 'facilitator')), 'Facilitator(s) will appear here.', root);
+  setAarRmtField('Staffing', aarPlainField(visibleEventPersonnel(event, 'credo_staff')), 'Staffing will appear here.', root);
   setAarRmtField('Waitlist', event.aarWaitlist, 'Waitlist will appear here.', root);
   setAarRmtField('Time', aarPlainField(event.time), 'Time will appear here.', root);
   setAarRmtField(
     'Point(s) of Contact',
-    aarPlainField(event.poc),
+    aarPlainField(visibleEventPersonnel(event, 'poc')),
     'Point(s) of contact will appear here.',
     root
   );
@@ -12684,6 +12720,8 @@ function attachEditableCell(cell, event, field) {
     cell.textContent = formatEventDateDisplay(event);
   } else if (field === 'eventType') {
     cell.textContent = event.eventType;
+  } else if (field === 'facilitators') {
+    cell.textContent = displayValue(visibleEventPersonnel(event, 'facilitator'), field);
   } else {
     cell.textContent = displayValue(event[field], field);
   }
@@ -13063,6 +13101,7 @@ function populateEventFormFromRecord(form, event) {
     facilitators: event.facilitators || '',
     credoStaff: event.credoStaff || '',
     poc: event.poc || '',
+    personnel: event.personnel,
   });
 }
 
@@ -13384,7 +13423,8 @@ function setupModal() {
       if (!event) return;
 
       Object.assign(event, fields);
-      await persistEvent(event);
+      const saved = await persistEvent(event);
+      if (saved) await syncSavedEventPersonnel(event);
       render();
       closeModal();
       return;
@@ -13400,6 +13440,7 @@ function setupModal() {
 
     const saved = await persistNewEvent(newEvent);
     if (!saved) return;
+    await syncSavedEventPersonnel(newEvent);
 
     events.push(newEvent);
     render();
@@ -13460,7 +13501,8 @@ async function loadAllData() {
   eventT4tAvailable = curriculumSupport.t4tAvailable === true;
   syncEventTypeNames();
   team = teamData;
-  events = loadedEvents.map(normalizeEvent);
+  events = await withEventPersonnel(loadedEvents);
+  if (generation !== dataLoadGeneration) return;
   aarGlobalTemplates = globalTemplates;
   resetTableSortState();
   syncAarStateAfterDataLoad();

@@ -10,6 +10,7 @@ import {
   structuredPersonalName,
   validatePersonnelEditor,
 } from './team-personnel-editor.js';
+import { editorTokenFromPersonnel } from './event-personnel-view.js';
 
 export const PERSONNEL_MENU_RESULT_LIMIT = 50;
 
@@ -90,9 +91,15 @@ function splitCommaSeparatedList(raw) {
   return parts;
 }
 
+function tokenLegacyText(token) {
+  const source = String(token?.sourceText ?? '').trim();
+  if (source) return source;
+  return cleanReferenceDisplayName(token?.name);
+}
+
 export function serializeFacilitators(tokens) {
-  return tokens
-    .map((token) => cleanReferenceDisplayName(token.name))
+  return (tokens || [])
+    .map((token) => tokenLegacyText(token))
     .filter(Boolean)
     .join(', ');
 }
@@ -102,11 +109,13 @@ export function serializeCredoStaff(tokens) {
 }
 
 export function serializePoc(tokens) {
-  return tokens
+  return (tokens || [])
     .map((token) => {
-      const name = cleanReferenceDisplayName(token.name);
+      const source = String(token?.sourceText ?? '').trim();
+      if (source) return source;
+      const name = cleanReferenceDisplayName(token?.name);
       if (!name) return '';
-      const email = String(token.email ?? '').trim();
+      const email = String(token?.email ?? '').trim();
       return email ? `${name} <${email}>` : name;
     })
     .filter(Boolean)
@@ -981,8 +990,10 @@ function mountPeopleMulti(root, options) {
         const displayName = personnelDisplayName(created.rankTitle, created.name);
         addToken({
           id: created.id,
+          personId: created.id,
           name: displayName,
-          email: created.email || null,
+          sourceText: displayName,
+          email: null,
           orphan: false,
         });
         if (created.created === false) {
@@ -1014,9 +1025,10 @@ function mountPeopleMulti(root, options) {
 
   function applyCanonicalRename(_oldName, updated) {
     if (!updated?.id) return;
+    const displayName = personnelDisplayName(updated.rankTitle, updated.name);
     tokens = tokens.map((token) => {
-      if (token.id === updated.id) return { ...token, orphan: false };
-      return token;
+      if (token.id !== updated.id && token.personId !== updated.id) return token;
+      return { ...token, name: displayName || token.name, orphan: false };
     });
     renderChips();
     syncHidden();
@@ -1263,10 +1275,13 @@ function mountPeopleMulti(root, options) {
       button.addEventListener('click', () => {
         const person = [...directory, ...menuSource].find((entry) => entry.id === button.dataset.id);
         if (!person) return;
+        const displayName = personnelDisplayName(person.rankTitle, person.name);
         addToken({
           id: person.id,
-          name: personnelDisplayName(person.rankTitle, person.name),
-          email: person.email || null,
+          personId: person.id,
+          name: displayName,
+          sourceText: displayName,
+          email: null,
           orphan: false,
         });
       });
@@ -1342,25 +1357,45 @@ function mountPeopleMulti(root, options) {
       renderChips();
       syncHidden();
     },
+    setFromPersonnel(rows) {
+      mode = 'tokens';
+      legacyRaw = '';
+      tokens = (rows || []).map((row) => editorTokenFromPersonnel(row));
+      input.value = '';
+      renderChips();
+      syncHidden();
+    },
+    getTokens() {
+      if (mode === 'legacy') return [];
+      return tokens.map((token) => ({
+        personId: token.personId || token.id || null,
+        name: token.name,
+        sourceText: token.sourceText || token.name,
+        contactEmail: token.email || null,
+        eventPersonnelId: token.eventPersonnelId || null,
+      }));
+    },
     getValue() {
       syncHidden();
       return hidden.value;
     },
     refresh() {
-      // Drop inactive people from selectable tokens only when they were roster-linked;
-      // orphan/historical chips remain.
       const people = [
         ...(getPeople() || []),
         ...(typeof getMenuPeople === 'function' ? getMenuPeople() || [] : []),
       ];
-      const activeIds = new Set(people.map((person) => person.id));
       tokens = tokens.map((token) => {
-        if (!token.id) return token;
-        const latest = people.find((person) => person.id === token.id);
-        if (!latest || !activeIds.has(token.id)) {
-          return { ...token, id: null, orphan: true };
-        }
-        return { ...token, orphan: false };
+        const personId = token.personId || token.id;
+        if (!personId) return token;
+        const latest = people.find((person) => person.id === personId);
+        if (!latest) return token;
+        return {
+          ...token,
+          id: personId,
+          personId,
+          name: personnelDisplayName(latest.rankTitle, latest.name) || token.name,
+          orphan: false,
+        };
       });
       renderChips();
       syncHidden();
@@ -1431,7 +1466,10 @@ function mountStaffMulti(root, options) {
 
   function hasSelectedName(name) {
     const key = normalizeReferenceName(name);
-    return tokens.some((token) => normalizeReferenceName(token.name) === key);
+    return tokens.some((token) =>
+      normalizeReferenceName(token.name) === key
+      || normalizeReferenceName(token.sourceText) === key
+    );
   }
 
   function addOtherStaffName(rawValue) {
@@ -1449,8 +1487,17 @@ function mountStaffMulti(root, options) {
       (member) => normalizeReferenceName(member.name) === normalizeReferenceName(name)
     );
     if (match) {
-      if (!tokens.some((token) => token.id === match.id) && !hasSelectedName(match.name)) {
-        tokens.push({ id: match.id, name: match.name, orphan: false });
+      const alreadySelected = tokens.some((token) => token.id === match.id)
+        || (match.personId && tokens.some((token) => token.personId === match.personId))
+        || hasSelectedName(match.name);
+      if (!alreadySelected) {
+        tokens.push({
+          id: match.id,
+          personId: match.personId || null,
+          name: match.name,
+          sourceText: match.name,
+          orphan: !match.personId,
+        });
         renderChips();
         syncHidden();
       }
@@ -1461,7 +1508,7 @@ function mountStaffMulti(root, options) {
       return { ok: true };
     }
 
-    tokens.push({ id: null, name, orphan: true });
+    tokens.push({ id: null, personId: null, name, sourceText: name, orphan: true });
     renderChips();
     syncHidden();
     return { ok: true };
@@ -1554,11 +1601,23 @@ function mountStaffMulti(root, options) {
         const member = members.find((entry) => entry.id === checkbox.dataset.id);
         if (!member) return;
         if (checkbox.checked) {
-          if (!tokens.some((token) => token.id === member.id)) {
-            tokens.push({ id: member.id, name: member.name, orphan: false });
+          const alreadySelected = tokens.some((token) => token.id === member.id)
+            || (member.personId && tokens.some((token) => token.personId === member.personId));
+          if (!alreadySelected) {
+            tokens.push({
+              id: member.id,
+              personId: member.personId || null,
+              name: member.name,
+              sourceText: member.name,
+              orphan: !member.personId,
+            });
           }
         } else {
-          tokens = tokens.filter((token) => token.id !== member.id);
+          tokens = tokens.filter((token) => {
+            if (token.id === member.id) return false;
+            if (member.personId && token.personId === member.personId) return false;
+            return true;
+          });
         }
         renderChips();
         syncHidden();
@@ -1608,6 +1667,28 @@ function mountStaffMulti(root, options) {
       menuMode = 'select';
       renderChips();
       syncHidden();
+    },
+    setFromPersonnel(rows) {
+      const members = currentMembers();
+      tokens = (rows || []).map((row) => {
+        const token = editorTokenFromPersonnel(row);
+        const member = token.personId
+          ? members.find((entry) => entry.personId && entry.personId === token.personId)
+          : null;
+        return member ? { ...token, id: member.id } : { ...token, id: null };
+      });
+      menuMode = 'select';
+      renderChips();
+      syncHidden();
+    },
+    getTokens() {
+      return tokens.map((token) => ({
+        personId: token.personId || null,
+        name: token.name,
+        sourceText: token.sourceText || token.name,
+        contactEmail: null,
+        eventPersonnelId: token.eventPersonnelId || null,
+      }));
     },
     getValue() {
       syncHidden();
@@ -1809,9 +1890,22 @@ export function initEventReferenceFields(form, adapters) {
       location.setFromRaw(event?.location);
       venue.setFromRaw(event?.venue);
       cateringVendor.setFromRaw(event?.cateringVendor);
-      facilitators.setFromRaw(event?.facilitators);
-      poc.setFromRaw(event?.poc);
-      credoStaff.setFromRaw(event?.credoStaff);
+      if (event?.personnel) {
+        facilitators.setFromPersonnel(event.personnel.facilitator);
+        poc.setFromPersonnel(event.personnel.poc);
+        credoStaff.setFromPersonnel(event.personnel.credo_staff);
+      } else {
+        facilitators.setFromRaw(event?.facilitators);
+        poc.setFromRaw(event?.poc);
+        credoStaff.setFromRaw(event?.credoStaff);
+      }
+    },
+    getPersonnelPlan() {
+      return {
+        facilitator: facilitators.getTokens(),
+        poc: poc.getTokens(),
+        credo_staff: credoStaff.getTokens(),
+      };
     },
     refreshPeople() {
       facilitators.refresh();

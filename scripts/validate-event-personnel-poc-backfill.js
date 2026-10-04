@@ -79,14 +79,14 @@ assert(migration.includes('from public.facilitator_t4t_product_experience'), 'T4
 assert(migration.includes('v_poc_text_after is distinct from v_poc_text_before'), 'events.poc text is compared before and after the insert');
 
 for (const relativePath of [
-  'js/app.js',
-  'js/event-reference-fields.js',
   'js/facilitator-management.js',
   'js/aar-pdf-export.js',
   'js/event-report-pdf-export.js',
 ]) {
-  assert(!read(relativePath).includes('fetchEventPersonnel'), `${relativePath} does not read event personnel yet`);
+  assert(!read(relativePath).includes('fetchEventPersonnel'), `${relativePath} does not query event personnel directly`);
 }
+assert(read('js/app.js').includes('fetchEventPersonnel'), 'event screens load event personnel in one request');
+assert(read('js/event-reference-fields.js').includes('setFromPersonnel'), 'the event editor loads canonical personnel rows');
 
 if (errors.length) {
   console.error(`validate-event-personnel-poc-backfill failed:\n- ${errors.join('\n- ')}`);

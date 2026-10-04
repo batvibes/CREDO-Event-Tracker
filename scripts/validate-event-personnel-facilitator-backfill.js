@@ -67,14 +67,14 @@ assert(migration.includes('link.person_id = token.person_id'), 'stored person mu
 assert(!/insert\s+into\s+public\.event_personnel/i.test(foundation), 'the foundation migration still inserts nothing');
 
 for (const relativePath of [
-  'js/app.js',
-  'js/event-reference-fields.js',
   'js/facilitator-management.js',
   'js/aar-pdf-export.js',
   'js/event-report-pdf-export.js',
 ]) {
-  assert(!read(relativePath).includes('fetchEventPersonnel'), `${relativePath} does not read event personnel yet`);
+  assert(!read(relativePath).includes('fetchEventPersonnel'), `${relativePath} does not query event personnel directly`);
 }
+assert(read('js/app.js').includes('fetchEventPersonnel'), 'event screens load event personnel in one request');
+assert(read('js/event-reference-fields.js').includes('setFromPersonnel'), 'the event editor loads canonical personnel rows');
 
 if (errors.length) {
   console.error(`validate-event-personnel-facilitator-backfill failed:\n- ${errors.join('\n- ')}`);
