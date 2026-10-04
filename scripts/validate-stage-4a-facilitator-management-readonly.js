@@ -53,7 +53,7 @@ assert(html.includes('id="view-facilitators"'), 'the Facilitator Management view
 assert(html.includes('id="facilitator-personnel-heading">Facilitators<'), 'Facilitators is the Stage 4A view');
 assert(html.includes('id="facilitator-personnel-table"'), 'the Personnel table exists');
 assert(html.includes('>Name<') && html.includes('Command / Organization') && html.includes('>Installation<'), 'name, command, and installation columns exist');
-assert(html.includes('>Products<') && html.includes('Events Conducted') && html.includes('Most Recent'), 'experience summary columns exist');
+assert(html.includes('>Products<') && html.includes('CREDO Events') && html.includes('Most Recent CREDO'), 'experience summary columns exist');
 assert(html.includes('id="facilitator-search"'), 'name search exists');
 assert(html.includes('id="facilitator-detail-modal"'), 'person detail uses the existing dialog pattern');
 assert(app.includes("facilitators: 'view-facilitators'"), 'navigation opens the Facilitator Management view');

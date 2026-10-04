@@ -56,7 +56,7 @@ assert(!capabilityTable.includes('Recorded Experience'), 'the Recorded Experienc
 assert(capabilitiesPanel.includes('id="facilitator-anniversary-section" hidden') && capabilitiesPanel.includes('>T4T Anniversary Alerts<'), 'T4T Anniversary Alerts sit under Program Capabilities and start hidden');
 assert(!view.includes('Needs Attention'), 'Needs Attention stays off Facilitator Management');
 const personnelPanel = view.slice(view.indexOf('id="facilitator-personnel-panel"'));
-assert(personnelPanel.includes('>Facilitators<') && personnelPanel.includes('>Name<') && personnelPanel.includes('Events Conducted') && personnelPanel.includes('>Most Recent<'), 'the Facilitators tab is unchanged');
+assert(personnelPanel.includes('>Facilitators<') && personnelPanel.includes('>Name<') && personnelPanel.includes('CREDO Events') && personnelPanel.includes('Most Recent CREDO'), 'the Facilitators roster keeps its CREDO-recorded columns');
 assert(view.includes('id="facilitator-personnel-panel"'), 'the Facilitators panel remains present');
 assert(!view.includes('id="facilitator-overview-panel"'), 'the Overview panel is removed');
 assert(!view.includes('Development'), 'Development is not presented as a live view');

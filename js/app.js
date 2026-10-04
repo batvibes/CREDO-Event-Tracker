@@ -116,6 +116,10 @@ import {
   buildFacilitatorProgramCapabilities,
   facilitatorProductFilterOptions,
   facilitatorProductPersonnel,
+  FACILITATOR_POPULATION_CREDO_USED,
+  FACILITATOR_POPULATIONS,
+  countFacilitatorPopulations,
+  facilitatorPopulationDefaultSort,
   filterFacilitatorPersonnel,
   filterFacilitatorProductPersonnel,
   filterFacilitatorProgramCapabilities,
@@ -11428,7 +11432,8 @@ let facilitatorT4tExperienceAvailable = false;
 let facilitatorQualificationPersonId = null;
 let facilitatorQualificationSaving = false;
 let facilitatorQualificationNotice = '';
-let facilitatorSort = { column: 'name', direction: SORT_ASC };
+let facilitatorPopulation = FACILITATOR_POPULATION_CREDO_USED;
+let facilitatorSort = { ...facilitatorPopulationDefaultSort(FACILITATOR_POPULATION_CREDO_USED) };
 let facilitatorCapabilitySort = { column: 'catalog', direction: SORT_ASC };
 let facilitatorSelectedProductId = '';
 let facilitatorLoadGeneration = 0;
@@ -11439,7 +11444,31 @@ function facilitatorFilterState() {
     query: document.getElementById('facilitator-search')?.value ?? '',
     active: document.getElementById('facilitator-active-filter')?.value ?? 'all',
     productId: document.getElementById('facilitator-product-filter')?.value ?? '',
+    population: facilitatorPopulation,
   };
+}
+
+function paintFacilitatorPopulationCards() {
+  const counts = countFacilitatorPopulations(facilitatorPersonnel);
+  document.querySelectorAll('[data-facilitator-population]').forEach((card) => {
+    const population = card.dataset.facilitatorPopulation;
+    const selected = population === facilitatorPopulation;
+    card.classList.toggle('is-selected', selected);
+    card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    const count = card.querySelector('[data-facilitator-population-count]');
+    if (count) count.textContent = String(counts[population] ?? 0);
+  });
+}
+
+function selectFacilitatorPopulation(population) {
+  const definition = FACILITATOR_POPULATIONS.find((entry) => entry.id === population);
+  if (!definition || population === facilitatorPopulation) return;
+  facilitatorPopulation = definition.id;
+  facilitatorSort.column = definition.defaultSort.column;
+  facilitatorSort.direction = definition.defaultSort.direction;
+  paintFacilitatorPopulationCards();
+  paintFacilitatorPersonnel();
+  refreshSortHeaderIndicators('#facilitator-personnel-table', FACILITATOR_SORT_COLUMNS, facilitatorSort);
 }
 
 function visibleFacilitatorPersonnel() {
@@ -11591,6 +11620,7 @@ function paintFacilitatorProgramCapabilities() {
 function paintFacilitatorPersonnel() {
   const body = document.getElementById('facilitator-personnel-body');
   if (!body) return;
+  paintFacilitatorPopulationCards();
   body.replaceChildren();
   const visible = visibleFacilitatorPersonnel();
   const facilitatorColumns = document.querySelectorAll('#facilitator-personnel-table thead th').length || 7;
@@ -12530,6 +12560,11 @@ function setupFacilitatorManagement() {
   });
   bindSortableTableHeaders('#facilitator-capabilities-table', FACILITATOR_CAPABILITY_SORT_COLUMNS, facilitatorCapabilitySort, () => {
     paintFacilitatorProgramCapabilities();
+  });
+  document.getElementById('facilitator-personnel-panel')?.addEventListener('click', (event) => {
+    const card = event.target.closest('[data-facilitator-population]');
+    if (!card) return;
+    selectFacilitatorPopulation(card.dataset.facilitatorPopulation);
   });
   document.getElementById('facilitator-view-tabs')?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-facilitator-view]');

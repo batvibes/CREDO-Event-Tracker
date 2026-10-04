@@ -14,8 +14,11 @@
  * latest date across both aggregates. Dedicated SafeTalk T4T and ASIST T4T
  * deliveries count as ordinary safeTALK and ASIST in that summary. Profile lists
  * stay separate. Overview and Program Capabilities keep each aggregate's own
- * product. An Event belongs to only one aggregate. This module does not write
- * people, qualifications, roles, or Events.
+ * product. An Event belongs to only one aggregate. Facilitator populations are
+ * derived from that evidence and are not stored. CREDO-Used is ordinary or T4T
+ * facilitation. The trained pool is a T4T completion or qualification with no
+ * CREDO facilitation. All Records is the existing roster. This module does not
+ * write people, qualifications, roles, or Events.
  *
  * Later views can sit beside Personnel: Overview, Program Capabilities, and Development.
  */
@@ -24,8 +27,31 @@ import { comparePersonnelDisplayNames, personnelDisplayName } from './personnel-
 import { calendarDate, localCalendarToday } from './t4t-completion-entry.js';
 
 export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitators found.';
-export const FACILITATOR_EMPTY_EXPERIENCE = 'No recorded facilitator experience.';
-export const FACILITATOR_EMPTY_T4T_EXPERIENCE = 'No recorded T4T facilitation experience.';
+export const FACILITATOR_EMPTY_EXPERIENCE = 'No CREDO-recorded facilitation.';
+export const FACILITATOR_EMPTY_T4T_EXPERIENCE = 'No CREDO-recorded T4T facilitation.';
+export const FACILITATOR_POPULATION_CREDO_USED = 'credo-used';
+export const FACILITATOR_POPULATION_TRAINED_POOL = 'trained-pool';
+export const FACILITATOR_POPULATION_ALL_RECORDS = 'all-records';
+export const FACILITATOR_POPULATIONS = Object.freeze([
+  Object.freeze({
+    id: FACILITATOR_POPULATION_CREDO_USED,
+    label: 'CREDO-Used',
+    description: 'People with recorded facilitation on CREDO-tracked events.',
+    defaultSort: Object.freeze({ column: 'recent', direction: 'desc' }),
+  }),
+  Object.freeze({
+    id: FACILITATOR_POPULATION_TRAINED_POOL,
+    label: 'Trained / Qualification Pool',
+    description: 'People with T4T completion or qualification records, but no CREDO-recorded facilitation.',
+    defaultSort: Object.freeze({ column: 'name', direction: 'asc' }),
+  }),
+  Object.freeze({
+    id: FACILITATOR_POPULATION_ALL_RECORDS,
+    label: 'All Records',
+    description: 'All facilitator-relevant personnel records.',
+    defaultSort: Object.freeze({ column: 'name', direction: 'asc' }),
+  }),
+]);
 export const FACILITATOR_T4T_EXPERIENCE_HEADING = 'T4T Facilitation Experience';
 export const FACILITATOR_T4T_COMPLETION_HEADING = 'T4T Completion History';
 export const FACILITATOR_EMPTY_QUALIFICATIONS = 'No qualification or training records entered.';
@@ -336,6 +362,36 @@ function hasRecordedFacilitatorEvidence(person) {
   return (person?.experience?.length ?? 0) > 0 || (person?.t4tExperience?.length ?? 0) > 0;
 }
 
+function hasTrainingOrQualificationRecord(person) {
+  return (person?.qualificationProducts?.length ?? 0) > 0 || (person?.t4tCompletions?.length ?? 0) > 0;
+}
+
+export function facilitatorPopulationDefaultSort(population) {
+  const match = FACILITATOR_POPULATIONS.find((entry) => entry.id === population);
+  return match?.defaultSort ?? FACILITATOR_POPULATIONS[0].defaultSort;
+}
+
+export function facilitatorInPopulation(person, population = FACILITATOR_POPULATION_ALL_RECORDS) {
+  if (population === FACILITATOR_POPULATION_CREDO_USED) return hasRecordedFacilitatorEvidence(person);
+  if (population === FACILITATOR_POPULATION_TRAINED_POOL) {
+    return !hasRecordedFacilitatorEvidence(person) && hasTrainingOrQualificationRecord(person);
+  }
+  return population === FACILITATOR_POPULATION_ALL_RECORDS;
+}
+
+export function countFacilitatorPopulations(records) {
+  const counts = {
+    [FACILITATOR_POPULATION_CREDO_USED]: 0,
+    [FACILITATOR_POPULATION_TRAINED_POOL]: 0,
+    [FACILITATOR_POPULATION_ALL_RECORDS]: (records ?? []).length,
+  };
+  for (const person of records ?? []) {
+    if (hasRecordedFacilitatorEvidence(person)) counts[FACILITATOR_POPULATION_CREDO_USED] += 1;
+    else if (hasTrainingOrQualificationRecord(person)) counts[FACILITATOR_POPULATION_TRAINED_POOL] += 1;
+  }
+  return counts;
+}
+
 function combinedProductEvidence(person, productId) {
   const rows = [];
   for (const list of [person?.experience, person?.t4tExperience]) {
@@ -448,19 +504,30 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
   return personnel;
 }
 
+function matchesProductEvidence(rows, productId) {
+  return (rows ?? []).some((row) => row?.productId === productId);
+}
+
 export function filterFacilitatorPersonnel(records, filters = {}) {
   const query = normalizeSearch(filters.query);
   const active = filters.active === 'active' || filters.active === 'inactive' ? filters.active : 'all';
   const productId = cleanText(filters.productId);
+  const population = filters.population || FACILITATOR_POPULATION_ALL_RECORDS;
   return (records ?? []).filter((record) => {
+    if (!facilitatorInPopulation(record, population)) return false;
     if (active === 'active' && record.active !== true) return false;
     if (active === 'inactive' && record.active !== false) return false;
     if (productId) {
-      const inExperience = record.experience.some((row) => row.productId === productId);
-      const inT4t = (record.t4tExperience ?? []).some((row) => row.productId === productId);
-      const inQualification = record.qualificationProducts.some((row) => row.productId === productId);
-      const inCompletion = (record.t4tCompletions ?? []).some((row) => row.productId === productId);
-      if (!inExperience && !inT4t && !inQualification && !inCompletion) return false;
+      const inExperience = matchesProductEvidence(record.experience, productId);
+      const inT4t = matchesProductEvidence(record.t4tExperience, productId);
+      const inQualification = matchesProductEvidence(record.qualificationProducts, productId);
+      const inCompletion = matchesProductEvidence(record.t4tCompletions, productId);
+      const matches = population === FACILITATOR_POPULATION_CREDO_USED
+        ? (inExperience || inT4t)
+        : population === FACILITATOR_POPULATION_TRAINED_POOL
+          ? (inQualification || inCompletion)
+          : (inExperience || inT4t || inQualification || inCompletion);
+      if (!matches) return false;
     }
     if (!query) return true;
     return normalizeSearch(`${record.displayName} ${record.name}`).includes(query);
