@@ -20,7 +20,7 @@
  * Later views can sit beside Personnel: Overview, Program Capabilities, and Development.
  */
 
-import { personnelDisplayName } from './personnel-identity.js';
+import { comparePersonnelDisplayNames, personnelDisplayName } from './personnel-identity.js';
 import { calendarDate, localCalendarToday } from './t4t-completion-entry.js';
 
 export const FACILITATOR_EMPTY_PERSONNEL = 'No facilitators found.';
@@ -470,30 +470,30 @@ export function filterFacilitatorPersonnel(records, filters = {}) {
 function compareRecent(left, right, direction) {
   const leftDate = left.mostRecentOn || '';
   const rightDate = right.mostRecentOn || '';
-  if (!leftDate && !rightDate) return compareText(left.displayName, right.displayName);
+  if (!leftDate && !rightDate) return comparePersonnelDisplayNames(left, right);
   if (!leftDate) return 1;
   if (!rightDate) return -1;
   const compared = direction === 'desc' ? compareText(rightDate, leftDate) : compareText(leftDate, rightDate);
-  return compared || compareText(left.displayName, right.displayName);
+  return compared || comparePersonnelDisplayNames(left, right);
 }
 
 export function sortFacilitatorPersonnel(records, column = 'name', direction = 'asc') {
   const descending = direction === 'desc';
   const sorted = [...(records ?? [])].sort((left, right) => {
     if (column === 'command') {
-      return compareText(left.commandOrganization, right.commandOrganization) || compareText(left.displayName, right.displayName);
+      return compareText(left.commandOrganization, right.commandOrganization) || comparePersonnelDisplayNames(left, right);
     }
     if (column === 'installation') {
-      return compareText(left.installation, right.installation) || compareText(left.displayName, right.displayName);
+      return compareText(left.installation, right.installation) || comparePersonnelDisplayNames(left, right);
     }
     if (column === 'products') {
-      return left.productCount - right.productCount || compareText(left.displayName, right.displayName);
+      return left.productCount - right.productCount || comparePersonnelDisplayNames(left, right);
     }
     if (column === 'events') {
-      return left.eventsConducted - right.eventsConducted || compareText(left.displayName, right.displayName);
+      return left.eventsConducted - right.eventsConducted || comparePersonnelDisplayNames(left, right);
     }
     if (column === 'recent') return compareRecent(left, right, descending ? 'desc' : 'asc');
-    return compareText(left.displayName, right.displayName) || compareText(left.id, right.id);
+    return comparePersonnelDisplayNames(left, right);
   });
   if (descending && column !== 'recent') return sorted.reverse();
   return sorted;

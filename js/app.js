@@ -126,6 +126,8 @@ import {
 } from './facilitator-management.js';
 import {
   createPersonnelRowDeleteButton,
+  directoryPersonnelName,
+  directoryPersonnelNeedsReview,
   isCommandHighlightsNotesVisible,
   isTeamDirectoryTab,
   mapTeamDirectoryPerson,
@@ -11398,12 +11400,12 @@ function setupFinancials() {
 }
 
 const FACILITATOR_SORT_COLUMNS = [
-  { key: 'name', index: 0 },
-  { key: 'command', index: 1 },
-  { key: 'installation', index: 2 },
-  { key: 'products', index: 3 },
-  { key: 'events', index: 4 },
-  { key: 'recent', index: 5 },
+  { key: 'name', index: 1 },
+  { key: 'command', index: 2 },
+  { key: 'installation', index: 3 },
+  { key: 'products', index: 4 },
+  { key: 'events', index: 5 },
+  { key: 'recent', index: 6 },
 ];
 const FACILITATOR_CAPABILITY_SORT_COLUMNS = [
   { key: 'catalog', index: 0 },
@@ -11621,14 +11623,32 @@ function paintFacilitatorPersonnel() {
       open();
     });
 
+    const rankCell = document.createElement('td');
+    rankCell.className = 'facilitator-rank';
+    if (person.rankTitle) rankCell.textContent = person.rankTitle;
+    row.appendChild(rankCell);
+
     const nameCell = document.createElement('td');
-    nameCell.textContent = person.displayName || '—';
+    nameCell.className = 'facilitator-name';
+    const line = document.createElement('div');
+    line.className = 'facilitator-name-line';
+    const nameText = document.createElement('span');
+    nameText.className = 'facilitator-name-text';
+    nameText.textContent = directoryPersonnelName(person) || '—';
+    line.appendChild(nameText);
+    if (directoryPersonnelNeedsReview(person)) {
+      const review = document.createElement('span');
+      review.className = 'facilitator-name-review';
+      review.textContent = 'Needs Review';
+      line.appendChild(review);
+    }
     if (person.active !== true) {
       const marker = document.createElement('span');
       marker.className = 'facilitator-inactive';
       marker.textContent = 'Inactive';
-      nameCell.appendChild(marker);
+      line.appendChild(marker);
     }
+    nameCell.appendChild(line);
     row.appendChild(nameCell);
     appendFacilitatorCell(row, person.commandOrganization);
     appendFacilitatorCell(row, person.installation);

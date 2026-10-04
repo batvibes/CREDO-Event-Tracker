@@ -7442,18 +7442,45 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-personnel-table {
-  min-width: 52rem;
+  min-width: 58rem;
 }
 
-#facilitator-personnel-table td:nth-child(1) {
-  font-weight: 600;
+#facilitator-personnel-table th.facilitator-rank,
+#facilitator-personnel-table td.facilitator-rank {
+  width: 6.75rem;
+  white-space: nowrap;
+}
+
+#facilitator-personnel-table td.facilitator-rank {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: #4b5563;
+}
+
+#facilitator-personnel-table td.facilitator-name {
+  font-weight: 700;
   color: var(--text-primary);
   white-space: nowrap;
 }
 
-#facilitator-personnel-table td:nth-child(2),
-#facilitator-personnel-table td:nth-child(3) {
-  max-width: 18rem;
+#facilitator-personnel-table .facilitator-name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+#facilitator-personnel-table .facilitator-name-review {
+  color: #6b7280;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+#facilitator-personnel-table td:nth-child(3),
+#facilitator-personnel-table td:nth-child(4) {
+  max-width: 16rem;
   white-space: normal;
   line-height: 1.35;
 }
@@ -7485,11 +7512,15 @@ body:has(#new-event-modal[open]) {
   cursor: pointer;
 }
 
-.personnel-row-delete:hover,
+.personnel-row-delete:hover {
+  color: #8f5d5d;
+  background: transparent;
+}
+
 .personnel-row-delete:focus-visible {
-  color: #991b1b;
-  background: #fef2f2;
-  outline: 2px solid #991b1b;
+  color: #6b4545;
+  background: transparent;
+  outline: 2px solid #c4b5b5;
   outline-offset: 1px;
 }
 
