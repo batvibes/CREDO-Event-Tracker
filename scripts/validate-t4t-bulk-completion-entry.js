@@ -235,10 +235,10 @@ const summary = summarizeT4tCompletionResults([
 ]);
 assert(summary.recorded === 1 && summary.alreadyRecorded === 1 && summary.failed === 1, 'recorded, already recorded, and failed rows stay separate');
 
-assert(attendeeMatchText({ firstName: 'Jane', lastName: '' }) === '', 'a last name is required before matching');
-assert(attendeeMatchText({ firstName: '', lastName: 'Smith' }) === '', 'a first name is required before matching');
-assert(attendeeMatchText({ rank: '', firstName: 'Jane', lastName: 'Smith', command: '1st Marine Division', installation: 'Camp Pendleton' }) === 'Jane Smith', 'rank, command, and installation stay optional');
-assert(attendeeMatchText({ rank: 'HM2', firstName: ' Jane ', lastName: ' Smith ' }) === 'HM2 Jane Smith', 'rank plus first and last name is the match text');
+assert(attendeeMatchText({ firstName: 'Jane', lastName: '' }) === 'Jane', 'a first name alone is enough to match');
+assert(attendeeMatchText({ firstName: '', lastName: 'Smith' }) === 'Smith', 'a last name alone is enough to match');
+assert(attendeeMatchText({ rank: '', firstName: 'Jane', lastName: 'Smith', command: '1st Marine Division', installation: 'Camp Pendleton' }) === 'Jane Smith', 'rank, command, and installation stay out of the match text');
+assert(attendeeMatchText({ rank: 'HM2', firstName: ' Jane ', lastName: ' Smith ' }) === 'Jane Smith', 'rank is not part of the attendance match text');
 assert(attendanceCountLabel(1) === '1 attendee' && attendanceCountLabel(3) === '3 attendees', 'the roster count uses singular and plural wording');
 
 const loadedRoster = eventSourcedAttendance([
@@ -286,7 +286,8 @@ assert(!moduleSource.includes('Create New Person'), 'adding a new person does no
 assert(moduleSource.includes('Inactive'), 'inactive people stay labeled inactive');
 assert(!moduleSource.includes('Participant Names') && !moduleSource.includes('textarea') && !moduleSource.includes('Review Participants'), 'the participant textarea and bulk review are gone');
 assert(moduleSource.includes('>Rank<') === false && moduleSource.includes("'Rank'") && moduleSource.includes("'First Name'") && moduleSource.includes("'Last Name'") && moduleSource.includes("'Command'") && moduleSource.includes("'Installation'"), 'attendance entry uses rank, first name, last name, command, and installation');
-assert(moduleSource.includes("textField('First Name', 't4t-attendee-first', state.form.firstName, true)") && moduleSource.includes("textField('Last Name', 't4t-attendee-last', state.form.lastName, true)"), 'first and last name are required');
+assert(moduleSource.includes("textField('First Name', 't4t-attendee-first', state.form.firstName, false)") && moduleSource.includes("textField('Last Name', 't4t-attendee-last', state.form.lastName, false)"), 'first name and last name are each optional');
+assert(moduleSource.includes('First Name or Last Name is required.'), 'attendance still requires a first name or a last name');
 assert(moduleSource.includes("textField('Rank', 't4t-attendee-rank', state.form.rank, false)") && moduleSource.includes("textField('Command', 't4t-attendee-command', state.form.command, false)") && moduleSource.includes("textField('Installation', 't4t-attendee-installation', state.form.installation, false)"), 'rank, command, and installation are optional');
 assert(moduleSource.includes('Add Attendee') && moduleSource.includes('Attendance Roster') && moduleSource.includes('>Remove<') === false && moduleSource.includes("'Remove'") && moduleSource.includes("'Close'"), 'the roster can add and remove attendees, and the footer can close');
 assert(!moduleSource.includes('Save Attendance'), 'there is no separate Save Attendance step');

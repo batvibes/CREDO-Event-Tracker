@@ -134,7 +134,8 @@ assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: 'Joness' }, kerm
 assert(suggestAttendancePeople({ firstName: 'Cermit', lastName: 'Jones' }, kermit).people[0].personId === 'kermit', 'a different first letter can suggest the existing person');
 assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: 'Jone' }, kermit).status === 'possible', 'a missing last letter suggests the existing person');
 assert(suggestAttendancePeople({ firstName: 'Pat', lastName: 'Noone' }, kermit).status === 'none', 'an unrelated name is not suggested');
-assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: '' }, kermit).status === 'empty', 'suggestions wait until both names are entered');
+assert(suggestAttendancePeople({ firstName: 'Kermit', lastName: '' }, kermit).status === 'exact', 'a unique first name still finds the existing person');
+assert(suggestAttendancePeople({ firstName: '', lastName: '' }, kermit).status === 'empty', 'suggestions wait until a personal name is entered');
 assert(matchDirectoryPerson('Kermit Joness', kermit, []).status === 'new', 'a typo stays a new result in the exact matcher');
 
 const jason = { id: 'jason', name: 'CDR Jason Dipinto', rank_title: null, active: true, is_facilitator: false, is_credo_staff: false, is_poc: false };

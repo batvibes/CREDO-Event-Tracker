@@ -1858,7 +1858,8 @@ export async function findCanonicalAttendancePerson(identity) {
 export async function createT4tAttendancePerson(person) {
   const { data, error } = await supabase.rpc('create_t4t_attendance_person', {
     p_rank_title: person?.rankTitle ?? null,
-    p_name: person?.name ?? '',
+    p_first_name: person?.firstName || null,
+    p_last_name: person?.lastName || null,
     p_command_organization: person?.commandOrganization ?? null,
     p_installation: person?.installation ?? null,
   });

@@ -6,7 +6,7 @@
  * Qualifications, facilitator text, and participant counts are not used.
  */
 import { matchDirectoryPerson, personnelDisplayName } from './personnel-identity.js';
-import { attendancePersonalParts, findAttendancePersonByName, suggestAttendancePeople } from './t4t-attendance-suggestions.js';
+import { findAttendancePersonByName, suggestAttendancePeople } from './t4t-attendance-suggestions.js';
 
 export const T4T_COMPLETION_ACTION_LABEL = 'Manage T4T Attendance';
 
@@ -182,12 +182,31 @@ export function confirmParticipantChoice(row, personId) {
   };
 }
 
+export const ATTENDANCE_NAME_REQUIRED = 'First Name or Last Name is required.';
+
+export function attendancePersonalName(firstName, lastName) {
+  const first = clean(firstName);
+  const last = clean(lastName);
+  if (first && last) return `${first} ${last}`;
+  return first || last;
+}
+
+export function validateAttendanceIdentity(values) {
+  if (!attendancePersonalName(values?.firstName, values?.lastName)) return ATTENDANCE_NAME_REQUIRED;
+  return '';
+}
+
 export function newDirectoryPersonInput(values) {
-  const name = clean(values?.name);
+  const firstName = clean(values?.firstName);
+  const lastName = clean(values?.lastName);
+  const structuredName = attendancePersonalName(firstName, lastName);
+  const name = structuredName || clean(values?.name);
   if (!name) return null;
   return {
     id: null,
     rankTitle: clean(values?.rankTitle),
+    firstName: structuredName ? firstName : '',
+    lastName: structuredName ? lastName : '',
     name,
     commandOrganization: clean(values?.commandOrganization),
     installation: clean(values?.installation),
@@ -203,6 +222,8 @@ export function directoryPersonFromSave(created) {
   return {
     id: created?.id ?? null,
     name: created?.name ?? '',
+    first_name: created?.first_name ?? created?.firstName ?? null,
+    last_name: created?.last_name ?? created?.lastName ?? null,
     rank_title: created?.rank_title ?? created?.rankTitle ?? '',
     command_organization: created?.command_organization ?? created?.commandOrganization ?? '',
     installation: created?.installation ?? '',
@@ -381,8 +402,7 @@ export function attendeeFormValues(values) {
 
 export function attendeeMatchText(values) {
   const form = attendeeFormValues(values);
-  if (!form.firstName || !form.lastName) return '';
-  return personnelDisplayName(form.rank, `${form.firstName} ${form.lastName}`);
+  return attendancePersonalName(form.firstName, form.lastName);
 }
 
 export function rosterAttendeeFromPerson(person, extras = {}) {
@@ -661,6 +681,9 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     state.error = '';
     state.notice = 'Attendee added.';
     clearForm();
+    state.boundPersonId = null;
+    state.confirmedDifferent = false;
+    refreshSuggestion();
     state.focusFirst = true;
   }
 
@@ -688,13 +711,14 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     if (state.busy || !state.target.eligible) return;
     captureFields();
     const payload = newDirectoryPersonInput({
-      name: `${form.firstName} ${form.lastName}`,
+      firstName: form.firstName,
+      lastName: form.lastName,
       rankTitle: form.rank,
       commandOrganization: form.command,
       installation: form.installation,
     });
     if (!payload) {
-      state.error = 'First name and last name are required.';
+      state.error = ATTENDANCE_NAME_REQUIRED;
       state.notice = '';
       render();
       return;
@@ -807,65 +831,50 @@ export function mountT4tCompletionWorkflow(dialog, options) {
   function useSuggestedPerson(personId) {
     const person = personById(personId);
     if (!person) return;
-    const parts = attendancePersonalParts(person, state.people, state.form.rank);
-    captureFields();
-    state.form = {
-      ...state.form,
-      rank: clean(person.rank_title),
-      firstName: parts.first,
-      lastName: parts.last,
-      command: clean(person.command_organization),
-      installation: clean(person.installation),
-    };
-    state.boundPersonId = person.id;
     state.confirmedDifferent = false;
-    state.pending = null;
-    refreshSuggestion();
-    state.notice = '';
-    state.error = rosterIncludesPerson(state.roster, person.id) ? 'Already on this attendance roster.' : '';
-    state.focusFirst = true;
-    render();
+    state.boundPersonId = null;
+    addExistingPerson(person);
+  }
+
+  function reuseSuggestedPerson(person) {
+    if (person && rosterIncludesPerson(state.roster, person.id)) {
+      state.error = 'Already on this attendance roster.';
+      state.notice = '';
+      render();
+      return;
+    }
+    state.error = '';
+    addExistingPerson(person);
   }
 
   function addAttendee() {
     if (state.busy) return;
     captureFields();
     const form = state.form;
-    if (!form.firstName || !form.lastName) {
-      state.error = 'First name and last name are required.';
+    const identityError = validateAttendanceIdentity(form);
+    if (identityError) {
+      state.error = identityError;
       state.notice = '';
       render();
       return;
     }
     refreshSuggestion();
-    const exact = matchDirectoryPerson(attendeeMatchText({ ...form, rank: '' }), state.people, state.aliases);
     state.notice = '';
-    if (state.boundPersonId) {
+    if (state.boundPersonId && !state.confirmedDifferent) {
       const bound = personById(state.boundPersonId);
       if (!bound) {
         state.boundPersonId = null;
-      } else if (rosterIncludesPerson(state.roster, bound.id)) {
-        state.error = 'Already on this attendance roster.';
-        render();
-        return;
       } else {
-        state.error = '';
-        addExistingPerson(bound);
+        reuseSuggestedPerson(bound);
         return;
       }
     }
-    if (!state.confirmedDifferent && state.suggestion.status === 'exact') {
-      if (state.suggestion.people.length === 1) {
-        const person = personById(state.suggestion.people[0].personId);
-        if (person && rosterIncludesPerson(state.roster, person.id)) {
-          state.error = 'Already on this attendance roster.';
-          render();
-          return;
-        }
-        state.error = '';
-        addExistingPerson(person || { id: state.suggestion.people[0].personId, name: state.suggestion.people[0].personalName });
-        return;
-      }
+    if (!state.confirmedDifferent && state.suggestion.status === 'exact' && state.suggestion.people.length === 1) {
+      const person = personById(state.suggestion.people[0].personId);
+      reuseSuggestedPerson(person || { id: state.suggestion.people[0].personId, name: state.suggestion.people[0].personalName });
+      return;
+    }
+    if (!state.confirmedDifferent && state.suggestion.status === 'choose') {
       state.error = 'Choose the existing person.';
       render();
       return;
@@ -875,16 +884,18 @@ export function mountT4tCompletionWorkflow(dialog, options) {
       render();
       return;
     }
-    if (!state.confirmedDifferent && exact.status === 'exact' && exact.selectedPersonId) {
-      const person = personById(exact.selectedPersonId);
-      if (person && rosterIncludesPerson(state.roster, person.id)) {
-        state.error = 'Already on this attendance roster.';
+    if (!state.confirmedDifferent && state.suggestion.status === 'none') {
+      const exact = matchDirectoryPerson(attendeeMatchText(form), state.people, state.aliases);
+      if (exact.status === 'exact' && exact.selectedPersonId) {
+        const person = personById(exact.selectedPersonId);
+        reuseSuggestedPerson(person || { id: exact.selectedPersonId, name: attendancePersonalName(form.firstName, form.lastName) });
+        return;
+      }
+      if (exact.status === 'ambiguous') {
+        state.error = 'Choose the existing person.';
         render();
         return;
       }
-      state.error = '';
-      addExistingPerson(person || { id: exact.selectedPersonId, name: form.firstName });
-      return;
     }
     state.error = '';
     createAndRecordPerson(form);
@@ -898,9 +909,9 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     render();
   }
 
-  function suggestionMeta(person, status) {
+  function suggestionMeta(person) {
     const details = [];
-    if (status !== 'exact' && person.rankTitle) details.push(person.rankTitle);
+    if (person.rankTitle) details.push(person.rankTitle);
     if (person.commandOrganization) details.push(person.commandOrganization);
     if (person.installation) details.push(person.installation);
     return details;
@@ -909,30 +920,36 @@ export function mountT4tCompletionWorkflow(dialog, options) {
   function renderSuggestion() {
     const suggestion = state.suggestion;
     if (!suggestion || suggestion.status === 'empty') return null;
-    const showingMatches = (suggestion.status === 'exact' || suggestion.status === 'possible')
+    const showingMatches = (suggestion.status === 'exact' || suggestion.status === 'choose' || suggestion.status === 'possible')
       && !state.confirmedDifferent
       && suggestion.people.length;
     if (!showingMatches) {
       const note = doc.createElement('p');
       note.className = 't4t-attendee-suggestion-note';
-      note.textContent = 'No existing person found. Adding this attendee will create a new person.';
+      note.textContent = state.confirmedDifferent
+        ? 'This will be added as a new person.'
+        : 'No existing person found. Adding this attendee will create a new person.';
       return note;
     }
     const box = doc.createElement('div');
     box.className = 't4t-attendee-suggestion';
+    if (suggestion.people.length > 1) {
+      const choose = doc.createElement('p');
+      choose.className = 't4t-attendee-suggestion-note';
+      choose.textContent = 'More than one person matches this name. Choose one.';
+      box.appendChild(choose);
+    }
     suggestion.people.forEach((person, index) => {
       const row = doc.createElement('div');
       row.className = 't4t-attendee-suggestion-row';
       const label = doc.createElement('span');
       label.className = 't4t-attendee-suggestion-label';
-      label.textContent = suggestion.status === 'exact' ? 'Existing person found:' : 'Possible match:';
+      label.textContent = suggestion.status === 'possible' ? 'Possible match:' : 'Existing person found:';
       const name = doc.createElement('span');
       name.className = 't4t-attendee-suggestion-name';
-      name.textContent = suggestion.status === 'exact'
-        ? (person.displayName || person.personalName)
-        : (person.personalName || person.displayName);
+      name.textContent = person.displayName || person.personalName;
       row.append(label, name);
-      const details = suggestionMeta(person, suggestion.status);
+      const details = suggestionMeta(person);
       if (details.length) {
         const meta = doc.createElement('span');
         meta.className = 't4t-attendee-suggestion-meta';
@@ -1065,12 +1082,16 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     const entryHeading = doc.createElement('h4');
     entryHeading.textContent = 'Add Attendee';
     entry.appendChild(entryHeading);
+    const nameHint = doc.createElement('p');
+    nameHint.className = 't4t-completion-note';
+    nameHint.textContent = ATTENDANCE_NAME_REQUIRED;
+    entry.appendChild(nameHint);
     const entryGrid = doc.createElement('div');
     entryGrid.className = 't4t-attendee-grid';
     entryGrid.append(
       textField('Rank', 't4t-attendee-rank', state.form.rank, false),
-      textField('First Name', 't4t-attendee-first', state.form.firstName, true),
-      textField('Last Name', 't4t-attendee-last', state.form.lastName, true),
+      textField('First Name', 't4t-attendee-first', state.form.firstName, false),
+      textField('Last Name', 't4t-attendee-last', state.form.lastName, false),
       textField('Command', 't4t-attendee-command', state.form.command, false),
       textField('Installation', 't4t-attendee-installation', state.form.installation, false),
     );
@@ -1090,7 +1111,7 @@ export function mountT4tCompletionWorkflow(dialog, options) {
     if (state.focusFirst) {
       state.focusFirst = false;
       state.restoreFocusId = '';
-      body.querySelector('#t4t-attendee-first')?.focus();
+      body.querySelector('#t4t-attendee-rank')?.focus();
     } else if (state.restoreFocusId) {
       const field = body.querySelector(`#${state.restoreFocusId}`);
       const caret = state.restoreCaret;

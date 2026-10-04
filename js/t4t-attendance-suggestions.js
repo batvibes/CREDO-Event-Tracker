@@ -125,6 +125,53 @@ function comparisonVariants(person, aliases, ranks) {
   return variants;
 }
 
+function structuredNamePresent(person) {
+  return Boolean(clean(person?.first_name ?? person?.firstName) || clean(person?.last_name ?? person?.lastName));
+}
+
+function keyFromParts(firstRaw, lastRaw) {
+  const first = tokens(firstRaw)[0] || '';
+  const last = tokens(lastRaw).at(-1) || '';
+  if (first && last) return { both: { first, last }, first, last, either: '' };
+  if (last) return { both: null, first: '', last, either: '' };
+  if (first) return { both: null, first, last: '', either: '' };
+  return null;
+}
+
+function keyFromLegacyName(name, rankTitle, ranks) {
+  const words = personalWords(name, rankTitle, ranks);
+  if (words.length >= 2) return keyFromParts(words[0], words[words.length - 1]);
+  if (words.length === 1) return { both: null, first: '', last: '', either: normalize(words[0]) };
+  return null;
+}
+
+function identityKeys(person, aliases, ranks) {
+  const keys = [];
+  const add = (key) => {
+    if (key) keys.push(key);
+  };
+  if (structuredNamePresent(person)) {
+    add(keyFromParts(person?.first_name ?? person?.firstName, person?.last_name ?? person?.lastName));
+  } else {
+    add(keyFromLegacyName(person?.name ?? person?.personalName, person?.rank_title ?? person?.rankTitle, ranks));
+  }
+  const personId = person?.id ?? person?.personId;
+  for (const alias of aliases || []) {
+    if ((alias?.personId ?? alias?.person_id) !== personId) continue;
+    add(keyFromLegacyName(alias?.displayName ?? alias?.display_name, person?.rank_title ?? person?.rankTitle, ranks));
+  }
+  return keys;
+}
+
+function keyMatches(key, enteredFirst, enteredLast) {
+  if (enteredFirst && enteredLast) {
+    return Boolean(key.both && key.both.first === enteredFirst && key.both.last === enteredLast);
+  }
+  if (enteredLast) return key.last === enteredLast || key.either === enteredLast;
+  if (enteredFirst) return key.first === enteredFirst || key.either === enteredFirst;
+  return false;
+}
+
 function namesMatch(left, right) {
   return Boolean(left) && left === right;
 }
@@ -164,22 +211,25 @@ export function findAttendancePersonByName({ rankTitle, name } = {}, people, ali
 export function suggestAttendancePeople({ firstName, lastName, rankTitle } = {}, people, aliases) {
   const enteredFirst = tokens(firstName)[0] || '';
   const enteredLast = tokens(lastName).at(-1) || '';
-  if (!enteredFirst || !enteredLast) return { status: 'empty', people: [] };
+  if (!enteredFirst && !enteredLast) return { status: 'empty', people: [] };
 
   const ranks = knownRankTokens(people, rankTitle);
   const directory = [];
   const seen = new Set();
   for (const person of people || []) {
     const suggestion = personSuggestion(person, ranks);
+    const keys = identityKeys(person, aliases, ranks);
     const variants = comparisonVariants(person, aliases, ranks);
-    if (!suggestion.personId || !variants.length || seen.has(suggestion.personId)) continue;
+    if (!suggestion.personId || seen.has(suggestion.personId) || (!keys.length && !variants.length)) continue;
     seen.add(suggestion.personId);
-    directory.push({ ...suggestion, variants });
+    directory.push({ ...suggestion, keys, variants });
   }
 
-  const exact = directory.filter((person) => person.variants.some((variant) => variant.first === enteredFirst && variant.last === enteredLast));
+  const exact = directory.filter((person) => person.keys.some((key) => keyMatches(key, enteredFirst, enteredLast)));
   exact.sort((left, right) => left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'base' }));
-  if (exact.length) return { status: 'exact', people: exact };
+  if (exact.length === 1) return { status: 'exact', people: exact };
+  if (exact.length > 1) return { status: 'choose', people: exact };
+  if (!(enteredFirst && enteredLast)) return { status: 'none', people: [] };
 
   const possible = [];
   for (const person of directory) {
