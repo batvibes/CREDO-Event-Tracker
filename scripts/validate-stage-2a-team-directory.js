@@ -242,7 +242,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(migrationLines.every((line) => line.includes('037_delete_directory_person.sql') || line.includes('038_structured_t4t_attendance_person.sql') || line.includes('039_event_personnel.sql') || line.includes('040_event_personnel_facilitator_backfill.sql') || line.includes('041_event_personnel_poc_backfill.sql')), 'new migrations are personnel deletion, structured T4T attendance identity, the event personnel foundation, the facilitator relationship backfill, or the POC relationship backfill');
+assert(migrationLines.every((line) => line.includes('037_delete_directory_person.sql') || line.includes('038_structured_t4t_attendance_person.sql') || line.includes('039_event_personnel.sql') || line.includes('040_event_personnel_facilitator_backfill.sql') || line.includes('041_event_personnel_poc_backfill.sql') || line.includes('042_event_personnel_credo_staff_backfill.sql') || line.includes('043_event_personnel_reconciliation.sql') || line.includes('044_resolve_event_personnel.sql')), 'new migrations are personnel deletion, structured T4T attendance identity, the event personnel foundation, an event personnel relationship backfill, or event personnel reconciliation');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',
