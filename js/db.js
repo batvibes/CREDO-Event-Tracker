@@ -310,6 +310,61 @@ export async function fetchProfile() {
   return data;
 }
 
+const EVENT_PERSONNEL_COLUMNS = [
+  'id',
+  'event_id',
+  'person_id',
+  'role',
+  'position',
+  'source_text',
+  'contact_email',
+  'rank_title',
+  'first_name',
+  'last_name',
+  'name',
+  'active',
+  'canonical_display_name',
+  'display_name',
+].join(', ');
+
+export function eventPersonnelFromRow(row) {
+  const personId = row?.person_id ?? null;
+  return {
+    id: row?.id ?? null,
+    eventId: row?.event_id ?? null,
+    personId,
+    role: row?.role ?? '',
+    position: Number(row?.position ?? 0),
+    sourceText: row?.source_text ?? '',
+    contactEmail: row?.contact_email ?? null,
+    rankTitle: row?.rank_title ?? null,
+    firstName: row?.first_name ?? null,
+    lastName: row?.last_name ?? null,
+    name: row?.name ?? null,
+    active: row?.active === true ? true : row?.active === false ? false : null,
+    canonicalDisplayName: personId ? (row?.canonical_display_name || null) : null,
+    displayName: row?.display_name || row?.source_text || '',
+  };
+}
+
+export async function fetchEventPersonnel(eventIds) {
+  const ids = [...new Set(
+    (Array.isArray(eventIds) ? eventIds : [eventIds])
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter(Boolean),
+  )];
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('event_personnel_display')
+    .select(EVENT_PERSONNEL_COLUMNS)
+    .in('event_id', ids)
+    .order('event_id', { ascending: true })
+    .order('role', { ascending: true })
+    .order('position', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(eventPersonnelFromRow);
+}
+
 export async function fetchEvents() {
   const { data, error } = await supabase
     .from('events')
