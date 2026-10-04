@@ -242,7 +242,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(migrationLines.every((line) => line.includes('037_delete_directory_person.sql') || line.includes('038_structured_t4t_attendance_person.sql') || line.includes('039_event_personnel.sql') || line.includes('040_event_personnel_facilitator_backfill.sql')), 'new migrations are personnel deletion, structured T4T attendance identity, the event personnel foundation, or the facilitator relationship backfill');
+assert(migrationLines.every((line) => line.includes('037_delete_directory_person.sql') || line.includes('038_structured_t4t_attendance_person.sql') || line.includes('039_event_personnel.sql') || line.includes('040_event_personnel_facilitator_backfill.sql') || line.includes('041_event_personnel_poc_backfill.sql')), 'new migrations are personnel deletion, structured T4T attendance identity, the event personnel foundation, the facilitator relationship backfill, or the POC relationship backfill');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',

@@ -378,7 +378,7 @@ assert(
     .filter((name) => /^0(29|[3-9]\d)_/.test(name))
     .sort()
     .join('|')
-    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql|036_partial_structured_personnel_names.sql|037_delete_directory_person.sql|038_structured_t4t_attendance_person.sql|039_event_personnel.sql|040_event_personnel_facilitator_backfill.sql',
+    === '029_remove_facilitator_t4t_completion_from_event.sql|030_t4t_completion_source_uniqueness.sql|031_t4t_attendance_person_cleanup.sql|032_repair_personnel_reconciliation.sql|033_reuse_or_create_event_person.sql|034_structured_personnel_names.sql|035_structured_personnel_name_writes.sql|036_partial_structured_personnel_names.sql|037_delete_directory_person.sql|038_structured_t4t_attendance_person.sql|039_event_personnel.sql|040_event_personnel_facilitator_backfill.sql|041_event_personnel_poc_backfill.sql',
   'migrations after 028 include the established personnel migrations plus structured personnel names and personnel deletion',
 );
 
