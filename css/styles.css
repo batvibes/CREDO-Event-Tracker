@@ -3992,7 +3992,7 @@ body:has(#new-event-modal[open]) {
 /* Main Events table column rebalance */
 #view-events .events-table {
   table-layout: fixed;
-  min-width: 1180px;
+  min-width: 1420px;
 }
 
 #view-events .events-table .col-delete {
@@ -4350,6 +4350,21 @@ body:has(#new-event-modal[open]) {
 #view-events .events-table th:nth-child(9),
 #view-events .events-table th:nth-child(10) {
   width: 105px;
+}
+
+#view-events .events-table th:nth-child(11),
+#view-events .events-table td.col-registration {
+  width: 220px;
+}
+
+#view-events .events-table td.col-registration {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+#view-events .events-table th:nth-child(11) .sortable-header-label {
+  white-space: normal;
+  line-height: 1.25;
 }
 
 #view-events .events-table td.col-participants {

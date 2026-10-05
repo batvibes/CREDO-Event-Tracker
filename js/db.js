@@ -129,6 +129,7 @@ export function eventFromRow(row) {
     catering: row.catering,
     packout: row.packout,
     roster: row.roster,
+    registration: row.registration || 'Not Started',
     facilitators: row.facilitators || '',
     credoStaff: row.credo_staff || '',
     time: row.time || '',
@@ -221,6 +222,7 @@ function resolveEventDates(event) {
 
 let eventCurriculumSchemaAvailable = false;
 let eventT4tSchemaAvailable = false;
+let eventRegistrationSchemaAvailable = false;
 
 export function eventToRow(event, options = {}) {
   const dates = resolveEventDates(event);
@@ -247,6 +249,9 @@ export function eventToRow(event, options = {}) {
     catering: event.catering,
     packout: event.packout,
     roster: event.roster,
+    ...(options.includeRegistration === false
+      ? {}
+      : { registration: event.registration ?? 'Not Started' }),
     facilitators: event.facilitators ?? '',
     credo_staff: event.credoStaff ?? '',
     time: event.time ?? '',
@@ -268,7 +273,21 @@ function eventWriteRow(event) {
   return eventToRow(event, {
     includeCurriculum: eventCurriculumSchemaAvailable,
     includeT4t: eventT4tSchemaAvailable,
+    includeRegistration: eventRegistrationSchemaAvailable,
   });
+}
+
+export async function loadEventRegistrationSupport() {
+  const probe = await supabase.from('events').select('registration').limit(1);
+  if (probe.error) {
+    if (isMissingEventCurriculumSchemaError(probe.error)) {
+      eventRegistrationSchemaAvailable = false;
+      return false;
+    }
+    throw probe.error;
+  }
+  eventRegistrationSchemaAvailable = true;
+  return true;
 }
 
 export function teamFromRow(row) {

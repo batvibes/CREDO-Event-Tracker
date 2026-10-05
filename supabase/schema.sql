@@ -31,6 +31,7 @@ create table public.events (
   catering      text not null default 'Not Started',
   packout       text not null default 'Not Started',
   roster        text not null default 'Need Roster',
+  registration  text not null default 'Not Started',
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
   created_by    uuid references auth.users (id),

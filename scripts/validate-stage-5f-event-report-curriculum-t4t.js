@@ -183,15 +183,16 @@ assert(app.includes("bindSortableTableHeaders(\n    '#aar-history-view .aar-hist
 
 const migrationNames = fs.readdirSync(path.join(ROOT, 'supabase/migrations'));
 assert(migrationNames.includes('025_facilitator_t4t_product_experience.sql'), 'T4T facilitation experience migration 025 is present');
-assert(!migrationNames.some((name) => /^0(2[6-9]|[3-9]\d)_/.test(name)), 'no migration after 025 was added');
 
 let migration023Diff = '';
 let migration024Diff = '';
+let migration025Diff = '';
 let eventCurriculumDiff = '';
 let aarCurriculumDiff = '';
 try {
   migration023Diff = execFileSync('git', ['diff', '--', 'supabase/migrations/023_facilitator_product_taxonomy_correction.sql'], { cwd: ROOT, encoding: 'utf8' });
   migration024Diff = execFileSync('git', ['diff', '--', 'supabase/migrations/024_event_workshop_t4t.sql'], { cwd: ROOT, encoding: 'utf8' });
+  migration025Diff = execFileSync('git', ['diff', '--', 'supabase/migrations/025_facilitator_t4t_product_experience.sql'], { cwd: ROOT, encoding: 'utf8' });
   eventCurriculumDiff = execFileSync('git', ['diff', '--', 'js/event-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
   aarCurriculumDiff = execFileSync('git', ['diff', '--', 'js/aar-curriculum.js'], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
@@ -199,6 +200,7 @@ try {
 }
 assert(migration023Diff.trim() === '', 'Migration 023 is unchanged');
 assert(migration024Diff.trim() === '', 'Migration 024 is unchanged');
+assert(migration025Diff.trim() === '', 'Migration 025 is unchanged');
 assert(eventCurriculumDiff.trim() === '', 'Event curriculum behavior is unchanged');
 const facilitator = read('js/facilitator-management.js');
 assert(!facilitator.includes('is_t4t') && !facilitator.includes('isT4t'), 'Facilitator Management does not read the Event T4T flag');

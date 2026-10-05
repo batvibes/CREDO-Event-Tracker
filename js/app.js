@@ -27,6 +27,7 @@ import {
   saveFacilitatorQualification,
   fetchLocations,
   loadEventCurriculumSupport,
+  loadEventRegistrationSupport,
   mergeEventCurriculumProductId,
   mergeEventT4t,
   normalizeLoadedEventCurriculum,
@@ -68,6 +69,12 @@ import {
   removeVenue,
   replaceEventPersonnel,
 } from './db.js';
+import {
+  REGISTRATION_STATUS_CLASS,
+  compareRegistrationStatus,
+  cycleRegistrationStatus,
+  normalizeRegistrationStatus,
+} from './registration-status.js';
 import { initEventReferenceFields } from './event-reference-fields.js';
 import {
   attachEventPersonnel,
@@ -332,6 +339,7 @@ const EVENTS_TABLE_SORT_COLUMNS = [
   { key: 'catering', index: 7 },
   { key: 'packout', index: 8 },
   { key: 'roster', index: 9 },
+  { key: 'registration', index: 10 },
 ];
 
 const REPORTS_TABLE_SORT_COLUMNS = [
@@ -594,6 +602,7 @@ function normalizeEvent(event) {
     event.roster =
       event.rosterAcquired === 'Complete' ? 'Complete' : 'Need Roster';
   }
+  event.registration = normalizeRegistrationStatus(event.registration);
   delete event.rosterAcquired;
   return event;
 }
@@ -891,6 +900,7 @@ const EVENTS_SORT_COMPARATORS = {
   catering: (a, b) => compareWorkflowStatus(a.catering, b.catering),
   packout: (a, b) => compareWorkflowStatus(a.packout, b.packout),
   roster: (a, b) => compareTextValues(a.roster, b.roster),
+  registration: (a, b) => compareRegistrationStatus(a.registration, b.registration),
 };
 
 const REPORTS_SORT_COMPARATORS = {
@@ -1570,6 +1580,7 @@ async function exportReportPdf() {
     reservation: event.reservation || 'Not Started',
     catering: event.catering || 'Not Started',
     packout: event.packout || 'Not Started',
+    registration: normalizeRegistrationStatus(event.registration),
   }));
 
   await exportEventSyncReportPdf({ rows, filterSummary: getReportFilterSummary() });
@@ -12872,6 +12883,24 @@ function createRosterPill(eventId, roster) {
   return btn;
 }
 
+function createRegistrationPill(eventId, status) {
+  const current = normalizeRegistrationStatus(status);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `status-pill ${REGISTRATION_STATUS_CLASS[current]}`;
+  btn.innerHTML = `<span class="status-dot"></span>${current}`;
+  btn.disabled = !canEditEvents();
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const event = events.find((entry) => entry.id === eventId);
+    if (!event) return;
+    event.registration = cycleRegistrationStatus(event.registration);
+    await persistEvent(event);
+    render();
+  });
+  return btn;
+}
+
 function createStatusPill(eventId, field, status) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -12897,12 +12926,12 @@ function renderTable() {
   countEl.textContent = `${filtered.length} event${filtered.length === 1 ? '' : 's'}`;
 
   if (events.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">No events yet. Click <strong>+ New Event</strong> to add one.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state">No events yet. Click <strong>+ New Event</strong> to add one.</div></td></tr>`;
     return;
   }
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">No events match this filter.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state">No events match this filter.</div></td></tr>`;
     return;
   }
 
@@ -12954,9 +12983,11 @@ function renderTable() {
       { pill: createStatusPill(event.id, 'catering', event.catering), detail: event.cateringVendor },
       { pill: createStatusPill(event.id, 'packout', event.packout), detail: '' },
       { pill: createRosterPill(event.id, event.roster), detail: '' },
-    ].forEach(({ pill, detail }) => {
+      { pill: createRegistrationPill(event.id, event.registration), detail: '', registration: true },
+    ].forEach(({ pill, detail, registration }) => {
       const statusCell = document.createElement('td');
       statusCell.className = 'col-status';
+      if (registration) statusCell.classList.add('col-registration');
       statusCell.addEventListener('click', (e) => e.stopPropagation());
       statusCell.appendChild(pill);
       if (detail) {
@@ -13486,6 +13517,7 @@ function setupModal() {
       catering: 'Not Started',
       packout: 'Not Started',
       roster: 'Need Roster',
+      registration: 'Not Started',
     };
 
     const saved = await persistNewEvent(newEvent);
@@ -13540,6 +13572,7 @@ async function loadAllData() {
     fetchEvents(),
     fetchAarGlobalTemplates(),
     loadEventCurriculumSupport(),
+    loadEventRegistrationSupport(),
   ]);
 
   if (generation !== dataLoadGeneration) return;

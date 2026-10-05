@@ -25,26 +25,27 @@ function text(value, fallback = 'TBD') {
 }
 
 function statusPalette(status) {
-  if (status === 'Complete') {
+  if (status === 'Complete' || status === 'Registration Live') {
     return { background: COLORS.completeBg, text: COLORS.completeText };
   }
-  if (status === 'In Progress') {
+  if (status === 'In Progress' || status === 'Registration Created') {
     return { background: COLORS.progressBg, text: COLORS.progressText };
   }
   return { background: COLORS.notStartedBg, text: COLORS.notStartedText };
 }
 
 const COLUMNS = [
-  { key: 'dates', label: 'DATE(S)', width: 0.90, align: 'left' },
-  { key: 'eventType', label: 'EVENT TYPE', width: 1.90, align: 'left' },
-  { key: 'command', label: 'COMMAND', width: 1.45, align: 'left' },
-  { key: 'facilitators', label: 'FACILITATOR(S)', width: 1.75, align: 'left' },
-  { key: 'staff', label: 'STAFF', width: 1.65, align: 'left' },
-  { key: 'expectedParticipants', label: 'EXPECTED\nPARTICIPANTS', width: 0.95, align: 'center' },
-  { key: 'location', label: 'LOCATION', width: 1.70, align: 'left' },
+  { key: 'dates', label: 'DATE(S)', width: 0.84, align: 'left' },
+  { key: 'eventType', label: 'EVENT TYPE', width: 1.68, align: 'left' },
+  { key: 'command', label: 'COMMAND', width: 1.30, align: 'left' },
+  { key: 'facilitators', label: 'FACILITATOR(S)', width: 1.55, align: 'left' },
+  { key: 'staff', label: 'STAFF', width: 1.46, align: 'left' },
+  { key: 'expectedParticipants', label: 'EXPECTED\nPARTICIPANTS', width: 0.90, align: 'center' },
+  { key: 'location', label: 'LOCATION', width: 1.56, align: 'left' },
   { key: 'reservation', label: 'RESERVATION', width: 0.95, align: 'center', status: true },
   { key: 'catering', label: 'CATERING', width: 0.90, align: 'center', status: true },
   { key: 'packout', label: 'PACKOUT', width: 0.90, align: 'center', status: true },
+  { key: 'registration', label: 'TRUMBA /\nREGISTRATION', width: 1.11, align: 'center', status: true },
 ];
 
 const TABLE_WIDTH = COLUMNS.reduce((sum, column) => sum + column.width, 0);
@@ -152,7 +153,9 @@ function drawStatusCell(pdf, x, y, width, height, value) {
   pdf.setLineWidth(0.006);
   pdf.rect(x, y, width, height, 'FD');
 
-  const pillWidth = Math.min(width - 0.12, 0.76);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(5.7);
+  const pillWidth = Math.min(width - 0.10, Math.max(0.76, pdf.getTextWidth(status) + 0.12));
   const pillHeight = 0.21;
   const pillX = x + (width - pillWidth) / 2;
   const pillY = y + (height - pillHeight) / 2;
