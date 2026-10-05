@@ -183,7 +183,7 @@ const createStart = db.indexOf('export async function createPerson');
 const createBody = db.slice(createStart, db.indexOf('function referenceNameConflictError'));
 assert(directory.includes('return [...personnel].sort(comparePersonnelDisplayNames)'), 'Points of Contact sorts with the shared personnel comparator');
 assert(directory.includes("if (tab === 'poc') return sortByDisplayName(active)"), 'Points of Contact uses that shared sort');
-assert(picker.includes('.sort(comparePersonnelDisplayNames)'), 'the person menu sorts with the shared personnel comparator');
+assert(picker.includes('.sort(compareEventMenuPeople)'), 'the person menu sorts by last name then first name');
 assert(!directory.includes("person.isPoc === true"), 'Points of Contact does not filter on the POC flag');
 assert(!directory.includes("label: 'POC'"), 'the directory does not render a POC role badge');
 const editor = read('js/team-personnel-editor.js');

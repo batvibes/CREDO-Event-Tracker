@@ -676,6 +676,7 @@ async function reloadEventsAfterCanonicalRename() {
     ]);
     if (people) {
       referencePeople = attachPersonnelAliases(sortReferenceByName(people), aliases);
+      refreshFacilitatorPickerIdentity();
     }
     events = await withEventPersonnel(loadedEvents);
     const editingId = document.getElementById('editing-event-id')?.value;
@@ -4213,25 +4214,53 @@ function updateTeamDirectoryTabs() {
   });
 }
 
+function pickerField(row, keys, fallback) {
+  for (const key of keys) {
+    if (row && Object.hasOwn(row, key)) return row[key];
+  }
+  return fallback;
+}
+
 function syncFacilitatorPickerPeople(sourceRows, relevantRecords, aliases) {
   const relevantIds = new Set((relevantRecords || []).map((person) => person.id));
   const directoryById = new Map((referencePeople || []).map((person) => [person.id, person]));
   const records = (sourceRows || []).map((row) => {
     const existing = directoryById.get(row?.id);
-    if (existing) return existing;
     return {
-      id: row?.id ?? null,
-      name: row?.name ?? '',
-      rankTitle: row?.rank_title ?? row?.rankTitle ?? null,
-      firstName: row?.first_name ?? row?.firstName ?? null,
-      lastName: row?.last_name ?? row?.lastName ?? null,
-      email: row?.email ?? null,
-      phone: row?.phone ?? null,
-      active: row?.active !== false,
+      id: row?.id ?? existing?.id ?? null,
+      name: pickerField(row, ['name'], existing?.name ?? ''),
+      normalizedName: existing?.normalizedName ?? null,
+      rankTitle: pickerField(row, ['rank_title', 'rankTitle'], existing?.rankTitle ?? null),
+      firstName: pickerField(row, ['first_name', 'firstName'], existing?.firstName ?? null),
+      lastName: pickerField(row, ['last_name', 'lastName'], existing?.lastName ?? null),
+      email: pickerField(row, ['email'], existing?.email ?? null),
+      phone: pickerField(row, ['phone'], existing?.phone ?? null),
+      active: pickerField(row, ['active'], existing?.active !== false),
     };
   });
   facilitatorPickerPeople = attachPersonnelAliases(records, aliases)
     .filter((person) => relevantIds.has(person.id));
+  eventReferenceFields?.refreshPeople();
+}
+
+function refreshFacilitatorPickerIdentity() {
+  if (!facilitatorPickerPeople?.length || !referencePeople?.length) return;
+  const byId = new Map(referencePeople.map((person) => [person.id, person]));
+  facilitatorPickerPeople = facilitatorPickerPeople.map((person) => {
+    const current = byId.get(person.id);
+    if (!current) return person;
+    return {
+      ...person,
+      name: current.name,
+      normalizedName: current.normalizedName,
+      rankTitle: current.rankTitle,
+      firstName: current.firstName,
+      lastName: current.lastName,
+      aliases: current.aliases ?? person.aliases,
+      email: current.email ?? person.email,
+      phone: current.phone ?? person.phone,
+    };
+  });
   eventReferenceFields?.refreshPeople();
 }
 

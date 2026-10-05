@@ -1,5 +1,4 @@
 import {
-  comparePersonnelDisplayNames,
   findPersonnelByHistoricalName,
   personnelDisplayName,
   personnelMatchesHistoricalName,
@@ -14,11 +13,45 @@ import { editorTokenFromPersonnel, eventPersonnelLabel } from './event-personnel
 
 export const PERSONNEL_MENU_RESULT_LIMIT = 50;
 
+export function eventMenuPersonLabel(person) {
+  const firstName = cleanReferenceDisplayName(person?.firstName ?? person?.first_name);
+  const lastName = cleanReferenceDisplayName(person?.lastName ?? person?.last_name);
+  if (lastName && firstName) return `${lastName}, ${firstName}`;
+  if (lastName) return lastName;
+  if (firstName) return firstName;
+  return cleanReferenceDisplayName(person?.name);
+}
+
+export function compareEventMenuPeople(left, right) {
+  const byLabel = eventMenuPersonLabel(left).localeCompare(eventMenuPersonLabel(right), 'en', { sensitivity: 'base' });
+  if (byLabel !== 0) return byLabel;
+  const byName = cleanReferenceDisplayName(left?.name).localeCompare(
+    cleanReferenceDisplayName(right?.name),
+    'en',
+    { sensitivity: 'base' },
+  );
+  if (byName !== 0) return byName;
+  return String(left?.id ?? '').localeCompare(String(right?.id ?? ''), 'en');
+}
+
 function personnelMenuHaystack(person) {
   const aliasText = (person?.aliases || [])
     .map((alias) => alias.displayName || alias.display_name || '')
     .join(' ');
-  return `${personnelDisplayName(person?.rankTitle ?? person?.rank_title, person?.name)} ${person?.name || ''} ${aliasText} ${person?.email || ''} ${person?.phone || ''}`.toLowerCase();
+  const rank = person?.rankTitle ?? person?.rank_title ?? '';
+  const firstName = person?.firstName ?? person?.first_name ?? '';
+  const lastName = person?.lastName ?? person?.last_name ?? '';
+  return [
+    eventMenuPersonLabel(person),
+    firstName,
+    lastName,
+    person?.name || '',
+    rank,
+    personnelDisplayName(rank, person?.name),
+    aliasText,
+    person?.email || '',
+    person?.phone || '',
+  ].join(' ').toLowerCase();
 }
 
 export function visiblePersonnelMenuOptions(people, query, options = {}) {
@@ -27,7 +60,7 @@ export function visiblePersonnelMenuOptions(people, query, options = {}) {
   const needle = normalizeReferenceName(query);
   const sorted = [...(people || [])]
     .filter((person) => person && !excluded.has(person.id))
-    .sort(comparePersonnelDisplayNames);
+    .sort(compareEventMenuPeople);
   const matched = needle
     ? sorted.filter((person) => personnelMenuHaystack(person).includes(needle))
     : sorted;
@@ -48,7 +81,7 @@ export function visibleFacilitatorMenuOptions(facilitatorPeople, directoryPeople
       && !seen.has(person.id)
       && personnelMatchesHistoricalName(person, cleaned)
     ))
-    .sort(comparePersonnelDisplayNames);
+    .sort(compareEventMenuPeople);
   return [...exact, ...normal].slice(0, Math.max(0, limit));
 }
 
@@ -1246,7 +1279,7 @@ function mountPeopleMulti(root, options) {
       const secondary = personSecondaryText(person);
       return `
       <button type="button" class="ref-menu-option" data-id="${escapeHtml(person.id)}">
-        <span class="ref-menu-option-name">${escapeHtml(personnelDisplayName(person.rankTitle, person.name))}</span>
+        <span class="ref-menu-option-name">${escapeHtml(eventMenuPersonLabel(person))}</span>
         ${secondary ? `<span class="ref-menu-option-meta">${escapeHtml(secondary)}</span>` : ''}
       </button>`;
     }).join('');
