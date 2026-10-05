@@ -1,7 +1,7 @@
 export const REGISTRATION_STATUSES = ['Not Started', 'Registration Created', 'Registration Live'];
 
 export const REGISTRATION_STATUS_CLASS = {
-  'Not Started': 'not-started',
+  'Not Started': 'registration-neutral',
   'Registration Created': 'in-progress',
   'Registration Live': 'complete',
 };

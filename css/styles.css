@@ -608,6 +608,12 @@ body {
   color: var(--status-not-started-text);
 }
 
+.status-pill.registration-neutral {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
 .status-pill.in-progress {
   background: var(--status-in-progress-bg);
   color: var(--status-in-progress-text);
@@ -3992,7 +3998,7 @@ body:has(#new-event-modal[open]) {
 /* Main Events table column rebalance */
 #view-events .events-table {
   table-layout: fixed;
-  min-width: 1420px;
+  min-width: 1500px;
 }
 
 #view-events .events-table .col-delete {
@@ -4346,25 +4352,48 @@ body:has(#new-event-modal[open]) {
 }
 
 #view-events .events-table th:nth-child(7),
+#view-events .events-table td:nth-child(7),
 #view-events .events-table th:nth-child(8),
+#view-events .events-table td:nth-child(8),
 #view-events .events-table th:nth-child(9),
-#view-events .events-table th:nth-child(10) {
-  width: 105px;
+#view-events .events-table td:nth-child(9),
+#view-events .events-table th:nth-child(10),
+#view-events .events-table td:nth-child(10) {
+  width: 132px;
+  text-align: center;
 }
 
 #view-events .events-table th:nth-child(11),
 #view-events .events-table td.col-registration {
-  width: 220px;
+  width: 184px;
+  text-align: center;
 }
 
+#view-events .events-table th:nth-child(7) .sortable-header-btn,
+#view-events .events-table th:nth-child(8) .sortable-header-btn,
+#view-events .events-table th:nth-child(9) .sortable-header-btn,
+#view-events .events-table th:nth-child(10) .sortable-header-btn,
+#view-events .events-table th:nth-child(11) .sortable-header-btn {
+  justify-content: center;
+  text-align: center;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+#view-events .events-table td:nth-child(7),
+#view-events .events-table td:nth-child(8),
+#view-events .events-table td:nth-child(9),
+#view-events .events-table td:nth-child(10),
 #view-events .events-table td.col-registration {
-  padding-left: 10px;
-  padding-right: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 #view-events .events-table th:nth-child(11) .sortable-header-label {
+  max-width: 118px;
   white-space: normal;
   line-height: 1.25;
+  text-align: center;
 }
 
 #view-events .events-table td.col-participants {
@@ -4918,8 +4947,8 @@ body:has(#new-event-modal[open]) {
 
 #view-events .events-table td.col-status { vertical-align: middle; }
 #view-events .status-detail {
-  margin-top: 5px; max-width: 110px; overflow: hidden; color: var(--text-muted);
-  font-size: 0.6875rem; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap;
+  margin: 5px auto 0; max-width: 110px; overflow: hidden; color: var(--text-muted);
+  font-size: 0.6875rem; line-height: 1.25; text-align: center; text-overflow: ellipsis; white-space: nowrap;
 }
 #view-reports .aar-cost-table th,
 #view-reports .aar-cost-table td {

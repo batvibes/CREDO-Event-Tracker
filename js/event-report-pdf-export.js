@@ -12,6 +12,8 @@ const COLORS = {
   progressText: [181, 95, 0],
   notStartedBg: [253, 226, 228],
   notStartedText: [180, 35, 24],
+  neutralBg: [243, 244, 246],
+  neutralText: [107, 114, 128],
 };
 
 const PAGE = {
@@ -24,12 +26,15 @@ function text(value, fallback = 'TBD') {
   return result || fallback;
 }
 
-function statusPalette(status) {
+function statusPalette(status, columnKey) {
   if (status === 'Complete' || status === 'Registration Live') {
     return { background: COLORS.completeBg, text: COLORS.completeText };
   }
   if (status === 'In Progress' || status === 'Registration Created') {
     return { background: COLORS.progressBg, text: COLORS.progressText };
+  }
+  if (columnKey === 'registration' && status === 'Not Started') {
+    return { background: COLORS.neutralBg, text: COLORS.neutralText };
   }
   return { background: COLORS.notStartedBg, text: COLORS.notStartedText };
 }
@@ -144,9 +149,9 @@ function rowHeight(pdf, row) {
   return Math.max(0.38, 0.14 + maxLines * 0.13);
 }
 
-function drawStatusCell(pdf, x, y, width, height, value) {
+function drawStatusCell(pdf, x, y, width, height, value, columnKey) {
   const status = text(value, 'Not Started');
-  const palette = statusPalette(status);
+  const palette = statusPalette(status, columnKey);
 
   pdf.setFillColor(...COLORS.white);
   pdf.setDrawColor(...COLORS.border);
@@ -175,7 +180,7 @@ function drawRow(pdf, row, y, index) {
 
   for (const column of COLUMNS) {
     if (column.status) {
-      drawStatusCell(pdf, x, y, column.width, height, row[column.key]);
+      drawStatusCell(pdf, x, y, column.width, height, row[column.key], column.key);
       x += column.width;
       continue;
     }

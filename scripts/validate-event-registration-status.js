@@ -37,6 +37,7 @@ function sliceBetween(source, startNeedle, endNeedle) {
 
 const app = read('js/app.js');
 const db = read('js/db.js');
+const css = read('css/styles.css');
 const html = read('index.html');
 const migration = read('supabase/migrations/045_event_registration_status.sql');
 const reportPdf = read('js/event-report-pdf-export.js');
@@ -87,9 +88,18 @@ assert(cycleRegistrationStatus('Registration Created') === 'Registration Live', 
 assert(cycleRegistrationStatus('Registration Live') === 'Not Started', 'Registration Live returns to Not Started');
 assert(cycleRegistrationStatus('Anything else') === 'Not Started', 'an unknown registration value returns to Not Started');
 assert(normalizeRegistrationStatus(undefined) === 'Not Started', 'a missing registration value is Not Started');
-assert(REGISTRATION_STATUS_CLASS['Not Started'] === 'not-started', 'Not Started uses the existing not-started style');
+assert(REGISTRATION_STATUS_CLASS['Not Started'] === 'registration-neutral', 'Registration Not Started uses a neutral style');
 assert(REGISTRATION_STATUS_CLASS['Registration Created'] === 'in-progress', 'Registration Created uses the in-progress style');
 assert(REGISTRATION_STATUS_CLASS['Registration Live'] === 'complete', 'Registration Live uses the complete style');
+assert(app.includes("'Not Started': 'not-started'"), 'Reservation, Catering, and Packout Not Started stay on the red style');
+assert(css.includes('.status-pill.not-started {\n  background: var(--status-not-started-bg);'), 'the shared Not Started pill stays red');
+assert(css.includes('.status-pill.registration-neutral {\n  background: #f3f4f6;\n  color: #6b7280;'), 'Registration Not Started uses the gray roster treatment');
+assert(css.includes('.roster-pill.need-roster {\n  background: #f3f4f6;\n  color: #6b7280;'), 'Roster Need Roster stays gray');
+const operationalColumns = sliceBetween(css, '#view-events .events-table th:nth-child(7),', '#view-events .events-table td.col-participants');
+assert(operationalColumns.includes('width: 132px') && operationalColumns.includes('text-align: center'), 'the four shorter operational columns share a centered width');
+assert(operationalColumns.includes('width: 184px'), 'Trumba / Registration is wider than the other operational columns');
+assert(!operationalColumns.includes('220px'), 'Trumba / Registration is no longer about twice as wide');
+assert(operationalColumns.includes('justify-content: center'), 'operational headers center over their status pills');
 assert(
   compareRegistrationStatus('Registration Live', 'Not Started') > 0
     && compareRegistrationStatus('Not Started', 'Registration Created') < 0
@@ -114,8 +124,12 @@ assert(reportColumns.includes("key: 'reservation'") && reportColumns.includes("k
 assert(reportColumns.includes("label: 'TRUMBA /\\nREGISTRATION'"), 'the PDF header is Trumba / Registration');
 assert(columnWidthSum <= 13.16, `event report columns fit the legal landscape page (${columnWidthSum})`);
 assert(reportExport.includes('registration: normalizeRegistrationStatus(event.registration)'), 'the PDF payload uses the event registration value');
+assert(reportPalette.includes("columnKey === 'registration' && status === 'Not Started'") && reportPalette.includes('COLORS.neutralBg'), 'PDF Registration Not Started uses the neutral gray');
+assert(reportPdf.includes('neutralBg: [243, 244, 246]') && reportPdf.includes('neutralText: [107, 114, 128]'), 'the PDF neutral gray matches the roster gray');
 assert(reportPalette.includes("status === 'Registration Created'") && reportPalette.includes('COLORS.progressBg'), 'Registration Created uses the in-progress PDF color');
 assert(reportPalette.includes("status === 'Registration Live'") && reportPalette.includes('COLORS.completeBg'), 'Registration Live uses the complete PDF color');
+assert(reportPalette.includes('return { background: COLORS.notStartedBg, text: COLORS.notStartedText };'), 'other Not Started PDF statuses stay red');
+assert(reportPdf.includes('statusPalette(status, columnKey)') && reportPdf.includes('column.key'), 'PDF status color follows the column');
 assert(reportTable.includes('<th>Date</th>') && reportTable.includes('<th>Event Type</th>') && reportTable.includes('<th>Command</th>') && reportTable.includes('Expected Participants') && reportTable.includes('<th>Location</th>'), 'the on-screen Event Report columns stay Date, Event Type, Command, Expected Participants, and Location');
 assert(!reportTable.includes('Trumba') && !reportTable.includes('Registration'), 'the on-screen Event Report table does not add registration');
 assert(!reportScreen.includes('registration') && !reportScreen.includes('Trumba'), 'the on-screen report renderer does not print registration');
