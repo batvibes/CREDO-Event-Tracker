@@ -663,8 +663,27 @@ async function syncSavedEventPersonnel(event) {
 
 async function reloadEventsAfterCanonicalRename() {
   try {
-    events = await withEventPersonnel(await fetchEvents());
-    render();
+    const [loadedEvents, people, aliases] = await Promise.all([
+      fetchEvents(),
+      fetchPeople().catch((error) => {
+        console.error(error);
+        return null;
+      }),
+      fetchPersonnelAliases().catch((error) => {
+        console.error(error);
+        return [];
+      }),
+    ]);
+    if (people) {
+      referencePeople = attachPersonnelAliases(sortReferenceByName(people), aliases);
+    }
+    events = await withEventPersonnel(loadedEvents);
+    const editingId = document.getElementById('editing-event-id')?.value;
+    const editorOpen = document.getElementById('new-event-modal')?.open === true;
+    const openEvent = editorOpen ? events.find((event) => event.id === editingId) : null;
+    if (openEvent?.personnel) eventReferenceFields?.refreshLinkedIdentity(openEvent.personnel);
+    if (currentView !== 'team' && currentView !== 'facilitators') render();
+    if (reportResults.length) generateReport();
     refreshOpenAarDocumentIfNeeded();
   } catch (err) {
     console.error(err);
@@ -4366,6 +4385,7 @@ function openPersonnelEditor(person = null, options = {}) {
       await renderFacilitatorManagement();
       if (roleSurface === 'facilitator' && detailOpen && personId) openFacilitatorDetail(personId);
       await renderTeam();
+      await reloadEventsAfterCanonicalRename();
     },
     onArchive: async (id) => {
       await archiveDirectoryPerson(id);
@@ -4384,6 +4404,7 @@ function openPersonnelEditor(person = null, options = {}) {
       document.getElementById('facilitator-detail-modal')?.close();
       await renderFacilitatorManagement();
       await renderTeam();
+      await reloadEventsAfterCanonicalRename();
     },
   });
   modal.showModal();

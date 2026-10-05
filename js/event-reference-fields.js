@@ -10,7 +10,7 @@ import {
   structuredPersonalName,
   validatePersonnelEditor,
 } from './team-personnel-editor.js';
-import { editorTokenFromPersonnel } from './event-personnel-view.js';
+import { editorTokenFromPersonnel, eventPersonnelLabel } from './event-personnel-view.js';
 
 export const PERSONNEL_MENU_RESULT_LIMIT = 50;
 
@@ -1375,6 +1375,22 @@ function mountPeopleMulti(root, options) {
         eventPersonnelId: token.eventPersonnelId || null,
       }));
     },
+    applyLiveIdentity(rows) {
+      const byPerson = new Map(
+        (rows || []).filter((row) => row?.personId).map((row) => [row.personId, row]),
+      );
+      if (!byPerson.size) return;
+      tokens = tokens.map((token) => {
+        const personId = token.personId || token.id;
+        const row = personId ? byPerson.get(personId) : null;
+        if (!row?.personId) return token;
+        const name = eventPersonnelLabel(row);
+        if (!name) return token;
+        return { ...token, personId, name };
+      });
+      renderChips();
+      syncHidden();
+    },
     getValue() {
       syncHidden();
       return hidden.value;
@@ -1690,6 +1706,21 @@ function mountStaffMulti(root, options) {
         eventPersonnelId: token.eventPersonnelId || null,
       }));
     },
+    applyLiveIdentity(rows) {
+      const byPerson = new Map(
+        (rows || []).filter((row) => row?.personId).map((row) => [row.personId, row]),
+      );
+      if (!byPerson.size) return;
+      tokens = tokens.map((token) => {
+        const row = token.personId ? byPerson.get(token.personId) : null;
+        if (!row?.personId) return token;
+        const name = eventPersonnelLabel(row);
+        if (!name) return token;
+        return { ...token, name };
+      });
+      renderChips();
+      syncHidden();
+    },
     getValue() {
       syncHidden();
       return hidden.value;
@@ -1910,6 +1941,11 @@ export function initEventReferenceFields(form, adapters) {
     refreshPeople() {
       facilitators.refresh();
       poc.refresh();
+    },
+    refreshLinkedIdentity(personnel) {
+      facilitators.applyLiveIdentity(personnel?.facilitator);
+      poc.applyLiveIdentity(personnel?.poc);
+      credoStaff.applyLiveIdentity(personnel?.credo_staff);
     },
     refreshNamed() {
       command.refresh();
