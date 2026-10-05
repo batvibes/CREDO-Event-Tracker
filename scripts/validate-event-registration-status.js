@@ -96,8 +96,8 @@ assert(css.includes('.status-pill.not-started {\n  background: var(--status-not-
 assert(css.includes('.status-pill.registration-neutral {\n  background: #f3f4f6;\n  color: #6b7280;'), 'Registration Not Started uses the gray roster treatment');
 assert(css.includes('.roster-pill.need-roster {\n  background: #f3f4f6;\n  color: #6b7280;'), 'Roster Need Roster stays gray');
 const operationalColumns = sliceBetween(css, '#view-events .events-table th:nth-child(7),', '#view-events .events-table td.col-participants');
-assert(operationalColumns.includes('width: 132px') && operationalColumns.includes('text-align: center'), 'the four shorter operational columns share a centered width');
-assert(operationalColumns.includes('width: 184px'), 'Trumba / Registration is wider than the other operational columns');
+assert(operationalColumns.includes('width: 122px') && operationalColumns.includes('text-align: center'), 'the four shorter operational columns share a centered width');
+assert(operationalColumns.includes('width: 170px'), 'Trumba / Registration is wider than the other operational columns');
 assert(!operationalColumns.includes('220px'), 'Trumba / Registration is no longer about twice as wide');
 assert(operationalColumns.includes('justify-content: center'), 'operational headers center over their status pills');
 assert(
