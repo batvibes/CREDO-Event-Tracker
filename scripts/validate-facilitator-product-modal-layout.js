@@ -39,7 +39,7 @@ const open = sliceBetween(app, 'function openFacilitatorProduct', 'function setu
 const setup = sliceBetween(app, 'function setupFacilitatorManagement', 'function switchView');
 
 assert(modalCss.includes('margin: auto'), 'the product modal is centered with margin auto');
-assert(modalCss.includes('width: min(1100px, calc(100vw - 32px))'), 'the product modal keeps its desktop width');
+assert(modalCss.includes('width: min(1180px, calc(100vw - 32px))'), 'the product modal keeps its desktop width');
 assert(modalCss.includes('max-height: calc(100vh - 32px)'), 'the product modal stays inside the viewport');
 assert(modalCss.includes('display: flex') && modalCss.includes('flex-direction: column'), 'the product modal content is a flex column');
 assert(modalCss.includes('flex-shrink: 0'), 'the product modal header and footer stay fixed');

@@ -8093,7 +8093,7 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-product-modal {
-  width: min(1100px, calc(100vw - 32px));
+  width: min(1180px, calc(100vw - 32px));
   margin: auto;
   max-height: calc(100dvh - 32px);
   max-height: calc(100vh - 32px);
