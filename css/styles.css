@@ -7694,6 +7694,8 @@ body:has(#new-event-modal[open]) {
 #facilitator-detail-modal .modal-footer,
 #facilitator-qualification-modal .modal-header,
 #facilitator-qualification-modal .modal-footer,
+#facilitator-product-modal .modal-header,
+#facilitator-product-modal .modal-footer,
 #personnel-editor-modal[data-role-surface="facilitator"] .modal-header,
 #personnel-editor-modal[data-role-surface="facilitator"] .modal-footer {
   padding: 14px 20px;
@@ -7701,6 +7703,7 @@ body:has(#new-event-modal[open]) {
 
 #facilitator-detail-modal .modal-header h3,
 #facilitator-qualification-modal .modal-header h3,
+#facilitator-product-modal .modal-header h3,
 #personnel-editor-modal[data-role-surface="facilitator"] .modal-header h3 {
   font-size: 1.0625rem;
   font-weight: 600;
@@ -7708,6 +7711,7 @@ body:has(#new-event-modal[open]) {
 
 #facilitator-detail-modal .modal-footer .btn,
 #facilitator-qualification-modal .modal-footer .btn,
+#facilitator-product-modal .modal-footer .btn,
 #personnel-editor-modal[data-role-surface="facilitator"] .modal-footer .btn,
 #personnel-editor-modal[data-role-surface="facilitator"] .personnel-editor-inline-actions .btn {
   padding: 6px 12px;
@@ -8090,22 +8094,84 @@ body:has(#new-event-modal[open]) {
 
 #facilitator-product-modal {
   width: min(1100px, calc(100vw - 32px));
+  margin: auto;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 #facilitator-product-modal .facilitator-detail-content {
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  max-height: calc(100dvh - 32px);
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+}
+
+#facilitator-product-modal .modal-header,
+#facilitator-product-modal .modal-footer {
+  flex-shrink: 0;
 }
 
 #facilitator-product-modal .modal-body {
-  max-height: min(70vh, 720px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
+}
+
+#facilitator-product-modal .table-wrap {
+  max-width: 100%;
+  overflow: visible;
 }
 
 #facilitator-product-modal .events-table th {
   white-space: normal;
 }
 
+#facilitator-product-modal .events-table th:first-child,
+#facilitator-product-modal .events-table td:first-child {
+  width: 170px;
+  min-width: 170px;
+}
+
+#facilitator-product-modal .events-table td:first-child,
+#facilitator-product-modal .facilitator-text-button {
+  white-space: nowrap;
+}
+
+#facilitator-product-modal .facilitator-text-button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: #00205b;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#facilitator-product-modal .facilitator-text-button:hover {
+  text-decoration: underline;
+}
+
+#facilitator-product-modal .facilitator-text-button:focus-visible {
+  outline: 2px solid #00205b;
+  outline-offset: 2px;
+}
+
 #facilitator-product-modal .facilitator-detail-note {
   margin: 0;
   color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  #facilitator-product-modal .events-table td:first-child,
+  #facilitator-product-modal .facilitator-text-button {
+    white-space: normal;
+  }
 }
