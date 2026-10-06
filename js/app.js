@@ -52,6 +52,7 @@ import {
   updateAarGlobalTemplates,
   updateCaterer,
   updateCommand,
+  mergeCommand,
   updateCommandHighlightsNotes,
   updateEvent,
   updateEventAarFields,
@@ -220,6 +221,8 @@ import {
   SETTINGS_REFERENCE_CATEGORIES,
   SETTINGS_STAFF_NOTE,
   canRemoveEventTypeFromSettings,
+  commandMergeTargets,
+  countEventsAssignedToCommand,
   eventTypeMatchesSettingsQuery,
   filterReferenceEntriesForSettings,
   isSettingsReferenceCategory,
@@ -5131,6 +5134,105 @@ function renderSettingsReferenceAction(container, editable) {
     actions.append(cancelBtn, confirmBtn);
     panel.append(lead, copy, actions);
     container.appendChild(panel);
+    return;
+  }
+
+  if (form.mode === 'merge') {
+    const title = document.createElement('div');
+    title.className = 'settings-ref-action-title';
+    title.textContent = 'Merge Command';
+
+    const sourceLine = document.createElement('p');
+    sourceLine.className = 'settings-ref-action-lead';
+    sourceLine.textContent = `Merge: ${form.currentName}`;
+
+    const targets = commandMergeTargets(getSettingsReferenceItems('commands'), form.itemId);
+    const selected = targets.find((entry) => entry.id === form.targetId) || null;
+
+    const label = document.createElement('label');
+    label.className = 'settings-ref-action-label';
+    const labelText = document.createElement('span');
+    labelText.textContent = 'Into';
+    const select = document.createElement('select');
+    select.className = 'settings-search-input';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = targets.length ? 'Select a command' : 'No other command is available';
+    select.appendChild(placeholder);
+    targets.forEach((entry) => {
+      const option = document.createElement('option');
+      option.value = entry.id;
+      option.textContent = entry.name;
+      select.appendChild(option);
+    });
+    select.value = selected?.id || '';
+    select.disabled = targets.length === 0;
+    select.addEventListener('change', () => {
+      settingsReferenceForm = { ...form, targetId: select.value };
+      renderSettingsReferenceListsPanel();
+    });
+    label.append(labelText, select);
+
+    panel.append(title, sourceLine, label);
+
+    if (selected) {
+      const warning = document.createElement('p');
+      warning.className = 'settings-help';
+      warning.textContent = `This will move all events currently assigned to ${form.currentName} to ${selected.name} and remove ${form.currentName} from the Commands list.`;
+
+      const previewCount = countEventsAssignedToCommand(events, form.currentName);
+      const preview = document.createElement('p');
+      preview.className = 'settings-help';
+      preview.textContent = previewCount === 1
+        ? '1 event will be reassigned.'
+        : `${previewCount} events will be reassigned.`;
+      panel.append(warning, preview);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'settings-ref-action-buttons';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', cancelForm);
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.textContent = 'Merge Commands';
+    confirmBtn.disabled = !selected;
+    confirmBtn.addEventListener('click', async () => {
+      if (!selected) return;
+      confirmBtn.disabled = true;
+      const sourceId = form.itemId;
+      const targetId = selected.id;
+      clearSettingsReferenceForm();
+      try {
+        const result = await mergeCommand(sourceId, targetId);
+        setSettingsReferenceItems(
+          'commands',
+          removeReferenceItem(getSettingsReferenceItems('commands'), sourceId)
+        );
+        await reloadEventsAfterCanonicalRename();
+        const moved = result.eventsMoved;
+        const movedLabel = moved === 1 ? '1 event was reassigned.' : `${moved} events were reassigned.`;
+        alert(`${result.sourceName} was merged into ${result.targetName}. ${movedLabel}`);
+      } catch (err) {
+        console.error(err);
+        settingsReferenceForm = form;
+        if (currentView === 'settings' && settingsTab === 'reference-lists') {
+          renderSettingsReferenceListsPanel();
+        }
+        alert(err?.message || 'Failed to merge commands.');
+      }
+    });
+
+    actions.append(cancelBtn, confirmBtn);
+    panel.appendChild(actions);
+    container.appendChild(panel);
+    select.focus();
   }
 }
 
@@ -5165,6 +5267,8 @@ function fillSettingsReferenceTableBody(tbody, editable) {
     if (editable) {
       const actionCell = document.createElement('td');
       actionCell.className = 'aar-action-cell settings-ref-actions-col';
+      const actionGroup = document.createElement('div');
+      actionGroup.className = 'settings-ref-row-actions';
 
       const renameBtn = document.createElement('button');
       renameBtn.type = 'button';
@@ -5180,6 +5284,23 @@ function fillSettingsReferenceTableBody(tbody, editable) {
         renderSettingsReferenceListsPanel();
       });
 
+      if (settingsReferenceCategory === 'commands') {
+        const mergeBtn = document.createElement('button');
+        mergeBtn.type = 'button';
+        mergeBtn.className = 'aar-action-btn';
+        mergeBtn.textContent = 'Merge';
+        mergeBtn.addEventListener('click', () => {
+          settingsReferenceForm = {
+            mode: 'merge',
+            itemId: item.id,
+            currentName: item.name,
+            targetId: '',
+          };
+          renderSettingsReferenceListsPanel();
+        });
+        actionGroup.appendChild(mergeBtn);
+      }
+
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'aar-action-btn';
@@ -5193,7 +5314,9 @@ function fillSettingsReferenceTableBody(tbody, editable) {
         renderSettingsReferenceListsPanel();
       });
 
-      actionCell.append(renameBtn, removeBtn);
+      actionGroup.prepend(renameBtn);
+      actionGroup.appendChild(removeBtn);
+      actionCell.appendChild(actionGroup);
       row.appendChild(actionCell);
     }
 

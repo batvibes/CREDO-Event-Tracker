@@ -2927,6 +2927,11 @@ body:has(#new-event-modal[open]) {
   white-space: nowrap;
 }
 
+.settings-ref-row-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
 .team-form {
   display: flex;
   flex-direction: column;

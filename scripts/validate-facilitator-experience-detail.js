@@ -183,7 +183,8 @@ try {
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
-assert(migrationStatus.trim() === '', 'no migration was added');
+const migrationLines = migrationStatus.split('\n').map((line) => line.trim()).filter(Boolean);
+assert(migrationLines.every((line) => line.includes('048_merge_command_reference.sql')), 'facilitator experience detail adds no migration');
 
 if (errors.length) {
   console.error(`validate-facilitator-experience-detail: ${errors.length} failure(s)`);

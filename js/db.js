@@ -1809,6 +1809,69 @@ export async function removeCommand(id) {
   return removeReferenceEntry('command', id);
 }
 
+function mapMergeCommandError(error) {
+  const hint = error?.hint || '';
+  const message = String(error?.message || '');
+
+  if (error?.code === '42501' || /not authorized/i.test(message)) {
+    const denied = new Error('You are not authorized to merge commands.');
+    denied.code = '42501';
+    return denied;
+  }
+
+  if (hint === 'COMMAND_MERGE_PAIR' || /two different commands/i.test(message)) {
+    const invalid = new Error('Choose two different commands.');
+    invalid.code = 'COMMAND_MERGE_PAIR';
+    return invalid;
+  }
+
+  if (hint === 'COMMAND_MERGE_SOURCE_NOT_FOUND' || /source command was not found/i.test(message)) {
+    const missing = new Error('The command to merge was not found.');
+    missing.code = 'COMMAND_MERGE_SOURCE_NOT_FOUND';
+    return missing;
+  }
+
+  if (hint === 'COMMAND_MERGE_TARGET_NOT_FOUND' || /target command was not found/i.test(message)) {
+    const missing = new Error('The command to keep was not found.');
+    missing.code = 'COMMAND_MERGE_TARGET_NOT_FOUND';
+    return missing;
+  }
+
+  if (hint === 'COMMAND_MERGE_TARGET_INACTIVE' || /not an active command/i.test(message)) {
+    const inactive = new Error('The command to keep is no longer available.');
+    inactive.code = 'COMMAND_MERGE_TARGET_INACTIVE';
+    return inactive;
+  }
+
+  const failed = new Error('Failed to merge commands.');
+  failed.code = hint || error?.code || 'COMMAND_MERGE_FAILED';
+  return failed;
+}
+
+export async function mergeCommand(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) {
+    const invalid = new Error('Choose two different commands.');
+    invalid.code = 'COMMAND_MERGE_PAIR';
+    throw invalid;
+  }
+
+  const { data, error } = await supabase.rpc('merge_command_reference', {
+    p_source_command_id: sourceId,
+    p_target_command_id: targetId,
+  });
+
+  if (error) throw mapMergeCommandError(error);
+  if (!data?.source_id || !data?.target_id) throw new Error('COMMAND_MERGE_EMPTY');
+
+  return {
+    sourceId: data.source_id,
+    sourceName: data.source_name,
+    targetId: data.target_id,
+    targetName: data.target_name,
+    eventsMoved: Number(data.events_moved ?? 0),
+  };
+}
+
 export async function removeLocation(id) {
   return removeReferenceEntry('location', id);
 }

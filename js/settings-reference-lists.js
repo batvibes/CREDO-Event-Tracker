@@ -47,3 +47,21 @@ export function canRemoveEventTypeFromSettings(count) {
 export function isSettingsReferenceCategory(key) {
   return SETTINGS_REFERENCE_CATEGORIES.some((category) => category.key === key);
 }
+
+export function normalizeCommandIdentity(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function countEventsAssignedToCommand(events, commandName) {
+  const key = normalizeCommandIdentity(commandName);
+  if (!key) return 0;
+  return (Array.isArray(events) ? events : []).filter(
+    (event) => normalizeCommandIdentity(event?.command) === key
+  ).length;
+}
+
+export function commandMergeTargets(commands, sourceId) {
+  return (Array.isArray(commands) ? commands : []).filter(
+    (command) => command?.id && command.id !== sourceId && command.active !== false
+  );
+}
