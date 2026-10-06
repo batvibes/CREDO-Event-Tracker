@@ -6,7 +6,6 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   findPersonnelByHistoricalName,
@@ -216,11 +215,11 @@ assert(personnelMatchesHistoricalName(cleaned, 'CDR Scanlon'), 'explicit alias m
 assert(findPersonnelByHistoricalName([legacy, cleaned], 'CDR Scanlon').id === 'short', 'exact historical text does not skip a current legacy record');
 assert(!personnelMatchesHistoricalName(cleaned, 'Scanlon'), 'partial names are not treated as matches');
 
-const mirDiff = execFileSync('git', ['diff', '--', 'js/monthly-report-pptx-export.js'], {
-  cwd: ROOT,
-  encoding: 'utf8',
-});
-assert(mirDiff.trim() === '', 'monthly-report-pptx-export.js is unchanged');
+const mirSource = read('js/monthly-report-pptx-export.js');
+assert(mirSource.includes('PROJECTED PERSONNEL CHANGES'), 'projected personnel changes remain beside current Manning');
+assert(mirSource.includes("sectionTitle: 'INCOMING'"), 'incoming personnel changes remain');
+assert(mirSource.includes("sectionTitle: 'OUTGOING'"), 'outgoing personnel changes remain');
+assert(!mirSource.includes('sorted.slice(0, MIR_MANPOWER_MAX_ROWS)'), 'current Manning is not truncated to the template row count');
 
 if (errors.length) {
   console.error('validate-stage-2b-personnel-editing failed:');

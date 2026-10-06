@@ -18,6 +18,7 @@ function formatCount(value) {
   return Number(value ?? 0).toLocaleString('en-US');
 }
 
+/** Built-in template manpower slots. Current CREDO Staff beyond this count are still drawn. */
 export const MIR_MANPOWER_MAX_ROWS = 5;
 
 const MANPOWER_ROW_FIELDS = [
@@ -90,7 +91,7 @@ export function calculateMirSection2Data(teamMembers, personnelChanges = { incom
   const sorted = [...(teamMembers ?? [])].sort(
     (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0),
   );
-  const rows = sorted.slice(0, MIR_MANPOWER_MAX_ROWS).map((member) => ({
+  const rows = sorted.map((member) => ({
     name: member.name ?? '',
     billetOrRole: member.billetOrRole ?? '',
     statusNextAction: member.statusNextAction ?? '',
@@ -270,28 +271,127 @@ function addMirPersonnelChangeTable(shapes, nextIdRef, { x, y, width, sectionTit
   });
 }
 
+const MANPOWER_TEMPLATE_ROW_HEIGHT = 327025;
+const MANPOWER_BAND_TOP = 2209800;
+const MANPOWER_BAND_BOTTOM = 4050000;
+const MANPOWER_OVERFLOW_GAP = 12700;
+const MANPOWER_TEMPLATE_ROWS = [
+  { bg: 'Rectangle 156', checkbox: 'Rectangle 157', row: 1, y: 2209800 },
+  { bg: 'Rectangle 162', checkbox: 'Rectangle 163', row: 2, y: 2552700 },
+  { bg: 'Rectangle 168', checkbox: 'Rectangle 169', row: 3, y: 2895600 },
+  { bg: 'Rectangle 174', checkbox: 'Rectangle 175', row: 4, y: 3238500 },
+  { bg: 'Rectangle 180', checkbox: 'Rectangle 181', row: 5, y: 3581400 },
+];
+
+function placeManpowerRow(slideXml, { bg, checkbox, row, y, height, scale }) {
+  const scaleOf = (value) => Math.round(value * scale);
+  let xml = slideXml;
+  xml = updateShapeBounds(xml, bg, { x: 6388100, y, cx: 3048000, cy: height });
+  xml = updateShapeBounds(xml, checkbox, {
+    x: 6539700,
+    y: y + scaleOf(114300),
+    cx: scaleOf(107950),
+    cy: scaleOf(107950),
+  });
+  xml = updateShapeBounds(xml, `mir_manpower_row${row}_name`, {
+    x: 6743700,
+    y: y + scaleOf(63500),
+    cx: 1016000,
+    cy: scaleOf(215444),
+  });
+  xml = updateShapeBounds(xml, `mir_manpower_row${row}_title`, {
+    x: 6743700,
+    y: y + scaleOf(193040),
+    cx: 1016000,
+    cy: scaleOf(110489),
+  });
+  xml = updateShapeBounds(xml, `mir_manpower_row${row}_role`, {
+    x: 7975600,
+    y: y + scaleOf(78740),
+    cx: 863600,
+    cy: scaleOf(200055),
+  });
+  xml = updateShapeBounds(xml, `mir_manpower_row${row}_date`, {
+    x: 8940800,
+    y: y + scaleOf(78740),
+    cx: 558800,
+    cy: scaleOf(184150),
+  });
+  return xml;
+}
+
+function cloneMirShape(slideXml, sourceName, newName, newId) {
+  const source = extractShape(slideXml, sourceName);
+  const renamed = source.replace(
+    /<p:cNvPr id="\d+" name="[^"]*"/,
+    `<p:cNvPr id="${newId}" name="${escapeXml(newName)}"`,
+  );
+  if (renamed === source) {
+    throw new Error(`MIR shape could not be cloned: ${sourceName}`);
+  }
+  return renamed;
+}
+
+function addOverflowManpowerRows(slideXml, rows) {
+  let xml = slideXml;
+  for (let index = MANPOWER_TEMPLATE_ROWS.length; index < rows.length; index += 1) {
+    const rowNumber = index + 1;
+    const nextId = getNextShapeId(xml);
+    const person = rows[index] ?? {};
+    xml = insertShapes(xml, [
+      cloneMirShape(xml, 'Rectangle 180', `mir_manpower_row${rowNumber}_bg`, nextId),
+      cloneMirShape(xml, 'Rectangle 181', `mir_manpower_row${rowNumber}_checkbox`, nextId + 1),
+      cloneMirShape(xml, 'mir_manpower_row5_name', `mir_manpower_row${rowNumber}_name`, nextId + 2),
+      cloneMirShape(xml, 'mir_manpower_row5_title', `mir_manpower_row${rowNumber}_title`, nextId + 3),
+      cloneMirShape(xml, 'mir_manpower_row5_role', `mir_manpower_row${rowNumber}_role`, nextId + 4),
+      cloneMirShape(xml, 'mir_manpower_row5_date', `mir_manpower_row${rowNumber}_date`, nextId + 5),
+    ]);
+    xml = setShapeText(xml, `mir_manpower_row${rowNumber}_name`, String(person.name ?? ''));
+    xml = setShapeText(xml, `mir_manpower_row${rowNumber}_title`, String(person.billetOrRole ?? ''));
+    xml = setShapeText(xml, `mir_manpower_row${rowNumber}_role`, String(person.statusNextAction ?? ''));
+    xml = setShapeText(xml, `mir_manpower_row${rowNumber}_date`, String(person.prdEaos ?? ''));
+  }
+  return xml;
+}
+
 function applyMirSection2Layout(slideXml, section2Data) {
   let xml = slideXml;
-  const manpowerRows = [
-    { bg: 'Rectangle 156', checkbox: 'Rectangle 157', row: 1, y: 2209800 },
-    { bg: 'Rectangle 162', checkbox: 'Rectangle 163', row: 2, y: 2552700 },
-    { bg: 'Rectangle 168', checkbox: 'Rectangle 169', row: 3, y: 2895600 },
-    { bg: 'Rectangle 174', checkbox: 'Rectangle 175', row: 4, y: 3238500 },
-    { bg: 'Rectangle 180', checkbox: 'Rectangle 181', row: 5, y: 3581400 },
-  ];
 
   xml = updateShapeBounds(xml, 'TextBox 152', { x: 6502400, y: 1911350, cx: 1257300, cy: 171450 });
   xml = updateShapeBounds(xml, 'TextBox 153', { x: 7950200, y: 1911350, cx: 914400, cy: 171450 });
   xml = updateShapeBounds(xml, 'TextBox 154', { x: 8902700, y: 1911350, cx: 635000, cy: 171450 });
   xml = updateShapeBounds(xml, 'Rectangle 155', { x: 6388100, y: 2101850, cx: 3048000, cy: 8255 });
 
-  for (const row of manpowerRows) {
-    xml = updateShapeBounds(xml, row.bg, { x: 6388100, y: row.y, cx: 3048000, cy: 327025 });
-    xml = updateShapeBounds(xml, row.checkbox, { x: 6539700, y: row.y + 114300, cx: 107950, cy: 107950 });
-    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_name`, { x: 6743700, y: row.y + 63500, cx: 1016000, cy: 215444 });
-    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_title`, { x: 6743700, y: row.y + 193040, cx: 1016000, cy: 110489 });
-    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_role`, { x: 7975600, y: row.y + 78740, cx: 863600, cy: 200055 });
-    xml = updateShapeBounds(xml, `mir_manpower_row${row.row}_date`, { x: 8940800, y: row.y + 78740, cx: 558800, cy: 184150 });
+  const rows = section2Data?.rows ?? [];
+  if (rows.length > MIR_MANPOWER_MAX_ROWS) {
+    xml = addOverflowManpowerRows(xml, rows);
+    const rowHeight = Math.floor(
+      (MANPOWER_BAND_BOTTOM - MANPOWER_BAND_TOP - MANPOWER_OVERFLOW_GAP * (rows.length - 1)) / rows.length,
+    );
+    const scale = rowHeight / MANPOWER_TEMPLATE_ROW_HEIGHT;
+    rows.forEach((_row, index) => {
+      const templateRow = MANPOWER_TEMPLATE_ROWS[index];
+      const rowNumber = index + 1;
+      xml = placeManpowerRow(xml, {
+        bg: templateRow?.bg ?? `mir_manpower_row${rowNumber}_bg`,
+        checkbox: templateRow?.checkbox ?? `mir_manpower_row${rowNumber}_checkbox`,
+        row: rowNumber,
+        y: MANPOWER_BAND_TOP + index * (rowHeight + MANPOWER_OVERFLOW_GAP),
+        height: rowHeight,
+        scale,
+      });
+    });
+  } else {
+    for (const row of MANPOWER_TEMPLATE_ROWS) {
+      xml = placeManpowerRow(xml, {
+        bg: row.bg,
+        checkbox: row.checkbox,
+        row: row.row,
+        y: row.y,
+        height: MANPOWER_TEMPLATE_ROW_HEIGHT,
+        scale: 1,
+      });
+    }
   }
 
   const shapes = [];

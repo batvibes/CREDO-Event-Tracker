@@ -227,13 +227,13 @@ assert(!Object.values(TEAM_DIRECTORY_EMPTY_MESSAGES).some((message) => /facilita
 let diffNames = '';
 let status = '';
 try {
-  diffNames = execFileSync('git', ['diff', '--name-only', '--', 'js/monthly-report-pptx-export.js', 'js/mir-pptx-preview.js', 'js/mir-photo-upload.js', 'js/mir-photo-view.js'], { cwd: ROOT, encoding: 'utf8' });
+  diffNames = execFileSync('git', ['diff', '--name-only', '--', 'js/mir-pptx-preview.js', 'js/mir-photo-upload.js', 'js/mir-photo-view.js'], { cwd: ROOT, encoding: 'utf8' });
   status = execFileSync('git', ['status', '--short'], { cwd: ROOT, encoding: 'utf8' });
 } catch (error) {
   errors.push(`git inspection failed: ${error.message}`);
 }
 
-assert(diffNames.trim() === '', 'MIR export files are unchanged');
+assert(diffNames.trim() === '', 'MIR photo and preview files are unchanged');
 let migrationDiff = '';
 try {
   migrationDiff = execFileSync('git', ['diff', '--name-only', '--', 'supabase/migrations'], { cwd: ROOT, encoding: 'utf8' });
@@ -242,7 +242,7 @@ try {
 }
 assert(migrationDiff.trim() === '', 'committed migrations are unchanged');
 const migrationLines = status.split('\n').filter((line) => line.includes('supabase/migrations/'));
-assert(migrationLines.every((line) => line.includes('037_delete_directory_person.sql') || line.includes('038_structured_t4t_attendance_person.sql') || line.includes('039_event_personnel.sql') || line.includes('040_event_personnel_facilitator_backfill.sql') || line.includes('041_event_personnel_poc_backfill.sql') || line.includes('042_event_personnel_credo_staff_backfill.sql') || line.includes('043_event_personnel_reconciliation.sql') || line.includes('044_resolve_event_personnel.sql') || line.includes('045_event_registration_status.sql')), 'new migrations are personnel deletion, structured T4T attendance identity, the event personnel foundation, an event personnel relationship backfill, event personnel reconciliation, or the registration status column');
+assert(migrationLines.every((line) => line.includes('037_delete_directory_person.sql') || line.includes('038_structured_t4t_attendance_person.sql') || line.includes('039_event_personnel.sql') || line.includes('040_event_personnel_facilitator_backfill.sql') || line.includes('041_event_personnel_poc_backfill.sql') || line.includes('042_event_personnel_credo_staff_backfill.sql') || line.includes('043_event_personnel_reconciliation.sql') || line.includes('044_resolve_event_personnel.sql') || line.includes('045_event_registration_status.sql') || line.includes('046_credo_staff_blank_manning_status.sql')), 'new migrations are personnel deletion, structured T4T attendance identity, the event personnel foundation, an event personnel relationship backfill, event personnel reconciliation, the registration status column, or the CREDO Staff blank Manning status repair');
 
 const untrackedPptx = [
   'scripts/spike-output/section_iii_sorm_command_function_navy_governance_training  -  Repaired.pptx',
