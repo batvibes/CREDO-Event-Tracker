@@ -7825,7 +7825,7 @@ body:has(#facilitator-detail-modal[open]) {
 }
 
 #facilitator-detail-modal {
-  width: min(880px, calc(100vw - 32px));
+  width: min(960px, calc(100vw - 32px));
   margin: auto;
   max-height: calc(100vh - 32px);
   max-height: calc(100dvh - 32px);
@@ -8030,11 +8030,44 @@ body:has(#facilitator-detail-modal[open]) {
   font-variant-numeric: tabular-nums;
 }
 
+#facilitator-detail-modal .events-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+#facilitator-detail-modal .events-table th:nth-child(1),
+#facilitator-detail-modal .events-table td.facilitator-experience-product {
+  width: 40%;
+}
+
+#facilitator-detail-modal .events-table th:nth-child(2),
+#facilitator-detail-modal .events-table td:nth-child(2) {
+  width: 15%;
+  text-align: center;
+}
+
+#facilitator-detail-modal .events-table th:nth-child(3),
+#facilitator-detail-modal .events-table td:nth-child(3),
+#facilitator-detail-modal .events-table th:nth-child(4),
+#facilitator-detail-modal .events-table td:nth-child(4) {
+  width: 22.5%;
+}
+
 #facilitator-detail-modal .events-table th:nth-child(n + 2),
 #facilitator-detail-modal .events-table td:nth-child(n + 2) {
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+#facilitator-detail-modal .events-table th:nth-child(2),
+#facilitator-detail-modal .events-table td:nth-child(2) {
+  text-align: center;
+}
+
+#facilitator-detail-modal .events-table th:nth-child(n + 2) {
+  white-space: normal;
 }
 
 #facilitator-detail-modal .table-wrap {
@@ -8054,20 +8087,20 @@ body:has(#facilitator-detail-modal[open]) {
 
 #facilitator-detail-modal .events-table th {
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-#facilitator-detail-modal .events-table td:first-child {
-  white-space: nowrap;
-}
-
-#facilitator-detail-modal .facilitator-experience-product {
+#facilitator-detail-modal .events-table td.facilitator-experience-product {
   white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 #facilitator-detail-modal .facilitator-experience-toggle {
   display: inline-flex;
   align-items: baseline;
+  max-width: 100%;
   gap: 6px;
+  white-space: normal;
   appearance: none;
   border: none;
   background: transparent;
@@ -8090,21 +8123,31 @@ body:has(#facilitator-detail-modal[open]) {
 }
 
 #facilitator-detail-modal .facilitator-experience-marker {
+  flex: 0 0 auto;
   color: var(--text-secondary);
   font-size: 0.75rem;
 }
 
-#facilitator-detail-modal .facilitator-experience-detail td {
+#facilitator-detail-modal .facilitator-experience-toggle span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#facilitator-detail-modal .events-table tr.facilitator-experience-detail td {
+  width: 100%;
   white-space: normal;
   text-align: left;
   background: #f8fafc;
-  padding: 6px 12px 10px 28px;
+  padding: 8px 12px 12px;
 }
 
 #facilitator-detail-modal .facilitator-experience-history {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   max-height: none;
   height: auto;
   overflow: visible;
@@ -8113,19 +8156,29 @@ body:has(#facilitator-detail-modal[open]) {
   line-height: 1.4;
 }
 
+#facilitator-detail-modal .facilitator-experience-columns,
 #facilitator-detail-modal .facilitator-experience-event,
 #facilitator-detail-modal .facilitator-experience-total {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+  max-width: 100%;
   gap: 16px;
   margin: 0;
 }
 
+#facilitator-detail-modal .facilitator-experience-columns {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 #facilitator-detail-modal .facilitator-experience-total {
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: 2px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
   color: #334155;
+  font-weight: 400;
 }
 
 #facilitator-detail-modal .facilitator-experience-coverage {

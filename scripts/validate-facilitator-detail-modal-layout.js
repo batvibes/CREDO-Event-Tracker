@@ -36,7 +36,7 @@ const paint = sliceBetween(app, 'function openFacilitatorDetail', 'function clos
 const tableWrap = sliceBetween(detailCss, '#facilitator-detail-modal .table-wrap {', '#facilitator-detail-modal .events-table th,');
 
 assert(detailCss.includes('margin: auto'), 'the facilitator profile stays centered');
-assert(detailCss.includes('width: min(880px, calc(100vw - 32px))'), 'the facilitator profile keeps its desktop width');
+assert(detailCss.includes('width: min(960px, calc(100vw - 32px))'), 'the facilitator profile stays within a restrained desktop width');
 assert(detailCss.includes('max-height: calc(100dvh - 32px)'), 'the facilitator profile stays inside the viewport');
 assert(detailCss.includes('display: flex') && detailCss.includes('flex-direction: column'), 'the profile content is a flex column');
 assert(detailCss.includes('height: auto'), 'a short profile keeps its natural height');

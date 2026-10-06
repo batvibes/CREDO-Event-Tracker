@@ -149,7 +149,8 @@ assert(person.experience[0].firstRecordedOn === '2024-10-03' && person.experienc
 
 assert(productToggle.includes("button.type = 'button'") && productToggle.includes('aria-expanded') && productToggle.includes('Show ${name} facilitation history'), 'the product control is a collapsed disclosure button');
 assert(detailRow.includes('Hide') && detailRow.includes('aria-expanded') && detailRow.includes('detail.hidden = true'), 'history starts collapsed and can be hidden again');
-assert(detailRow.includes('Attendance ${event.attendanceLabel}') && detailRow.includes('Total Attendance'), 'the expanded history shows each attendance and the total');
+assert(detailRow.includes('cell.colSpan = 4') && detailRow.includes('facilitator-experience-detail-row'), 'expanded history uses one cell across the summary columns');
+assert(detailRow.includes("dateHeading.textContent = 'Date'") && detailRow.includes("attendanceHeading.textContent = 'Attendance'") && detailRow.includes('event.attendanceLabel') && detailRow.includes('Total Attendance'), 'the expanded history shows date, attendance, and the total');
 assert(detailRow.includes('presentation.coverageNote'), 'a mismatch note uses the shared presentation');
 assert(experiencePaint.includes('appendFacilitatorExperienceProductCell') && experiencePaint.includes('appendFacilitatorExperienceDetailRow'), 'both experience tables can disclose their own history');
 assert(profilePaint.includes("wrap.className = 'table-wrap'") && profilePaint.includes("t4tWrap.className = 'table-wrap'"), 'experience tables keep the single profile scroller');
@@ -163,8 +164,15 @@ for (const surface of [capabilitiesExport, populationExport, rosterExport, produ
   assert(surface.includes('exportFacilitatorTablePdf') && !surface.includes('exportFacilitatorProfilePdf'), 'roster, capability, and product exports stay summary reports');
 }
 
+assert(detailCss.includes('width: min(960px, calc(100vw - 32px))'), 'the profile modal stays viewport-safe');
+assert(detailCss.includes('table-layout: fixed'), 'the summary table keeps controlled column widths');
+assert(detailCss.includes('width: 40%') && detailCss.includes('width: 15%') && detailCss.includes('width: 22.5%'), 'summary columns leave room for the date fields');
+assert(detailCss.includes('td.facilitator-experience-product') && detailCss.includes('overflow-wrap: anywhere'), 'long product names wrap inside the product column');
+assert(detailCss.includes('grid-template-columns: minmax(0, 1fr) auto'), 'expanded date and attendance share the full detail width');
 assert(detailCss.includes('overflow-y: auto') && detailCss.includes('#facilitator-detail-modal .modal-body'), 'the profile body remains the vertical scroller');
 assert(detailCss.includes('#facilitator-detail-modal .table-wrap') && detailCss.includes('overflow-y: visible') && detailCss.includes('max-height: none'), 'experience tables are not given a tiny vertical viewport');
+const productModalCss = css.slice(css.indexOf('#facilitator-product-modal {'));
+assert(!productModalCss.includes('td.facilitator-experience-product') && !productModalCss.includes('width: 40%'), 'the profile column layout stays on the facilitator profile');
 const historyCss = sliceBetween(detailCss, '#facilitator-detail-modal .facilitator-experience-history {', '#facilitator-detail-modal .facilitator-experience-event,');
 assert(historyCss.includes('overflow: visible') && historyCss.includes('max-height: none'), 'expanded history stays in the profile body flow');
 assert(!/overflow-y:\s*auto/.test(historyCss) && !/max-height:\s*\d/.test(historyCss), 'expanded history does not become its own scroller');

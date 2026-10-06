@@ -11926,6 +11926,7 @@ async function applyPersonnelDeletion(id) {
 }
 
 function appendFacilitatorExperienceProductCell(row, experienceRow) {
+  row.classList.add('facilitator-experience-summary');
   const cell = document.createElement('td');
   cell.className = 'facilitator-experience-product';
   const name = experienceRow.productName || '—';
@@ -11963,20 +11964,28 @@ function appendFacilitatorExperienceDetailRow(tableBody, experienceRow, toggle, 
   const presentation = facilitationExperiencePresentation(experienceRow);
   const name = experienceRow.productName || 'product';
   const detail = document.createElement('tr');
-  detail.className = 'facilitator-experience-detail';
+  detail.className = 'facilitator-experience-detail facilitator-experience-detail-row';
   detail.hidden = true;
   detail.id = `facilitator-experience-${sectionKey}-${experienceRow.productId}`;
   const cell = document.createElement('td');
   cell.colSpan = 4;
   const history = document.createElement('div');
   history.className = 'facilitator-experience-history';
+  const columns = document.createElement('p');
+  columns.className = 'facilitator-experience-columns';
+  const dateHeading = document.createElement('span');
+  dateHeading.textContent = 'Date';
+  const attendanceHeading = document.createElement('span');
+  attendanceHeading.textContent = 'Attendance';
+  columns.append(dateHeading, attendanceHeading);
+  history.appendChild(columns);
   for (const event of presentation.events) {
     const line = document.createElement('p');
     line.className = 'facilitator-experience-event';
     const date = document.createElement('span');
     date.textContent = event.dateLabel;
     const attendance = document.createElement('span');
-    attendance.textContent = `Attendance ${event.attendanceLabel}`;
+    attendance.textContent = event.attendanceLabel;
     line.append(date, attendance);
     history.appendChild(line);
   }
