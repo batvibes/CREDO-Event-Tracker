@@ -7819,19 +7819,28 @@ body:has(#new-event-modal[open]) {
   width: min(560px, calc(100vw - 32px));
 }
 
+html:has(#facilitator-detail-modal[open]),
+body:has(#facilitator-detail-modal[open]) {
+  overflow: hidden;
+}
+
 #facilitator-detail-modal {
   width: min(880px, calc(100vw - 32px));
   margin: auto;
-  max-height: calc(100dvh - 32px);
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 #facilitator-detail-modal .facilitator-detail-content {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-height: calc(100dvh - 32px);
+  height: auto;
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
 }
 
 #facilitator-detail-modal .modal-header,
@@ -7853,8 +7862,14 @@ body:has(#new-event-modal[open]) {
 #facilitator-detail-modal .modal-body {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+#facilitator-detail-modal .modal-body > * {
+  flex: 0 0 auto;
 }
 
 #facilitator-detail-modal .facilitator-detail-actions {
@@ -8023,7 +8038,13 @@ body:has(#new-event-modal[open]) {
 }
 
 #facilitator-detail-modal .table-wrap {
+  width: 100%;
   max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  flex: 0 0 auto;
+  max-height: none;
+  height: auto;
 }
 
 #facilitator-detail-modal .events-table th,
