@@ -139,6 +139,7 @@ import {
   filterFacilitatorPersonnel,
   filterFacilitatorProductPersonnel,
   filterFacilitatorProgramCapabilities,
+  facilitationExperiencePresentation,
   formatRecordedFacilitationDate,
   sortFacilitatorPersonnel,
   sortFacilitatorProgramCapabilities,
@@ -4300,6 +4301,7 @@ async function loadFacilitatorPickerPeople() {
       sources.products,
       sources.t4tExperience,
       sources.t4tCompletions,
+      sources.facilitationEventDetails,
     );
     syncFacilitatorPickerPeople(sources.people, relevant, aliases);
   } catch (error) {
@@ -11923,6 +11925,90 @@ async function applyPersonnelDeletion(id) {
   await renderTeam();
 }
 
+function appendFacilitatorExperienceProductCell(row, experienceRow) {
+  const cell = document.createElement('td');
+  cell.className = 'facilitator-experience-product';
+  const name = experienceRow.productName || '—';
+  const presentation = facilitationExperiencePresentation(experienceRow);
+  if (!presentation.events.length) {
+    cell.textContent = name;
+    if (presentation.coverageNote) {
+      const note = document.createElement('p');
+      note.className = 'facilitator-experience-coverage';
+      note.textContent = presentation.coverageNote;
+      cell.appendChild(note);
+    }
+    row.appendChild(cell);
+    return null;
+  }
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'facilitator-text-button facilitator-experience-toggle';
+  button.setAttribute('aria-expanded', 'false');
+  button.setAttribute('aria-label', `Show ${name} facilitation history`);
+  const marker = document.createElement('span');
+  marker.className = 'facilitator-experience-marker';
+  marker.setAttribute('aria-hidden', 'true');
+  marker.textContent = '▸';
+  const label = document.createElement('span');
+  label.textContent = name;
+  button.append(marker, label);
+  cell.appendChild(button);
+  row.appendChild(cell);
+  return button;
+}
+
+function appendFacilitatorExperienceDetailRow(tableBody, experienceRow, toggle, sectionKey) {
+  if (!toggle) return;
+  const presentation = facilitationExperiencePresentation(experienceRow);
+  const name = experienceRow.productName || 'product';
+  const detail = document.createElement('tr');
+  detail.className = 'facilitator-experience-detail';
+  detail.hidden = true;
+  detail.id = `facilitator-experience-${sectionKey}-${experienceRow.productId}`;
+  const cell = document.createElement('td');
+  cell.colSpan = 4;
+  const history = document.createElement('div');
+  history.className = 'facilitator-experience-history';
+  for (const event of presentation.events) {
+    const line = document.createElement('p');
+    line.className = 'facilitator-experience-event';
+    const date = document.createElement('span');
+    date.textContent = event.dateLabel;
+    const attendance = document.createElement('span');
+    attendance.textContent = `Attendance ${event.attendanceLabel}`;
+    line.append(date, attendance);
+    history.appendChild(line);
+  }
+  const total = document.createElement('p');
+  total.className = 'facilitator-experience-total';
+  const totalLabel = document.createElement('span');
+  totalLabel.textContent = 'Total Attendance';
+  const totalValue = document.createElement('span');
+  totalValue.textContent = presentation.totalAttendanceLabel;
+  total.append(totalLabel, totalValue);
+  history.appendChild(total);
+  if (presentation.coverageNote) {
+    const note = document.createElement('p');
+    note.className = 'facilitator-experience-coverage';
+    note.textContent = presentation.coverageNote;
+    history.appendChild(note);
+  }
+  cell.appendChild(history);
+  detail.appendChild(cell);
+  toggle.setAttribute('aria-controls', detail.id);
+  const marker = toggle.querySelector('.facilitator-experience-marker');
+  toggle.addEventListener('click', () => {
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    const next = !expanded;
+    toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+    toggle.setAttribute('aria-label', `${next ? 'Hide' : 'Show'} ${name} facilitation history`);
+    if (marker) marker.textContent = next ? '▾' : '▸';
+    detail.hidden = !next;
+  });
+  tableBody.appendChild(detail);
+}
+
 function openFacilitatorDetail(personId) {
   const person = facilitatorPersonnel.find((record) => record.id === personId);
   const modal = document.getElementById('facilitator-detail-modal');
@@ -12072,11 +12158,12 @@ function openFacilitatorDetail(personId) {
     const tableBody = document.createElement('tbody');
     for (const row of person.experience) {
       const line = document.createElement('tr');
-      appendFacilitatorCell(line, row.productName);
+      const toggle = appendFacilitatorExperienceProductCell(line, row);
       appendFacilitatorCell(line, String(row.eventsConducted), 'facilitator-count');
       appendFacilitatorCell(line, formatRecordedFacilitationDate(row.firstRecordedOn));
       appendFacilitatorCell(line, formatRecordedFacilitationDate(row.mostRecentOn));
       tableBody.appendChild(line);
+      appendFacilitatorExperienceDetailRow(tableBody, row, toggle, 'recorded');
     }
     table.appendChild(tableBody);
     wrap.appendChild(table);
@@ -12108,11 +12195,12 @@ function openFacilitatorDetail(personId) {
       const t4tBody = document.createElement('tbody');
       for (const row of t4tRows) {
         const line = document.createElement('tr');
-        appendFacilitatorCell(line, row.productName);
+        const toggle = appendFacilitatorExperienceProductCell(line, row);
         appendFacilitatorCell(line, String(row.eventsConducted), 'facilitator-count');
         appendFacilitatorCell(line, formatRecordedFacilitationDate(row.firstRecordedOn));
         appendFacilitatorCell(line, formatRecordedFacilitationDate(row.mostRecentOn));
         t4tBody.appendChild(line);
+        appendFacilitatorExperienceDetailRow(t4tBody, row, toggle, 't4t');
       }
       t4tTable.appendChild(t4tBody);
       t4tWrap.appendChild(t4tTable);
@@ -12614,6 +12702,7 @@ async function renderFacilitatorManagement() {
       sources.products,
       sources.t4tExperience,
       sources.t4tCompletions,
+      sources.facilitationEventDetails,
     );
     syncFacilitatorPickerPeople(sources.people, facilitatorPersonnel, aliases);
     syncFacilitatorProductFilter();

@@ -1,3 +1,4 @@
+import { buildFacilitationEventDetails } from './facilitator-management.js';
 import { findAttendancePersonByName } from './t4t-attendance-suggestions.js';
 import { ordinaryLivingWorksWorkshops } from './livingworks-workshops.js';
 import { supabase } from './supabase.js';
@@ -1295,6 +1296,29 @@ const TEAM_DIRECTORY_PERSON_COLUMNS = [
 ].join(', ');
 
 // Read-only Facilitator Management sources. Does not write people, qualifications, or Events.
+const FACILITATION_EVENT_RECORD_COLUMNS = 'id, participants, start_date, end_date, date, date_type';
+
+function facilitationEvidenceLane(token) {
+  const eventType = token?.event_type ?? '';
+  if (token?.is_t4t === true || eventType === 'SafeTalk T4T' || eventType === 'ASIST T4T') return 't4t';
+  return 'ordinary';
+}
+
+async function fetchFacilitationEventRecords(eventIds) {
+  const ids = [...new Set((eventIds ?? []).filter(Boolean))];
+  const rows = [];
+  for (let index = 0; index < ids.length; index += 80) {
+    const chunk = ids.slice(index, index + 80);
+    const { data, error } = await supabase
+      .from('events')
+      .select(FACILITATION_EVENT_RECORD_COLUMNS)
+      .in('id', chunk);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+  }
+  return rows;
+}
+
 const FACILITATOR_MANAGEMENT_PERSON_COLUMNS = [
   'id',
   'name',
@@ -1351,11 +1375,21 @@ export async function fetchFacilitatorManagementSources() {
   if (t4tExperience.error && !isMissingEventCurriculumSchemaError(t4tExperience.error)) throw t4tExperience.error;
   if (completions.error && !isMissingEventCurriculumSchemaError(completions.error)) throw completions.error;
   if (workshopTokens.error && !isMissingEventCurriculumSchemaError(workshopTokens.error)) throw workshopTokens.error;
+  let facilitationEventDetails = [];
+  if (!workshopTokens.error) {
+    const tokens = (workshopTokens.data ?? []).map((token) => ({
+      ...token,
+      lane: facilitationEvidenceLane(token),
+    }));
+    const eventRecords = await fetchFacilitationEventRecords(tokens.map((token) => token.event_id));
+    facilitationEventDetails = buildFacilitationEventDetails(tokens, eventRecords);
+  }
   return {
     ...sources,
     t4tExperience: t4tExperience.error ? [] : (t4tExperience.data ?? []),
     t4tExperienceAvailable: !t4tExperience.error,
     t4tCompletions: completions.error ? [] : (completions.data ?? []),
+    facilitationEventDetails,
     livingWorksWorkshops: workshopTokens.error
       ? null
       : ordinaryLivingWorksWorkshops(workshopTokens.data, products.data),

@@ -6,6 +6,7 @@ import {
   FACILITATOR_QUALIFICATIONS_HEADING,
   FACILITATOR_T4T_COMPLETION_HEADING,
   FACILITATOR_T4T_EXPERIENCE_HEADING,
+  facilitationExperiencePresentation,
   facilitatorQualificationDisplayFields,
   facilitatorT4tCompletionDisplayFields,
   formatRecordedFacilitationDate,
@@ -323,6 +324,76 @@ function qualificationAlertLines(person, qualification, workshops) {
   return [followUp.warningLine, followUp.previousCycleLine, followUp.activityLine].filter(Boolean);
 }
 
+function drawFacilitationDetailHeader(pdf, state) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(7);
+  pdf.setTextColor(...COLORS.muted);
+  pdf.text('Date', PAGE.marginX + 0.18, state.y);
+  pdf.text('Attendance', pageWidth - PAGE.marginX, state.y, { align: 'right' });
+  state.y += 0.14;
+}
+
+function continueFacilitationDetail(pdf, state, banner) {
+  pdf.addPage();
+  state.y = drawBanner(pdf, { ...banner, compact: true });
+  drawFacilitationDetailHeader(pdf, state);
+}
+
+function drawFacilitationEventHistory(pdf, state, banner, row) {
+  const presentation = facilitationExperiencePresentation(row);
+  if (!presentation.events.length && !presentation.coverageNote) return;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  if (presentation.events.length) {
+    ensureSpace(pdf, state, banner, 0.34);
+    drawFacilitationDetailHeader(pdf, state);
+    for (const event of presentation.events) {
+      if (state.y + 0.16 > pageLimit(pdf)) continueFacilitationDetail(pdf, state, banner);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(...COLORS.secondary);
+      pdf.text(pdfSafeText(event.dateLabel, '—'), PAGE.marginX + 0.18, state.y);
+      pdf.text(pdfSafeText(event.attendanceLabel, '—'), pageWidth - PAGE.marginX, state.y, { align: 'right' });
+      state.y += 0.14;
+    }
+    if (state.y + 0.18 > pageLimit(pdf)) continueFacilitationDetail(pdf, state, banner);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(...COLORS.secondary);
+    pdf.text(
+      pdfSafeText(`Total Attendance: ${presentation.totalAttendanceLabel}`),
+      pageWidth - PAGE.marginX,
+      state.y,
+      { align: 'right' },
+    );
+    state.y += 0.16;
+  }
+  if (presentation.coverageNote) {
+    const lines = pdf.splitTextToSize(pdfSafeText(presentation.coverageNote), contentWidth(pdf) - 0.18);
+    for (const line of lines) {
+      ensureSpace(pdf, state, banner, 0.14);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7);
+      pdf.setTextColor(...COLORS.muted);
+      pdf.text(line, PAGE.marginX + 0.18, state.y);
+      state.y += 0.13;
+    }
+  }
+  state.y += 0.06;
+}
+
+function drawProfileExperience(pdf, state, banner, columns, rows) {
+  for (const row of rows) {
+    drawProfileTable(pdf, state, banner, columns, [{
+      product: row.productName,
+      events: String(row.eventsConducted),
+      first: formatRecordedFacilitationDate(row.firstRecordedOn),
+      recent: formatRecordedFacilitationDate(row.mostRecentOn),
+    }]);
+    drawFacilitationEventHistory(pdf, state, banner, row);
+  }
+}
+
 function drawProfileTable(pdf, state, banner, columns, rows) {
   const laidColumns = layoutColumns(pdf, columns);
   const header = headerHeight(pdf, laidColumns);
@@ -410,17 +481,12 @@ export async function exportFacilitatorProfilePdf({
   if (!experience.length) {
     drawParagraph(pdf, state, banner, FACILITATOR_EMPTY_EXPERIENCE);
   } else {
-    drawProfileTable(pdf, state, banner, [
+    drawProfileExperience(pdf, state, banner, [
       { key: 'product', label: 'Product', weight: 2.2 },
       { key: 'events', label: 'Events Conducted', weight: 1.1, align: 'right' },
       { key: 'first', label: 'First Recorded Facilitation', weight: 1.35, align: 'right' },
       { key: 'recent', label: 'Most Recent Facilitation', weight: 1.45, align: 'right' },
-    ], experience.map((row) => ({
-      product: row.productName,
-      events: String(row.eventsConducted),
-      first: formatRecordedFacilitationDate(row.firstRecordedOn),
-      recent: formatRecordedFacilitationDate(row.mostRecentOn),
-    })));
+    ], experience);
   }
 
   if (t4tExperienceAvailable) {
@@ -429,17 +495,12 @@ export async function exportFacilitatorProfilePdf({
     if (!t4tRows.length) {
       drawParagraph(pdf, state, banner, FACILITATOR_EMPTY_T4T_EXPERIENCE);
     } else {
-      drawProfileTable(pdf, state, banner, [
+      drawProfileExperience(pdf, state, banner, [
         { key: 'product', label: 'Product', weight: 2.2 },
         { key: 'events', label: 'T4Ts Conducted', weight: 1.1, align: 'right' },
         { key: 'first', label: 'First Recorded T4T Facilitation', weight: 1.5, align: 'right' },
         { key: 'recent', label: 'Most Recent T4T Facilitation', weight: 1.55, align: 'right' },
-      ], t4tRows.map((row) => ({
-        product: row.productName,
-        events: String(row.eventsConducted),
-        first: formatRecordedFacilitationDate(row.firstRecordedOn),
-        recent: formatRecordedFacilitationDate(row.mostRecentOn),
-      })));
+      ], t4tRows);
     }
   }
 

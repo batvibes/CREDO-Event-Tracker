@@ -98,7 +98,8 @@ assert(model.includes(FACILITATOR_T4T_EXPERIENCE_HEADING) && model.includes(FACI
 assert(detail.includes('FACILITATOR_T4T_EXPERIENCE_HEADING'), 'the profile contains T4T Facilitation Experience');
 assert(t4tSection.includes('FACILITATOR_EMPTY_T4T_EXPERIENCE'), 'the T4T section has its empty state');
 assert(t4tSection.includes('T4Ts Conducted') && t4tSection.includes('First Recorded T4T Facilitation') && t4tSection.includes('Most Recent T4T Facilitation'), 'the T4T section uses the T4T column labels');
-assert(t4tSection.includes('row.productName') && t4tSection.includes('person.t4tExperience'), 'the T4T section shows only loaded evidence rows');
+const experienceProductCell = app.slice(app.indexOf('function appendFacilitatorExperienceProductCell'), app.indexOf('function appendFacilitatorExperienceDetailRow'));
+assert(t4tSection.includes('person.t4tExperience') && t4tSection.includes('appendFacilitatorExperienceProductCell(line, row)') && experienceProductCell.includes('experienceRow.productName'), 'the T4T section shows only loaded evidence rows');
 assert(!t4tSection.includes('createElement(\'button\')'), 'the T4T section is read-only');
 assert(detail.includes('if (facilitatorT4tExperienceAvailable)'), 'the T4T section renders from the T4T aggregate');
 assert(fetchSources.includes(".from('facilitator_t4t_product_experience')"), 'T4T experience is read from its derived view');

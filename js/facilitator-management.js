@@ -14,8 +14,11 @@
  * latest date across both aggregates. Dedicated SafeTalk T4T and ASIST T4T
  * deliveries count as ordinary safeTALK and ASIST in that summary. Profile lists
  * stay separate. Overview and Program Capabilities keep each aggregate's own
- * product. An Event belongs to only one aggregate. Facilitator populations are
- * derived from that evidence and are not stored. CREDO-Used is ordinary or T4T
+ * product. An Event belongs to only one aggregate. Event-level history is
+ * attached beside each aggregate from already classified facilitator tokens
+ * and the matching event's participants. It does not change aggregate counts.
+ * Facilitator populations are derived from that evidence and are not stored.
+ * CREDO-Used is ordinary or T4T
  * facilitation. The trained pool is a T4T completion or qualification with no
  * CREDO facilitation. All Records is the existing roster. This module does not
  * write people, qualifications, roles, or Events.
@@ -423,10 +426,149 @@ function productCatalog(products) {
   return byId;
 }
 
-export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products, t4tRows = [], completionRows = []) {
+export function normalizeFacilitationAttendance(value) {
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return { attendance: value, attendanceRecorded: true };
+  }
+  if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    return { attendance: Number(value.trim()), attendanceRecorded: true };
+  }
+  return { attendance: null, attendanceRecorded: false };
+}
+
+export function facilitationAttendanceTotal(events) {
+  const known = (events ?? []).filter((event) => (
+    event?.attendanceRecorded === true && Number.isFinite(event.attendance)
+  ));
+  if (!known.length) return null;
+  return known.reduce((sum, event) => sum + event.attendance, 0);
+}
+
+export function formatFacilitationAttendance(event) {
+  if (event?.attendanceRecorded !== true || !Number.isFinite(event.attendance)) return '—';
+  return String(event.attendance);
+}
+
+export function formatFacilitationAttendanceTotal(total) {
+  return Number.isFinite(total) ? String(total) : '—';
+}
+
+export function formatFacilitationEventDate(detail) {
+  const start = asDate(detail?.startOn);
+  const end = asDate(detail?.endOn);
+  if (detail?.dateType === 'range' && start && end && start !== end) {
+    return `${formatRecordedFacilitationDate(start)} – ${formatRecordedFacilitationDate(end)}`;
+  }
+  return formatRecordedFacilitationDate(detail?.recordedOn);
+}
+
+export function facilitationDetailCoverageNote(eventsConducted, detailCount) {
+  const conducted = Number(eventsConducted);
+  const available = Number(detailCount);
+  if (!Number.isInteger(conducted) || !Number.isInteger(available) || available >= conducted) return '';
+  return `Event-level detail available for ${available} of ${conducted} recorded facilitations.`;
+}
+
+export function buildFacilitationEventDetails(tokenRows, eventRows, today = localCalendarToday()) {
+  const eventsById = new Map();
+  for (const event of eventRows ?? []) {
+    const eventId = event?.id ?? event?.eventId;
+    if (!eventId || eventsById.has(eventId)) continue;
+    eventsById.set(eventId, event);
+  }
+  const seen = new Set();
+  const details = [];
+  for (const token of tokenRows ?? []) {
+    const personId = token?.person_id ?? token?.personId ?? null;
+    const productId = token?.product_id ?? token?.productId ?? null;
+    const eventId = token?.event_id ?? token?.eventId ?? null;
+    const recordedOn = asDate(token?.recorded_on ?? token?.recordedOn);
+    const lane = token?.lane === 't4t' || token?.lane === 'ordinary' ? token.lane : null;
+    if (!personId || !productId || !eventId || !recordedOn || !lane || recordedOn > today) continue;
+    const key = `${lane}|${personId}|${productId}|${eventId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const event = eventsById.get(eventId);
+    const attendance = normalizeFacilitationAttendance(event?.participants);
+    details.push({
+      eventId,
+      personId,
+      productId,
+      lane,
+      recordedOn,
+      dateType: event?.date_type === 'range' || event?.dateType === 'range' ? 'range' : 'single',
+      startOn: asDate(event?.start_date ?? event?.startDate),
+      endOn: asDate(event?.end_date ?? event?.endDate),
+      attendance: attendance.attendance,
+      attendanceRecorded: attendance.attendanceRecorded,
+    });
+  }
+  details.sort((left, right) => (
+    compareText(left.recordedOn, right.recordedOn)
+    || compareText(String(left.eventId), String(right.eventId))
+  ));
+  return details;
+}
+
+export function facilitationExperiencePresentation(row) {
+  const events = [...(row?.facilitationEvents ?? [])].sort((left, right) => (
+    compareText(left?.recordedOn, right?.recordedOn)
+    || compareText(String(left?.eventId ?? ''), String(right?.eventId ?? ''))
+  ));
+  const totalAttendance = facilitationAttendanceTotal(events);
+  return {
+    events: events.map((event) => ({
+      eventId: event.eventId,
+      personId: event.personId,
+      productId: event.productId,
+      recordedOn: event.recordedOn,
+      attendance: event.attendance,
+      attendanceRecorded: event.attendanceRecorded === true,
+      dateLabel: formatFacilitationEventDate(event),
+      attendanceLabel: formatFacilitationAttendance(event),
+    })),
+    totalAttendance,
+    totalAttendanceLabel: formatFacilitationAttendanceTotal(totalAttendance),
+    coverageNote: facilitationDetailCoverageNote(row?.eventsConducted, events.length),
+  };
+}
+
+function indexFacilitationDetails(details) {
+  const grouped = new Map();
+  for (const detail of details ?? []) {
+    if (!detail?.personId || !detail?.productId || !detail?.eventId) continue;
+    if (detail.lane !== 'ordinary' && detail.lane !== 't4t') continue;
+    const key = `${detail.lane}|${detail.personId}|${detail.productId}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    const list = grouped.get(key);
+    if (list.some((event) => event.eventId === detail.eventId)) continue;
+    list.push(detail);
+  }
+  for (const list of grouped.values()) {
+    list.sort((left, right) => (
+      compareText(left.recordedOn, right.recordedOn)
+      || compareText(String(left.eventId), String(right.eventId))
+    ));
+  }
+  return grouped;
+}
+
+function attachFacilitationEvents(rows, personId, lane, detailsByKey) {
+  return rows.map((row) => {
+    const facilitationEvents = detailsByKey.get(`${lane}|${personId}|${row.productId}`) ?? [];
+    return {
+      ...row,
+      facilitationEvents,
+      totalAttendance: facilitationAttendanceTotal(facilitationEvents),
+    };
+  });
+}
+
+export function summarizeFacilitatorPersonnel(people, experienceRows, qualificationRows, products, t4tRows = [], completionRows = [], facilitationDetails = []) {
   const catalog = productCatalog(products);
   const experienceByPerson = collectExperience(experienceRows, catalog);
   const t4tByPerson = collectExperience(t4tRows, catalog);
+  const facilitationByKey = indexFacilitationDetails(facilitationDetails);
 
   const qualificationsByPerson = new Map();
   for (const row of qualificationRows ?? []) {
@@ -459,8 +601,18 @@ export function summarizeFacilitatorPersonnel(people, experienceRows, qualificat
   for (const source of people ?? []) {
     const person = mapPerson(source);
     if (!person.id || seen.has(person.id)) continue;
-    const experience = experienceList(experienceByPerson, person.id);
-    const t4tExperience = experienceList(t4tByPerson, person.id);
+    const experience = attachFacilitationEvents(
+      experienceList(experienceByPerson, person.id),
+      person.id,
+      'ordinary',
+      facilitationByKey,
+    );
+    const t4tExperience = attachFacilitationEvents(
+      experienceList(t4tByPerson, person.id),
+      person.id,
+      't4t',
+      facilitationByKey,
+    );
     const qualificationProducts = [...(qualificationsByPerson.get(person.id)?.values() ?? [])]
       .sort((left, right) => left.sortOrder - right.sortOrder || compareText(left.productName, right.productName));
     const t4tCompletions = facilitatorT4tCompletionHistory(
