@@ -175,6 +175,11 @@ import { applyMirPhotoSlots, clearMirPhotoSlots, getMirPhotosForSave, setupMirPh
 import { buildAarPdfFilename, exportAarReportElementToPdf } from './aar-pdf-export.js';
 import { exportEventSyncReportPdf } from './event-report-pdf-export.js';
 import {
+  buildFacilitatorPdfFilename,
+  exportFacilitatorProfilePdf,
+  exportFacilitatorTablePdf,
+} from './facilitator-report-pdf-export.js';
+import {
   createReportsSearchSortState,
   formatReportsSearchMatchLabel,
   normalizeReportsSearchQuery,
@@ -11547,13 +11552,18 @@ function facilitatorFilterState() {
 
 function paintFacilitatorPopulationCards() {
   const counts = countFacilitatorPopulations(facilitatorPersonnel);
-  document.querySelectorAll('[data-facilitator-population]').forEach((card) => {
-    const population = card.dataset.facilitatorPopulation;
+  document.querySelectorAll('.facilitator-population-card').forEach((card) => {
+    const control = card.querySelector('[data-facilitator-population]');
+    const population = control?.dataset.facilitatorPopulation;
     const selected = population === facilitatorPopulation;
     card.classList.toggle('is-selected', selected);
-    card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    control?.setAttribute('aria-pressed', selected ? 'true' : 'false');
     const count = card.querySelector('[data-facilitator-population-count]');
     if (count) count.textContent = String(counts[population] ?? 0);
+    const exportButton = card.querySelector('[data-facilitator-population-export]');
+    if (exportButton && exportButton.dataset.exporting !== 'true') {
+      exportButton.disabled = (counts[population] ?? 0) === 0;
+    }
   });
 }
 
@@ -11685,6 +11695,8 @@ function paintFacilitatorProgramCapabilities() {
   const body = document.getElementById('facilitator-capabilities-body');
   if (!body) return;
   const visible = visibleFacilitatorCapabilities();
+  const exportButton = document.getElementById('facilitator-capabilities-export-btn');
+  if (exportButton && exportButton.dataset.exporting !== 'true') exportButton.disabled = visible.length === 0;
   if (!visible.length) {
     appendFacilitatorEmptyRow(body, 5, FACILITATOR_EMPTY_PRODUCTS);
     return;
@@ -11720,6 +11732,8 @@ function paintFacilitatorPersonnel() {
   paintFacilitatorPopulationCards();
   body.replaceChildren();
   const visible = visibleFacilitatorPersonnel();
+  const exportButton = document.getElementById('facilitator-personnel-export-btn');
+  if (exportButton && exportButton.dataset.exporting !== 'true') exportButton.disabled = visible.length === 0;
   const facilitatorColumns = document.querySelectorAll('#facilitator-personnel-table thead th').length || 7;
   if (!visible.length) {
     const row = document.createElement('tr');
@@ -11847,6 +11861,7 @@ function openFacilitatorDetail(personId) {
 
   if (facilitatorLifecyclePersonId !== personId) resetFacilitatorLifecycle(personId);
   title.textContent = person.displayName || 'Facilitator';
+  modal.dataset.facilitatorPersonId = person.id;
   body.replaceChildren();
   const header = modal.querySelector('.modal-header');
   header?.querySelector('.facilitator-detail-actions')?.remove();
@@ -12589,17 +12604,11 @@ function closeFacilitatorProductDetail() {
 function paintFacilitatorProductDetail() {
   const title = document.getElementById('facilitator-product-title');
   const host = document.getElementById('facilitator-product-personnel');
-  const product = buildFacilitatorProgramCapabilities(facilitatorPersonnel, facilitatorProducts)
-    .find((row) => row.productId === facilitatorSelectedProductId);
+  const { product, people } = currentFacilitatorProductReport();
   if (!title || !host || !product) return;
   title.textContent = product.productName;
-  const people = filterFacilitatorProductPersonnel(
-    facilitatorProductPersonnel(facilitatorPersonnel, product.productId),
-    {
-      query: document.getElementById('facilitator-product-person-search')?.value ?? '',
-      active: document.getElementById('facilitator-product-active-filter')?.value ?? 'all',
-    },
-  );
+  const exportButton = document.getElementById('facilitator-product-export-btn');
+  if (exportButton && exportButton.dataset.exporting !== 'true') exportButton.disabled = people.length === 0;
   host.replaceChildren();
   if (!product.personnelCount) {
     const note = document.createElement('p');
@@ -12674,6 +12683,232 @@ function openFacilitatorProduct(productId) {
   if (modal?.open) setFacilitatorProductPageScrollLocked(true);
 }
 
+const FACILITATOR_CAPABILITY_PDF_COLUMNS = [
+  { key: 'product', label: 'Product', weight: 2.6 },
+  { key: 'personnel', label: 'Personnel', weight: 0.9, align: 'right' },
+  { key: 'instances', label: 'Recorded Instances', weight: 1.2, align: 'right' },
+  { key: 'recent', label: 'Most Recent Facilitation', weight: 1.5, align: 'right' },
+  { key: 'qualifications', label: 'Qualification Records', weight: 1.3, align: 'right' },
+];
+
+const FACILITATOR_ROSTER_PDF_COLUMNS = [
+  { key: 'rank', label: 'Rank / Title', weight: 1.05 },
+  { key: 'name', label: 'Name', weight: 1.45 },
+  { key: 'command', label: 'Command / Organization', weight: 2.15 },
+  { key: 'installation', label: 'Installation', weight: 1.45 },
+  { key: 'products', label: 'Products', weight: 0.75, align: 'right' },
+  { key: 'events', label: 'Events Conducted', weight: 0.95, align: 'right' },
+  { key: 'recent', label: 'Most Recent', weight: 1.05, align: 'right' },
+];
+
+const FACILITATOR_PRODUCT_PDF_COLUMNS = [
+  { key: 'name', label: 'Name', weight: 1.7 },
+  { key: 'command', label: 'Command / Organization', weight: 1.55 },
+  { key: 'installation', label: 'Installation', weight: 1.25 },
+  { key: 'active', label: 'Active', weight: 0.7 },
+  { key: 'experience', label: 'Recorded Experience', weight: 0.95 },
+  { key: 'instances', label: 'Recorded Instances', weight: 0.85, align: 'right' },
+  { key: 'first', label: 'First Recorded Facilitation', weight: 1.15, align: 'right' },
+  { key: 'recent', label: 'Most Recent Facilitation', weight: 1.2, align: 'right' },
+  { key: 'qualification', label: 'Qualification Record', weight: 1 },
+];
+
+function facilitatorPresenceLabel(value) {
+  if (value === 'with') return 'With recorded personnel';
+  if (value === 'without') return 'No recorded personnel';
+  return 'All products';
+}
+
+function facilitatorActiveLabel(value) {
+  if (value === 'active') return 'Active';
+  if (value === 'inactive') return 'Inactive';
+  return '';
+}
+
+function facilitatorRosterPdfRow(person) {
+  const marks = [];
+  if (directoryPersonnelNeedsReview(person)) marks.push('Needs Review');
+  if (person.active !== true) marks.push('Inactive');
+  const name = directoryPersonnelName(person) || '—';
+  return {
+    rank: person.rankTitle || '',
+    name: marks.length ? `${name} (${marks.join(', ')})` : name,
+    command: person.commandOrganization || '—',
+    installation: person.installation || '—',
+    products: String(person.productCount),
+    events: String(person.eventsConducted),
+    recent: formatRecordedFacilitationDate(person.mostRecentOn),
+  };
+}
+
+function currentFacilitatorProductReport() {
+  const product = buildFacilitatorProgramCapabilities(facilitatorPersonnel, facilitatorProducts)
+    .find((row) => row.productId === facilitatorSelectedProductId) ?? null;
+  if (!product) return { product: null, people: [] };
+  return {
+    product,
+    people: filterFacilitatorProductPersonnel(
+      facilitatorProductPersonnel(facilitatorPersonnel, product.productId),
+      {
+        query: document.getElementById('facilitator-product-person-search')?.value ?? '',
+        active: document.getElementById('facilitator-product-active-filter')?.value ?? 'all',
+      },
+    ),
+  };
+}
+
+async function runFacilitatorPdfExport(button, produce) {
+  if (!button || button.dataset.exporting === 'true') return;
+  const idleLabel = button.textContent;
+  button.dataset.exporting = 'true';
+  button.disabled = true;
+  button.textContent = 'Exporting…';
+  try {
+    await produce();
+  } catch (error) {
+    console.error('Facilitator report export failed.', error);
+    alert('Failed to export PDF. Please try again.');
+  } finally {
+    delete button.dataset.exporting;
+    button.textContent = idleLabel;
+    button.disabled = false;
+    paintFacilitatorProgramCapabilities();
+    paintFacilitatorPersonnel();
+    if (document.getElementById('facilitator-product-modal')?.open) paintFacilitatorProductDetail();
+  }
+}
+
+async function exportVisibleCapabilitiesPdf(button) {
+  const rows = visibleFacilitatorCapabilities();
+  if (!rows.length) {
+    alert(FACILITATOR_EMPTY_PRODUCTS);
+    return;
+  }
+  const filters = facilitatorCapabilityFilterState();
+  const scopeLines = [`Presence: ${facilitatorPresenceLabel(filters.presence)}`];
+  const search = filters.query.trim();
+  if (search) scopeLines.push(`Search: "${search}"`);
+  scopeLines.push(`Records: ${rows.length}`);
+  await runFacilitatorPdfExport(button, () => exportFacilitatorTablePdf({
+    title: 'Program Capabilities',
+    scopeLines,
+    columns: FACILITATOR_CAPABILITY_PDF_COLUMNS,
+    rows: rows.map((product) => ({
+      product: product.productName,
+      personnel: String(product.personnelCount),
+      instances: String(product.recordedInstances),
+      recent: formatRecordedFacilitationDate(product.mostRecentOn),
+      qualifications: String(product.qualificationRecordCount),
+    })),
+    filename: buildFacilitatorPdfFilename('Program Capabilities'),
+    orientation: 'landscape',
+  }));
+}
+
+async function exportFacilitatorPopulationPdf(button, populationId) {
+  const definition = FACILITATOR_POPULATIONS.find((entry) => entry.id === populationId);
+  if (!definition) return;
+  const records = sortFacilitatorPersonnel(
+    filterFacilitatorPersonnel(facilitatorPersonnel, {
+      population: definition.id,
+      query: '',
+      active: 'all',
+      productId: '',
+    }),
+    definition.defaultSort.column,
+    definition.defaultSort.direction,
+  );
+  if (!records.length) {
+    alert(FACILITATOR_EMPTY_PERSONNEL);
+    return;
+  }
+  await runFacilitatorPdfExport(button, () => exportFacilitatorTablePdf({
+    title: `${definition.label} Facilitators`,
+    subtitle: 'Complete population',
+    scopeLines: [definition.description, `Records: ${records.length}`],
+    columns: FACILITATOR_ROSTER_PDF_COLUMNS,
+    rows: records.map(facilitatorRosterPdfRow),
+    filename: buildFacilitatorPdfFilename(`${definition.label} Facilitators`),
+    orientation: 'landscape',
+  }));
+}
+
+async function exportVisibleFacilitatorsPdf(button) {
+  const rows = visibleFacilitatorPersonnel();
+  if (!rows.length) {
+    alert(FACILITATOR_EMPTY_PERSONNEL);
+    return;
+  }
+  const filters = facilitatorFilterState();
+  const definition = FACILITATOR_POPULATIONS.find((entry) => entry.id === filters.population);
+  const scopeLines = [`Population: ${definition?.label || 'Facilitators'}`];
+  const search = filters.query.trim();
+  if (search) scopeLines.push(`Search: "${search}"`);
+  const active = facilitatorActiveLabel(filters.active);
+  if (active) scopeLines.push(`Status: ${active}`);
+  const product = facilitatorProductFilterOptions(facilitatorProducts).find((entry) => entry.id === filters.productId);
+  if (product) scopeLines.push(`Product: ${product.name}`);
+  scopeLines.push(`Records: ${rows.length}`);
+  await runFacilitatorPdfExport(button, () => exportFacilitatorTablePdf({
+    title: `${definition?.label || 'Facilitators'} Facilitators`,
+    subtitle: 'Current view',
+    scopeLines,
+    columns: FACILITATOR_ROSTER_PDF_COLUMNS,
+    rows: rows.map(facilitatorRosterPdfRow),
+    filename: buildFacilitatorPdfFilename(`${definition?.label || 'Facilitators'} Facilitators Current View`),
+    orientation: 'landscape',
+  }));
+}
+
+async function exportFacilitatorProductPdf(button) {
+  const { product, people } = currentFacilitatorProductReport();
+  if (!product || !people.length) {
+    alert(product && !product.personnelCount ? FACILITATOR_NO_FACILITATOR_RECORDS : FACILITATOR_EMPTY_PERSONNEL);
+    return;
+  }
+  const search = document.getElementById('facilitator-product-person-search')?.value.trim() ?? '';
+  const active = facilitatorActiveLabel(document.getElementById('facilitator-product-active-filter')?.value ?? 'all');
+  const scopeLines = [];
+  if (search) scopeLines.push(`Search: "${search}"`);
+  if (active) scopeLines.push(`Status: ${active}`);
+  scopeLines.push(`Records: ${people.length}`);
+  await runFacilitatorPdfExport(button, () => exportFacilitatorTablePdf({
+    title: product.productName,
+    subtitle: 'Facilitator Report',
+    scopeLines,
+    columns: FACILITATOR_PRODUCT_PDF_COLUMNS,
+    rows: people.map((person) => ({
+      name: person.displayName || '—',
+      command: person.commandOrganization || '—',
+      installation: person.installation || '—',
+      active: person.active ? 'Active' : 'Inactive',
+      experience: person.hasRecordedExperience ? FACILITATOR_PRODUCT_EXPERIENCE_YES : FACILITATOR_PRODUCT_EXPERIENCE_NO,
+      instances: String(person.recordedInstances),
+      first: formatRecordedFacilitationDate(person.firstRecordedOn),
+      recent: formatRecordedFacilitationDate(person.mostRecentOn),
+      qualification: person.hasQualificationRecord ? FACILITATOR_QUALIFICATION_ON_FILE : FACILITATOR_QUALIFICATION_NONE,
+    })),
+    filename: buildFacilitatorPdfFilename(`${product.productName} Facilitators`),
+    orientation: 'landscape',
+  }));
+}
+
+async function exportOpenFacilitatorPdf(button) {
+  const personId = document.getElementById('facilitator-detail-modal')?.dataset.facilitatorPersonId;
+  const person = facilitatorPersonnel.find((record) => record.id === personId);
+  if (!person) {
+    alert(FACILITATOR_EMPTY_PERSONNEL);
+    return;
+  }
+  const personalName = person.name || person.displayName || 'Facilitator';
+  await runFacilitatorPdfExport(button, () => exportFacilitatorProfilePdf({
+    person,
+    workshops: facilitatorLivingWorksWorkshops,
+    t4tExperienceAvailable: facilitatorT4tExperienceAvailable,
+    filename: buildFacilitatorPdfFilename(`${personalName} Facilitator Report`),
+  }));
+}
+
 function setupFacilitatorManagement() {
   document.getElementById('add-facilitator-btn')?.addEventListener('click', () => {
     openPersonnelEditor(null, { roleSurface: 'facilitator' });
@@ -12686,6 +12921,7 @@ function setupFacilitatorManagement() {
     paintFacilitatorProgramCapabilities();
   });
   document.getElementById('facilitator-personnel-panel')?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-facilitator-population-export]')) return;
     const card = event.target.closest('[data-facilitator-population]');
     if (!card) return;
     selectFacilitatorPopulation(card.dataset.facilitatorPopulation);
@@ -12719,6 +12955,25 @@ function setupFacilitatorManagement() {
   });
   document.getElementById('facilitator-product-close')?.addEventListener('click', closeFacilitatorProductDetail);
   document.getElementById('facilitator-product-close-btn')?.addEventListener('click', closeFacilitatorProductDetail);
+  document.getElementById('facilitator-capabilities-export-btn')?.addEventListener('click', (event) => {
+    exportVisibleCapabilitiesPdf(event.currentTarget);
+  });
+  document.getElementById('facilitator-personnel-export-btn')?.addEventListener('click', (event) => {
+    exportVisibleFacilitatorsPdf(event.currentTarget);
+  });
+  document.getElementById('facilitator-product-export-btn')?.addEventListener('click', (event) => {
+    exportFacilitatorProductPdf(event.currentTarget);
+  });
+  document.getElementById('facilitator-detail-export-btn')?.addEventListener('click', (event) => {
+    exportOpenFacilitatorPdf(event.currentTarget);
+  });
+  document.querySelectorAll('[data-facilitator-population-export]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      exportFacilitatorPopulationPdf(button, button.dataset.facilitatorPopulationExport);
+    });
+  });
   document.getElementById('facilitator-product-modal')?.addEventListener('close', () => {
     setFacilitatorProductPageScrollLocked(false);
   });

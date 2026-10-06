@@ -1219,6 +1219,7 @@
                 <option value="with">With recorded personnel</option>
                 <option value="without">No recorded personnel</option>
               </select>
+              <button type="button" class="btn btn-secondary facilitator-export-btn" id="facilitator-capabilities-export-btn">Export PDF</button>
             </div>
           </div>
           <p class="facilitator-summary-note">Instructors counts each person once when recorded facilitation, a qualification record, or both exist for the product. Qualification Records means a record is on file.</p>
@@ -1256,27 +1257,36 @@
         </section>
         <section class="content-section" id="facilitator-personnel-panel" hidden aria-labelledby="facilitator-personnel-heading">
           <div class="facilitator-population-cards" role="group" aria-label="Facilitator population">
-            <button type="button" class="facilitator-population-card is-selected" id="facilitator-population-credo-used" data-facilitator-population="credo-used" aria-pressed="true">
-              <span class="facilitator-population-heading">
-                <span class="facilitator-population-title">CREDO-Used</span>
-                <span class="facilitator-population-count" data-facilitator-population-count="credo-used">0</span>
-              </span>
-              <span class="facilitator-population-description">People with recorded facilitation on CREDO-tracked events.</span>
-            </button>
-            <button type="button" class="facilitator-population-card" id="facilitator-population-trained-pool" data-facilitator-population="trained-pool" aria-pressed="false">
-              <span class="facilitator-population-heading">
-                <span class="facilitator-population-title">Trained / Qualification Pool</span>
-                <span class="facilitator-population-count" data-facilitator-population-count="trained-pool">0</span>
-              </span>
-              <span class="facilitator-population-description">People with T4T completion or qualification records, but no CREDO-recorded facilitation.</span>
-            </button>
-            <button type="button" class="facilitator-population-card" id="facilitator-population-all-records" data-facilitator-population="all-records" aria-pressed="false">
-              <span class="facilitator-population-heading">
-                <span class="facilitator-population-title">All Records</span>
-                <span class="facilitator-population-count" data-facilitator-population-count="all-records">0</span>
-              </span>
-              <span class="facilitator-population-description">All facilitator-relevant personnel records.</span>
-            </button>
+            <div class="facilitator-population-card is-selected" id="facilitator-population-credo-used">
+              <button type="button" class="facilitator-population-select" data-facilitator-population="credo-used" aria-pressed="true">
+                <span class="facilitator-population-heading">
+                  <span class="facilitator-population-title">CREDO-Used</span>
+                  <span class="facilitator-population-count" data-facilitator-population-count="credo-used">0</span>
+                </span>
+                <span class="facilitator-population-description">People with recorded facilitation on CREDO-tracked events.</span>
+              </button>
+              <button type="button" class="btn btn-secondary facilitator-population-export" data-facilitator-population-export="credo-used">Export PDF</button>
+            </div>
+            <div class="facilitator-population-card" id="facilitator-population-trained-pool">
+              <button type="button" class="facilitator-population-select" data-facilitator-population="trained-pool" aria-pressed="false">
+                <span class="facilitator-population-heading">
+                  <span class="facilitator-population-title">Trained / Qualification Pool</span>
+                  <span class="facilitator-population-count" data-facilitator-population-count="trained-pool">0</span>
+                </span>
+                <span class="facilitator-population-description">People with T4T completion or qualification records, but no CREDO-recorded facilitation.</span>
+              </button>
+              <button type="button" class="btn btn-secondary facilitator-population-export" data-facilitator-population-export="trained-pool">Export PDF</button>
+            </div>
+            <div class="facilitator-population-card" id="facilitator-population-all-records">
+              <button type="button" class="facilitator-population-select" data-facilitator-population="all-records" aria-pressed="false">
+                <span class="facilitator-population-heading">
+                  <span class="facilitator-population-title">All Records</span>
+                  <span class="facilitator-population-count" data-facilitator-population-count="all-records">0</span>
+                </span>
+                <span class="facilitator-population-description">All facilitator-relevant personnel records.</span>
+              </button>
+              <button type="button" class="btn btn-secondary facilitator-population-export" data-facilitator-population-export="all-records">Export PDF</button>
+            </div>
           </div>
           <div class="section-header">
             <div class="section-header-start facilitator-toolbar">
@@ -1291,6 +1301,7 @@
               <select id="facilitator-product-filter" class="filter-select" aria-label="Product">
                 <option value="">All products</option>
               </select>
+              <button type="button" class="btn btn-secondary facilitator-export-btn" id="facilitator-personnel-export-btn">Export PDF</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -1338,6 +1349,7 @@
       </div>
       <div class="modal-body" id="facilitator-detail-body"></div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-secondary facilitator-export-btn" id="facilitator-detail-export-btn">Export PDF</button>
         <button type="button" class="btn btn-secondary" id="facilitator-detail-close-btn">Close</button>
       </div>
     </div>
@@ -1372,6 +1384,7 @@
         <div class="table-wrap" id="facilitator-product-personnel"></div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-secondary facilitator-export-btn" id="facilitator-product-export-btn">Export PDF</button>
         <button type="button" class="btn btn-secondary" id="facilitator-product-close-btn">Close</button>
       </div>
     </div>
