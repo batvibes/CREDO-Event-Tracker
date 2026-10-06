@@ -112,6 +112,30 @@ function sortStaff(personnel) {
   });
 }
 
+export function staffOrderAfterMove(ids, personId, direction) {
+  const index = ids.indexOf(personId);
+  if (index < 0) return [...ids];
+  const nextIndex = direction === 'up' ? index - 1 : index + 1;
+  if (nextIndex < 0 || nextIndex >= ids.length) return [...ids];
+  const reordered = [...ids];
+  const [id] = reordered.splice(index, 1);
+  reordered.splice(nextIndex, 0, id);
+  return reordered;
+}
+
+export function staffOrderAfterDrop(ids, personId, targetId, placeBefore) {
+  const fromIndex = ids.indexOf(personId);
+  let toIndex = ids.indexOf(targetId);
+  if (fromIndex < 0 || toIndex < 0) return [...ids];
+  if (!placeBefore) toIndex += 1;
+  if (fromIndex < toIndex) toIndex -= 1;
+  if (fromIndex === toIndex) return [...ids];
+  const reordered = [...ids];
+  const [id] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, id);
+  return reordered;
+}
+
 export function filterTeamDirectory(personnel, tab) {
   const active = uniquePeople(personnel).filter((person) => person.active === true);
   if (tab === 'staff') return sortStaff(active.filter((person) => person.isCredoStaff === true));
@@ -297,15 +321,144 @@ function staffCellText(person, columnId) {
   return person.name || '—';
 }
 
-function renderStaffDirectory(doc, people, onEdit) {
+function staffColumnClass(columnId) {
+  if (columnId === 'name') return 'team-staff-name';
+  if (columnId === 'billet') return 'team-staff-billet';
+  if (columnId === 'prd') return 'team-staff-prd';
+  return '';
+}
+
+function staffReorderLabel(person) {
+  return `Reorder ${personnelDisplayName(person?.rankTitle, person?.name) || 'staff member'}`;
+}
+
+function staffGripIcon(doc) {
+  const icon = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 10 16');
+  icon.setAttribute('width', '10');
+  icon.setAttribute('height', '16');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+  ['2', '8'].forEach((cx) => {
+    ['2', '8', '14'].forEach((cy) => {
+      const dot = doc.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', cx);
+      dot.setAttribute('cy', cy);
+      dot.setAttribute('r', '1.15');
+      icon.appendChild(dot);
+    });
+  });
+  return icon;
+}
+
+function sameStaffOrder(left, right) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function bindStaffReorder(tbody, onReorder) {
+  let draggedId = '';
+
+  function rowIds() {
+    return [...tbody.querySelectorAll('tr[data-person-id]')].map((row) => row.dataset.personId);
+  }
+
+  function clearDropMarks() {
+    tbody.querySelectorAll('.team-staff-drop-before, .team-staff-drop-after, .team-staff-dragging').forEach((row) => {
+      row.classList.remove('team-staff-drop-before', 'team-staff-drop-after', 'team-staff-dragging');
+    });
+  }
+
+  function commit(nextIds, focusPersonId) {
+    const currentIds = rowIds();
+    if (sameStaffOrder(currentIds, nextIds)) return;
+    onReorder(nextIds, focusPersonId);
+  }
+
+  tbody.addEventListener('dragstart', (event) => {
+    const grip = event.target.closest?.('.team-staff-grip');
+    const row = grip?.closest('tr[data-person-id]');
+    if (!grip || !row) {
+      event.preventDefault();
+      return;
+    }
+    draggedId = row.dataset.personId;
+    row.classList.add('team-staff-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', draggedId);
+    const rect = row.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      try {
+        event.dataTransfer.setDragImage(row, Math.max(0, event.clientX - rect.left), Math.max(0, event.clientY - rect.top));
+      } catch (_error) {
+        // The row still moves when the browser cannot use it as the drag preview.
+      }
+    }
+  });
+
+  tbody.addEventListener('dragover', (event) => {
+    if (!draggedId) return;
+    const row = event.target.closest?.('tr[data-person-id]');
+    if (!row) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const before = event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+    tbody.querySelectorAll('.team-staff-drop-before, .team-staff-drop-after').forEach((marked) => {
+      marked.classList.remove('team-staff-drop-before', 'team-staff-drop-after');
+    });
+    if (row.dataset.personId !== draggedId) {
+      row.classList.add(before ? 'team-staff-drop-before' : 'team-staff-drop-after');
+    }
+  });
+
+  tbody.addEventListener('drop', (event) => {
+    const row = event.target.closest?.('tr[data-person-id]');
+    if (!draggedId || !row) return;
+    event.preventDefault();
+    const before = event.clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2;
+    const nextIds = staffOrderAfterDrop(rowIds(), draggedId, row.dataset.personId, before);
+    const focusPersonId = draggedId;
+    draggedId = '';
+    clearDropMarks();
+    commit(nextIds, focusPersonId);
+  });
+
+  tbody.addEventListener('dragend', () => {
+    draggedId = '';
+    clearDropMarks();
+  });
+
+  tbody.querySelectorAll('.team-staff-grip').forEach((grip) => {
+    grip.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      const personId = grip.closest('tr[data-person-id]')?.dataset.personId;
+      if (!personId) return;
+      const nextIds = staffOrderAfterMove(rowIds(), personId, event.key === 'ArrowUp' ? 'up' : 'down');
+      commit(nextIds, personId);
+    });
+  });
+}
+
+function renderStaffDirectory(doc, people, onEdit, onReorder) {
   const wrap = doc.createElement('div');
   wrap.className = 'team-report-table-wrap';
   const table = doc.createElement('table');
   table.className = 'team-manpower-table team-staff-table';
   const thead = doc.createElement('thead');
   const headRow = doc.createElement('tr');
+  if (onReorder) {
+    const gripHead = doc.createElement('th');
+    gripHead.className = 'team-staff-grip-cell';
+    gripHead.scope = 'col';
+    const gripLabel = doc.createElement('span');
+    gripLabel.className = 'visually-hidden';
+    gripLabel.textContent = 'Reorder';
+    gripHead.appendChild(gripLabel);
+    headRow.appendChild(gripHead);
+  }
   TEAM_STAFF_COLUMNS.forEach((column) => {
     const th = doc.createElement('th');
+    th.className = staffColumnClass(column.id);
     th.textContent = column.label;
     th.scope = 'col';
     headRow.appendChild(th);
@@ -324,7 +477,7 @@ function renderStaffDirectory(doc, people, onEdit) {
     const row = doc.createElement('tr');
     row.className = 'team-empty-row';
     const cell = doc.createElement('td');
-    cell.colSpan = TEAM_STAFF_COLUMNS.length + (onEdit ? 1 : 0);
+    cell.colSpan = TEAM_STAFF_COLUMNS.length + (onEdit ? 1 : 0) + (onReorder ? 1 : 0);
     cell.textContent = TEAM_DIRECTORY_EMPTY_MESSAGES.staff;
     row.appendChild(cell);
     tbody.appendChild(row);
@@ -332,8 +485,24 @@ function renderStaffDirectory(doc, people, onEdit) {
     people.forEach((person) => {
       const row = doc.createElement('tr');
       row.dataset.personId = person.id;
+      if (onReorder) {
+        const gripCell = doc.createElement('td');
+        gripCell.className = 'team-staff-grip-cell';
+        const grip = doc.createElement('button');
+        grip.type = 'button';
+        grip.className = 'team-staff-grip';
+        grip.draggable = true;
+        grip.setAttribute('aria-label', staffReorderLabel(person));
+        grip.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown');
+        grip.title = 'Drag to reorder, or press the up and down arrow keys';
+        grip.appendChild(staffGripIcon(doc));
+        grip.addEventListener('click', (event) => event.preventDefault());
+        gripCell.appendChild(grip);
+        row.appendChild(gripCell);
+      }
       TEAM_STAFF_COLUMNS.forEach((column) => {
         const cell = doc.createElement('td');
+        cell.className = staffColumnClass(column.id);
         if (column.id === 'name') {
           appendDirectoryIdentity(cell, person);
         } else {
@@ -346,6 +515,7 @@ function renderStaffDirectory(doc, people, onEdit) {
       appendActionCell(row, person, onEdit, 'td');
       tbody.appendChild(row);
     });
+    if (onReorder) bindStaffReorder(tbody, onReorder);
   }
   table.appendChild(tbody);
   wrap.appendChild(table);
@@ -358,6 +528,7 @@ export function renderTeamDirectoryView(panel, personnel, tab, headingLabel, opt
   const doc = panel.ownerDocument;
   const onEdit = options.editable ? options.onEdit : null;
   const onDelete = options.editable && selectedTab === 'poc' ? options.onDelete : null;
+  const onReorder = options.editable && selectedTab === 'staff' ? options.onReorder : null;
   panel.replaceChildren();
 
   const heading = doc.createElement('h2');
@@ -367,7 +538,7 @@ export function renderTeamDirectoryView(panel, personnel, tab, headingLabel, opt
   panel.appendChild(heading);
   panel.appendChild(
     selectedTab === 'staff'
-      ? renderStaffDirectory(doc, people, onEdit)
+      ? renderStaffDirectory(doc, people, onEdit, onReorder)
       : renderCompactDirectory(doc, people, selectedTab, onEdit, onDelete)
   );
 }

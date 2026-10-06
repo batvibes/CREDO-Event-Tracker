@@ -46,6 +46,7 @@ import {
   archiveDirectoryPerson,
   deleteDirectoryPerson,
   reconcileDirectoryPeople,
+  reorderCredoStaff,
   saveDirectoryPerson,
   saveMonthlyReport,
   updateAarGlobalTemplates,
@@ -4458,6 +4459,29 @@ function openPersonnelEditor(person = null, options = {}) {
   modal.showModal();
 }
 
+let credoStaffReorderTask = null;
+
+async function persistCredoStaffOrder(personIds, focusPersonId) {
+  if (credoStaffReorderTask) return credoStaffReorderTask;
+  credoStaffReorderTask = (async () => {
+    try {
+      await reorderCredoStaff(personIds);
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Failed to save CREDO Staff order.');
+    }
+    try {
+      await renderTeam();
+      if (focusPersonId) {
+        document.querySelector(`#view-team tr[data-person-id="${CSS.escape(focusPersonId)}"] .team-staff-grip`)?.focus();
+      }
+    } finally {
+      credoStaffReorderTask = null;
+    }
+  })();
+  return credoStaffReorderTask;
+}
+
 function renderTeamDirectoryPanel(panel) {
   const tab = isTeamDirectoryTab(teamDirectoryTab) ? teamDirectoryTab : 'staff';
   const label = document.querySelector(`#team-directory-tabs [data-team-tab="${tab}"]`)?.textContent?.trim()
@@ -4466,6 +4490,7 @@ function renderTeamDirectoryPanel(panel) {
     editable: canEditTeam(),
     onEdit: openPersonnelEditor,
     onDelete: requestPersonnelDeletion,
+    onReorder: persistCredoStaffOrder,
   });
   if (tab === 'poc') mountTeamPocExport(panel);
 }

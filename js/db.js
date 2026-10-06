@@ -2050,6 +2050,35 @@ function personnelRpcError(error, fallbackName = 'that name') {
   return error;
 }
 
+function credoStaffOrderError(error) {
+  const hint = error?.hint || '';
+  if (hint === 'STAFF_ORDER_STALE') {
+    const stale = new Error('CREDO Staff changed before this order could be saved. Reload and try again.');
+    stale.code = hint;
+    return stale;
+  }
+  if (hint === 'STAFF_ORDER_DUPLICATE' || hint === 'STAFF_ORDER_NOT_STAFF' || hint === 'STAFF_ORDER_MANNING') {
+    const rejected = new Error('CREDO Staff order could not be saved.');
+    rejected.code = hint;
+    return rejected;
+  }
+  if (error?.code === '42501') {
+    const denied = new Error('You are not authorized to reorder CREDO Staff.');
+    denied.code = '42501';
+    return denied;
+  }
+  const failed = new Error('Failed to save CREDO Staff order.');
+  failed.code = hint || error?.code || 'STAFF_ORDER_FAILED';
+  return failed;
+}
+
+export async function reorderCredoStaff(personIds) {
+  const { error } = await supabase.rpc('reorder_credo_staff', {
+    p_person_ids: personIds,
+  });
+  if (error) throw credoStaffOrderError(error);
+}
+
 export async function saveDirectoryPerson(person) {
   const { data, error } = await supabase.rpc('save_directory_person_structured', {
     p_id: person?.id ?? null,
