@@ -147,10 +147,12 @@ import {
   createPersonnelRowDeleteButton,
   directoryPersonnelName,
   directoryPersonnelNeedsReview,
+  filterTeamDirectory,
   isCommandHighlightsNotesVisible,
   isTeamDirectoryTab,
   mapTeamDirectoryPerson,
   renderTeamDirectoryView,
+  TEAM_DIRECTORY_EMPTY_MESSAGES,
 } from './team-personnel-directory.js';
 import {
   createPersonnelLifecycleControls,
@@ -179,6 +181,7 @@ import {
   exportFacilitatorProfilePdf,
   exportFacilitatorTablePdf,
 } from './facilitator-report-pdf-export.js';
+import { exportTeamPocDirectoryPdf } from './team-poc-pdf-export.js';
 import {
   createReportsSearchSortState,
   formatReportsSearchMatchLabel,
@@ -4464,6 +4467,49 @@ function renderTeamDirectoryPanel(panel) {
     onEdit: openPersonnelEditor,
     onDelete: requestPersonnelDeletion,
   });
+  if (tab === 'poc') mountTeamPocExport(panel);
+}
+
+function mountTeamPocExport(panel) {
+  const people = filterTeamDirectory(teamDirectoryPersonnel, 'poc');
+  const toolbar = document.createElement('div');
+  toolbar.className = 'team-poc-export-toolbar';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-secondary';
+  button.id = 'team-poc-export-btn';
+  button.textContent = 'Export PDF';
+  button.disabled = people.length === 0;
+  button.addEventListener('click', () => {
+    exportTeamPointsOfContactPdf(button);
+  });
+  toolbar.appendChild(button);
+  const directory = panel.querySelector('.team-directory-list');
+  if (directory) panel.insertBefore(toolbar, directory);
+  else panel.appendChild(toolbar);
+}
+
+async function exportTeamPointsOfContactPdf(button) {
+  const people = filterTeamDirectory(teamDirectoryPersonnel, 'poc');
+  if (!people.length) {
+    alert(TEAM_DIRECTORY_EMPTY_MESSAGES.poc);
+    return;
+  }
+  if (!button || button.dataset.exporting === 'true') return;
+  const idleLabel = button.textContent;
+  button.dataset.exporting = 'true';
+  button.disabled = true;
+  button.textContent = 'Exporting…';
+  try {
+    await exportTeamPocDirectoryPdf(people);
+  } catch (error) {
+    console.error('Points of Contact export failed.', error);
+    alert('Failed to export PDF. Please try again.');
+  } finally {
+    delete button.dataset.exporting;
+    button.textContent = idleLabel;
+    button.disabled = filterTeamDirectory(teamDirectoryPersonnel, 'poc').length === 0;
+  }
 }
 
 function syncCommandHighlightsNotesVisibility() {

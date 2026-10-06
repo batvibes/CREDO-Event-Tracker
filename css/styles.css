@@ -3417,6 +3417,17 @@ body:has(#new-event-modal[open]) {
   margin-bottom: 6px;
 }
 
+#view-team .team-poc-export-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
+
+#view-team .team-poc-export-toolbar .btn {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+}
+
 #view-team .team-directory-toolbar .btn {
   padding: 6px 12px;
   font-size: 0.8125rem;
